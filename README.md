@@ -465,7 +465,8 @@ No application code has landed yet. The repository currently holds this proposal
 |---|---|---|
 | `README.md` | This document, the single source of truth for the build | Current |
 | `Dispatch_Coordinator_Agent_Proposal.docx` | The submitted proposal, condensed from this document | Current |
-| `build/` | Node tooling that renders the `.docx`, dependencies git-ignored | Current |
+| `build/build_docx.py` | Renders this README into the `.docx`, reusing that file's own styles | Current |
+| `build/` | Node tooling kept from the first draft, dependencies git-ignored | Current |
 | `docs/` | Long-form notes split out of this README as it grows | Empty |
 | `schema.sql` | Runnable Postgres schema, frozen on day two of week 1 | Week 1 |
 | `src/matching/` | Pure Stage A and Stage B functions, no I/O | Week 1 |
@@ -476,6 +477,6 @@ No application code has landed yet. The repository currently holds this proposal
 
 ## Revision history
 
-- **v0.3** 5 Sep 2026 - Restructured as a README against the house style. Reconciled the `.docx` against the v0.2 draft: restored the six evals the condensation dropped, restored the fixture-matrix rule that keeps G-05 deterministic in week 1, restored the 0.7 confidence threshold, and added a `Ships` column to the playbook table. Added §17 open questions and §18 repository layout.
+- **v0.3** 5 Sep 2026 - This README is now the source and the `.docx` is generated from it by `build/build_docx.py`. Restructured as a README against the house style. Reconciled the `.docx` against the v0.2 draft: restored the six evals the condensation dropped, restored the fixture-matrix rule that keeps G-05 deterministic in week 1, restored the 0.7 confidence threshold, and added a `Ships` column to the playbook table. Added §17 open questions and §18 repository layout.
 - **v0.2** Sep 2026 - Condensed to the submitted `.docx`. Pulled scheduling forward into week 1.
 - **v0.1** Sep 2026 - Initial full proposal draft.
