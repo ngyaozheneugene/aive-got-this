@@ -1,0 +1,26 @@
+# Local Postgres only. The app runs with `npm run dev`; nothing here is
+# deployed. RDS is the real thing (README §11).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aive-postgres
+    environment:
+      POSTGRES_USER: dispatch
+      POSTGRES_PASSWORD: dispatch
+      POSTGRES_DB: dispatch
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Read-only so you can apply them by hand once they exist:
+      #   docker compose exec postgres psql -U dispatch -d dispatch -f /sql/schema/schema.sql
+      - ./db:/sql:ro
+      - ./seed:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispatch -d dispatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

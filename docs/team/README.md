@@ -14,10 +14,10 @@ The proposal already names six modules and four import rules (root README §11),
 
 | # | Stream | Owns | Brief |
 |---|---|---|---|
-| 1 | Platform and data | `infra/`, `db/`, `seed/`, `src/db/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `.github/` | [member-1](member-1/README.md) |
+| 1 | Platform and data | `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/` | [member-1](member-1/README.md) |
 | 2 | Matching and location | `src/matching/`, `src/location/`, `evals/g-suite/`, `evals/fixtures/` | [member-2](member-2/README.md) |
 | 3 | Agent and orchestration | `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | [member-3](member-3/README.md) |
-| 4 | Surfaces | `src/web/` | [member-4](member-4/README.md) |
+| 4 | Surfaces | `src/app/`, except `src/app/api/` | [member-4](member-4/README.md) |
 | all | Shared contracts and decisions | `src/shared/`, `docs/adr/` | this file |
 
 > **Why:** `src/dispatch/` sits with member 1 rather than with the agent or the web person because both of those write through it. `status_event` is append-only and Dispatch is its only writer, so the module belongs with whoever owns the schema and its invariants.
@@ -29,6 +29,10 @@ The proposal already names six modules and four import rules (root README §11),
 ```text
 aive-got-this/
 ├── .github/workflows/          1  CI: G per commit, A and X on a schedule
+├── Dockerfile                  1  App Runner image, Next standalone
+├── docker-compose.yml          1  local Postgres only, never deployed
+├── package.json, tsconfig.json, vitest.config.ts, next.config.ts
+│                               1  build, typecheck, the three test suites
 ├── db/
 │   ├── schema/                 1  schema.sql, frozen day two
 │   └── migrations/             1  changes after the freeze
@@ -41,11 +45,19 @@ aive-got-this/
 │   ├── s3/                     1  imports and eval artefacts
 │   ├── ssm/                    1  secrets, none in git
 │   └── observability/          1  CloudWatch, budget alert at $80
+├── public/                     4  PWA manifest and icons
 ├── src/
+│   ├── app/                       the ONLY routable tree, Next.js App Router
+│   │   ├── (customer)/         4  paste a message, status and ETA
+│   │   ├── (technician)/       4  clock in, offers, today, escalate
+│   │   ├── (desk)/             4  board, approval cards, Why?
+│   │   ├── _components/        4  shared across the three surfaces
+│   │   └── api/                1  handlers: intake, coordinator, desk, webhooks
 │   ├── shared/
 │   │   ├── contracts/         all Zod schemas shared by model, server and UI
 │   │   ├── types/             all read models and enums
 │   │   └── config/            all weights, thresholds, caps
+│   ├── platform/aws/           1  the ONLY place a Bedrock, S3 or SSM client is built
 │   ├── db/
 │   │   ├── postgres/           1  the real client
 │   │   └── memory/             1  in-memory double, so 2/3/4 test without RDS
@@ -58,19 +70,14 @@ aive-got-this/
 │   ├── location/
 │   │   ├── postal/             2  postal to region and estate
 │   │   └── matrix/             2  travel matrix, insertion cost, peak
-│   ├── agent/
-│   │   ├── runtime/            3  LangGraph, RDS checkpointer, interrupt and resume
-│   │   ├── playbooks/          3  one graph per trigger
-│   │   ├── prompts/            3  delimited data blocks, never instructions
-│   │   └── tools/
-│   │       ├── intake/         3  registry 1, draft jobs only
-│   │       ├── coordinator/    3  registry 2, state through validated tools
-│   │       └── desk/           3  registry 3, acts as the signed-in user
-│   └── web/
-│       ├── customer/           4  paste a message, status and ETA
-│       ├── technician/         4  clock in, offers, today, escalate
-│       ├── desk/               4  board, approval cards, Why?
-│       └── shared/             4  components used by all three surfaces
+│   └── agent/
+│       ├── runtime/            3  LangGraph, RDS checkpointer, interrupt and resume
+│       ├── playbooks/          3  one graph per trigger
+│       ├── prompts/            3  delimited data blocks, never instructions
+│       └── tools/
+│           ├── intake/         3  registry 1, draft jobs only
+│           ├── coordinator/    3  registry 2, state through validated tools
+│           └── desk/           3  registry 3, acts as the signed-in user
 ├── evals/
 │   ├── g-suite/                2  no model, pure functions
 │   ├── a-suite/                3  agent, asserts on tool calls
@@ -81,6 +88,10 @@ aive-got-this/
     ├── adr/                   all one file per open question resolved
     └── team/                  these briefs
 ```
+
+> **Why `src/app/` rather than `src/web/`:** Next.js routes only from `app/` or `src/app/`. A separate `src/web/` tree would need a router living somewhere else to import it, and the API handlers had no home at all. The three surfaces are route groups, which keeps the member-4 split intact while making it something the framework understands.
+
+> **Why `src/app/api/` sits with member 1:** the handlers are thin adapters onto the Dispatch write path and the agent runtime, and they validate with member 3 Zod contracts out of `src/shared/contracts/` rather than a second copy. Keeping them with the owner of the state machine keeps the server side of every tool in one head.
 
 ---
 
@@ -143,6 +154,8 @@ These come from root README §9 and §11. They are not style preferences; the sa
 - **`src/agent/` never imports SQL.** It reaches the database only through tools that re-validate.
 - **`src/catalog/` never calls `src/matching/`.** The catalogue describes work; it does not choose who does it.
 - **Customer status is a read of `src/dispatch/`.** Never a second store.
+- **`src/shared/` imports nothing.** It is types, Zod contracts and constants. If it needs an import from a module, the dependency is pointing the wrong way.
+- **AWS clients are built in `src/platform/aws/` and nowhere else.** That is what makes the rule about Matching never importing the AWS SDK checkable in review.
 - **Untrusted text lands in a `*_raw` column** and reaches the model only inside a delimited data block.
 - **The model never computes a score.** If you find yourself asking a model to rank, stop and put it in `src/matching/scoring/`.
 

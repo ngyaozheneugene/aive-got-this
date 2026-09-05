@@ -1,7 +1,7 @@
 # Member 1: platform and data
 
 **Stream:** AWS, database, seed, and the Dispatch state machine<br>
-**Folders:** `infra/`, `db/`, `seed/`, `src/db/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `.github/`<br>
+**Folders:** `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/`<br>
 **Status:** Week-1 critical path. Three other people are blocked until day two.
 
 You own everything the other three build on: the schema, the seed, the database access layer, the Dispatch state machine, and the AWS account. Your work is front-loaded, and the single most valuable thing you ship is not the real database but the in-memory double that lets everyone else start before RDS exists.
@@ -26,8 +26,11 @@ Give members 2, 3 and 4 a frozen, seeded, typed data layer by the end of day two
 | `src/people/` | `app_user`, `technician`, `technician_cert`, `shift`. |
 | `src/catalog/` | `customer`, `site`, `site_memory`, `job_type`, `job_type_cert`, `recurrence`. |
 | `src/dispatch/` | `job`, `job_requirement`, `assignment`, `status_event`. The status machine. |
+| `src/platform/aws/` | Bedrock, S3 and SSM clients. The only place they are constructed. |
+| `src/app/api/` | Route handlers for intake, coordinator, desk and webhooks. They validate with the Zod contracts member 3 publishes, never a second copy. |
 | `infra/` | App Runner, RDS, Cognito, the tick scheduler, S3, SSM, CloudWatch. |
 | `.github/workflows/` | CI. G suite per commit, A and X on a schedule. |
+| Root build config | `package.json`, `tsconfig.json`, `vitest.config.ts`, `next.config.ts`, `Dockerfile`, `docker-compose.yml`. |
 
 ---
 

@@ -1,0 +1,45 @@
+{
+  "name": "aive-got-this",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Dispatch Coordinator Agent — an AI coordinator for Singapore HVAC SMEs",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:g": "vitest run --dir evals/g-suite",
+    "test:a": "vitest run --dir evals/a-suite",
+    "test:x": "vitest run --dir evals/x-suite",
+    "test:unit": "vitest run --dir src",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "docx": "python build/build_docx.py"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.699.0",
+    "@aws-sdk/client-s3": "^3.699.0",
+    "@aws-sdk/client-ssm": "^3.699.0",
+    "@langchain/core": "^0.3.28",
+    "@langchain/langgraph": "^0.2.41",
+    "@langchain/langgraph-checkpoint-postgres": "^0.0.4",
+    "next": "^15.1.0",
+    "postgres": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "rrule": "^2.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

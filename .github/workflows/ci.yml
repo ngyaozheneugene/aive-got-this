@@ -1,0 +1,48 @@
+name: CI
+
+# G runs on every commit: pure functions, no model, no AWS.
+# A and X call Bedrock, so they run nightly and on demand (README §17 O-12).
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 18 * * *" # 02:00 SGT
+  workflow_dispatch:
+
+jobs:
+  gate:
+    name: typecheck and G suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:g
+
+  agent:
+    name: A and X suites
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ap-southeast-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-southeast-1
+      - run: npm run test:a
+      - run: npm run test:x

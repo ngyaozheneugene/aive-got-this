@@ -1,9 +1,9 @@
-# Dispatch Coordinator Agent v0.3
+# Dispatch Coordinator Agent v0.4
 
 **Team:** AI've Got This<br>
 **Event:** Show Me Your Agents, NUS-ISS<br>
 **Date:** 5 Sep 2026<br>
-**Status:** Proposal, frozen for build. No application code has landed yet; §18 lists what arrives in which week.
+**Status:** Proposal, frozen for build. The scaffold and build configuration are committed; no application code has landed yet. §18 lists what arrives in which week.
 
 An AI coordinator for Singapore HVAC SMEs. It turns a WhatsApp message into a structured job, calls a deterministic matching engine as a tool, handles no-shows, escalations and overruns through typed tools, and hands every risky decision to a human desk with a full trace.
 
@@ -307,18 +307,21 @@ Region `ap-southeast-1`, paid from the $100 credit.
 
 A budget alert fires at $80. There is no provisioned Bedrock throughput, no multi-AZ RDS and no NAT gateway. If the meter runs hot, App Runner stops overnight; the fallback is a single `t3.small` running the container alongside Postgres in Docker.
 
-Six modules live in one process: People, Catalog, Matching, Dispatch, Location and Agent. Four import rules keep them honest.
+Six domain modules live in one process: People, Catalog, Matching, Dispatch, Location and Agent. Three folders cut across them: `src/shared/` holds the contracts, `src/db/` the two database implementations, and `src/platform/aws/` every AWS client. Five import rules keep them honest.
 
 - Matching never imports HTTP or the AWS SDK.
 - Agent never imports SQL.
 - Catalog never calls Matching.
 - Customer status is a read of Dispatch, never a second store.
+- Shared imports nothing. It is types, Zod contracts and constants only.
+
+`src/platform/aws/` is the single place a Bedrock, S3 or SSM client is constructed, which turns the first rule from a convention into something review can check in one folder.
 
 ---
 
 ## 12. Database schema
 
-The runnable source is `schema.sql`, applied to RDS Postgres and frozen on day two of week 1. LangGraph checkpoint tables come from `checkpointer.setup()` and are deliberately not in that file.
+The runnable source is `db/schema/schema.sql`, applied to RDS Postgres and frozen on day two of week 1. LangGraph checkpoint tables come from `checkpointer.setup()` and are deliberately not in that file.
 
 ### 12.1 Module map
 
@@ -361,7 +364,7 @@ The runnable source is `schema.sql`, applied to RDS Postgres and frozen on day t
 received -> unassigned -> offered -> assigned -> en_route -> on_site -> done
 ```
 
-Side exits are `cancelled`, `blocked_access`, `needs_skill` and `rescheduled`. The helper `cert_valid_on(tech, cert, job_date)` lives in `schema.sql`. Customer-facing status is a rename of `job.status` and never a second store.
+Side exits are `cancelled`, `blocked_access`, `needs_skill` and `rescheduled`. The helper `cert_valid_on(tech, cert, job_date)` lives in `db/schema/schema.sql`. Customer-facing status is a rename of `job.status` and never a second store.
 
 ---
 
@@ -381,7 +384,7 @@ Four people, five days a week. Scheduling is a week-1 deliverable, not a week-2 
 
 ### 14.1 Week 1, intake plus live scheduling
 
-- Cognito, App Runner and `schema.sql` applied, with the schema frozen on day two.
+- Cognito, App Runner and `db/schema/schema.sql` applied, with the schema frozen on day two.
 - Seed 16 technicians, certificates including one deliberate expiry, and roughly 40 jobs.
 - Matching Stage A and Stage B as pure functions, with G-01 to G-06 green.
 - Coordinator playbook for `job.created`: gate, rank, and offer the top candidate when confidence is high and the window is not tight.
@@ -432,7 +435,7 @@ Four people, five days a week. Scheduling is a week-1 deliverable, not a week-2 
 | 4. Autonomy and HITL | §8, confidence gate and blast-radius batching, plus demo steps 2, 4 and 5 |
 | 5. Safety | §9, three registries, templated `notify`, legal gates, plus demo step 6 |
 | 6. Eval and traces | §10, G, A and X suites in CI, **Why?** on every assign, plus demo steps 2 and 7 |
-| 7. Platform | §11 and §12, LangGraph plus Bedrock plus RDS plus `schema.sql` |
+| 7. Platform | §11 and §12, LangGraph plus Bedrock plus RDS plus `db/schema/schema.sql` |
 
 ---
 
@@ -459,24 +462,54 @@ These are unresolved as of v0.3 and are tracked here rather than papered over. S
 
 ## 18. Repository layout and status
 
-No application code has landed yet. The repository currently holds this proposal and the document tooling used to produce it.
+No application code has landed yet. What is committed is the scaffold: every folder in the map below exists with an owner from [`docs/team/README.md`](docs/team/README.md), plus the build configuration needed to run a test on day one.
+
+```text
+aive-got-this/
+├── db/schema/            schema.sql, frozen on day two of week 1
+├── db/migrations/        anything that changes it after the freeze
+├── seed/                 16 technicians, certs with one expiry, ~40 jobs
+├── infra/                App Runner, RDS, Cognito, scheduler, S3, SSM, observability
+├── src/
+│   ├── app/              Next.js App Router. Three route groups plus api/
+│   ├── shared/           contracts, types, config. Imports nothing
+│   ├── platform/aws/     the only place a Bedrock, S3 or SSM client is built
+│   ├── db/               postgres/ and an in-memory double with the same interface
+│   ├── people/ catalog/ dispatch/     the data modules
+│   ├── matching/         gates/ and scoring/. Pure, no I/O
+│   ├── location/         postal/ and matrix/
+│   └── agent/            runtime, playbooks, prompts, three tool registries
+├── evals/                g-suite, a-suite, x-suite, fixtures, reports
+├── docs/                 the .docx, team briefs, and one ADR per resolved §17 item
+└── build/                build_docx.py
+```
 
 | Path | Contents | Status |
 |---|---|---|
 | `README.md` | This document, the single source of truth for the build | Current |
-| `Dispatch_Coordinator_Agent_Proposal.docx` | The submitted proposal, condensed from this document | Current |
+| `docs/Dispatch_Coordinator_Agent_Proposal.docx` | The submitted proposal, generated from this document | Current |
 | `build/build_docx.py` | Renders this README into the `.docx`, reusing that file's own styles | Current |
-| `build/` | Node tooling kept from the first draft, dependencies git-ignored | Current |
-| `docs/` | Long-form notes split out of this README as it grows | Empty |
-| `schema.sql` | Runnable Postgres schema, frozen on day two of week 1 | Week 1 |
+| `docs/team/` | Ownership split and one brief per member | Current |
+| `docs/adr/` | One file per §17 open question, written when it is resolved | Ongoing |
+| `package.json`, `tsconfig.json`, `vitest.config.ts`, `next.config.ts` | Build, typecheck and the three test suites | Current |
+| `Dockerfile`, `docker-compose.yml` | The App Runner image, and local Postgres for development | Current |
+| `.github/workflows/ci.yml` | G per commit, A and X nightly and on demand, per O-12 | Current |
+| `db/schema/schema.sql`, `seed/` | Runnable Postgres schema and seed, frozen on day two of week 1 | Week 1 |
+| `src/shared/` | Zod contracts, read models and scoring constants, frozen with the schema | Week 1 |
+| `src/db/memory/` | In-memory double, so members 2, 3 and 4 test without RDS | Week 1 |
 | `src/matching/` | Pure Stage A and Stage B functions, no I/O | Week 1 |
 | `src/agent/` | LangGraph playbooks and Zod tool schemas, never imports SQL | Week 1 |
+| `src/app/` | The PWA: three route groups and the API handlers | Week 1 |
 | `evals/` | G, A and X suites under Vitest | Week 1 |
+| `infra/` | App Runner, RDS, Cognito, S3, SSM, CloudWatch, and the tick scheduler | Weeks 1 to 3 |
+
+> **Note:** `src/app/` is the only routable tree, because Next.js requires it. The three surfaces in §13 are route groups inside it, shared components sit in `src/app/_components/`, and the HTTP handlers the tools sit behind are in `src/app/api/`.
 
 ---
 
 ## Revision history
 
+- **v0.4** 5 Sep 2026 - Reconciled this document with the committed scaffold. `schema.sql` now has one address, `db/schema/schema.sql`, in §12, §14 and §16. §11 names the three cross-cutting folders and adds a fifth import rule: shared imports nothing. Added `src/platform/aws/` as the only place an AWS client is built. Surfaces moved from `src/web/` to `src/app/`, which is the only tree Next.js will route. §18 rewritten against the repository as it stands, and the `.docx` regenerated from this file for the first time.
 - **v0.3** 5 Sep 2026 - This README is now the source and the `.docx` is generated from it by `build/build_docx.py`. Restructured as a README against the house style. Reconciled the `.docx` against the v0.2 draft: restored the six evals the condensation dropped, restored the fixture-matrix rule that keeps G-05 deterministic in week 1, restored the 0.7 confidence threshold, and added a `Ships` column to the playbook table. Added §17 open questions and §18 repository layout.
 - **v0.2** Sep 2026 - Condensed to the submitted `.docx`. Pulled scheduling forward into week 1.
 - **v0.1** Sep 2026 - Initial full proposal draft.

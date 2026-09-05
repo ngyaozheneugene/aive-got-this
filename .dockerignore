@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+.next
+build
+docs
+evals
+infra
+seed
+db
+*.md
+Dockerfile
+docker-compose.yml
+.env
+.env.*

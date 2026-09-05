@@ -1,7 +1,7 @@
 # Member 4: surfaces
 
 **Stream:** The PWA, three roles, one board<br>
-**Folders:** `src/web/`<br>
+**Folders:** `src/app/`, except `src/app/api/`<br>
 **Status:** Week-1 critical path. The desk board is a week-1 deliverable, not a week-2 one.
 
 You own everything a human touches. Three surfaces share one Next.js PWA: a customer who pastes a message, a technician who clocks in and accepts offers, and a desk that sees ranked suggestions and approves the risky ones. The demo is eight minutes of your screen, so the trace has to be legible, not just present.
@@ -18,12 +18,17 @@ Make the agent's reasoning visible. Every assign has a Why?, every approval card
 
 | Folder | Contents |
 |---|---|
-| `src/web/customer/` | Paste a message or pick a job type, at most two questions, status and ETA. |
-| `src/web/technician/` | Clock in, incoming offers with a 10-minute countdown, today in stop order, escalate, site note at close. |
-| `src/web/desk/` | The board, ranked suggestions, approval cards, the Why? trace, drag with a reason. |
-| `src/web/shared/` | Components used by more than one surface, and the Cognito session wiring. |
+| `src/app/(customer)/` | Paste a message or pick a job type, at most two questions, status and ETA. |
+| `src/app/(technician)/` | Clock in, incoming offers with a 10-minute countdown, today in stop order, escalate, site note at close. |
+| `src/app/(desk)/` | The board, ranked suggestions, approval cards, the Why? trace, drag with a reason. |
+| `src/app/_components/` | Components used by more than one surface, and the Cognito session wiring. The underscore is what keeps Next.js from routing it. |
+| `public/` | PWA manifest and icons. |
 
 There is no fourth role. Admin is a Cognito group, not a surface.
+
+> **Note:** `src/app/api/` belongs to member 1. You call those handlers; you do not write them. Everything else under `src/app/` is yours.
+
+> **Warning:** a route group in brackets does not add a URL segment. `(customer)`, `(technician)` and `(desk)` all resolve to the same paths, so at most one of them may define `page.tsx` at its own root, or the build fails with a duplicate-route error. Give each surface a named path inside its group, for example `(technician)/today/page.tsx`, and let `src/app/page.tsx` redirect on the Cognito group. The groups exist so each surface can have its own `layout.tsx`, not to namespace the URLs.
 
 ---
 

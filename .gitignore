@@ -1,3 +1,25 @@
-build/node_modules/
-build/package-lock.json
-build/package.json
+# dependencies
+node_modules/
+
+# next
+.next/
+out/
+next-env.d.ts
+
+# typescript
+*.tsbuildinfo
+
+# test output
+coverage/
+
+# secrets. SSM Parameter Store is the source; nothing here reaches git (§9, §11)
+.env
+.env.*
+!.env.example
+
+# os and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
