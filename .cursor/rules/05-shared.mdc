@@ -1,0 +1,17 @@
+---
+description: Frozen shared contracts — types, Zod, config
+globs: src/shared/**/*,docs/adr/**/*
+alwaysApply: false
+---
+
+# Shared contracts
+
+`src/shared/` imports nothing. Breaking changes need a reviewer from a consuming stream and a short ADR.
+
+Put here: domain types, Zod for events/tools/`propose()`, reason codes, plan-profile weights, timeouts.
+
+Do not put HTTP clients, SQL, React, or LangGraph imports here.
+
+Canonical event types: `urgent_job`, `technician_unavailable`, `job_overrun`.  
+Profiles: `sla_first`, `minimal_disruption`.  
+Risk modes: `auto`, `approval`, `block`.

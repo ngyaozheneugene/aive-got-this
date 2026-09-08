@@ -1,0 +1,18 @@
+---
+description: Platform/data stream — schema, seed, APIs, commit, reset
+globs: db/**/*,seed/**/*,src/db/**/*,src/dispatch/**/*,src/people/**/*,src/catalog/**/*,src/app/api/**/*,src/platform/**/*,docker-compose.yml,Dockerfile,.github/**/*
+alwaysApply: false
+---
+
+# Member 1 — platform
+
+Read `docs/team/member-1/README.md` and `docs/tasks.md`.
+
+- Only the commit path creates a `board_snapshot`. Only Dispatch appends `status_event`.
+- `decision_log` is append-only via a hosted tool, not ad-hoc SQL from the agent package.
+- Untrusted text in `*_raw`. Demo logins, not Cognito.
+- Stale snapshot and missing medium-risk approval must fail closed (UC-07, UC-12).
+- `POST /api/demo/reset` restores Eastwind Tuesday (UC-10).
+- Replace `src/app/api/{intake,coordinator,webhooks}` with schedule/events/proposals/commit/reset.
+- Do not reimplement ranking in SQL. Do not fill `infra/apprunner|cognito|rds` or `src/platform/aws/`.
+- Memory adapter is what unblocks members 2–4. Prefer shipping that over Lightsail polish before G1.

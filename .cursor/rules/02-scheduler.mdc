@@ -1,0 +1,18 @@
+---
+description: Scheduler stream — Stage A, propose(), validator, OR-Tools sidecar
+globs: src/matching/**/*,src/location/**/*,services/optimizer/**/*,evals/g-suite/**/*,evals/fixtures/**/*
+alwaysApply: false
+---
+
+# Member 2 — scheduler
+
+Read `docs/team/member-2/README.md`, `docs/workflow.md` §5, use cases UC-01–UC-04 and UC-06.
+
+- Nearby is not eligibility. Stage A runs first (certs, tier, shift, window, parts/tools, locks).
+- `src/matching/` is pure: no HTTP, no database client, no AWS SDK.
+- `propose(event, schedule, profile)` is the only scheduler API. Two profiles: `sla_first`, `minimal_disruption`.
+- G1 = weighted insertion + validator. G3 = OR-Tools sidecar for unavailable/overrun; insertion is 10 s fallback.
+- Independent validator can reject the solver. Reason codes are backend-owned; the desk must not re-score.
+- Travel minutes come from the cached matrix, not straight-line geometry.
+- Browser and LangGraph never import OR-Tools; they call `propose()`.
+- Legal gates (BCA, NEA-R32, LEW, expired cert) cannot be overridden.

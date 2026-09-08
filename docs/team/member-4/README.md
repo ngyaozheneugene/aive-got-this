@@ -5,7 +5,7 @@
 **Plan role:** C
 **Secondary reviewer:** member 3
 
-You own what a stranger sees in four minutes. The demo is your screen. Build the desk first. Technician status is P1 after G2. Customer paste-intake is not P0.
+You own what a stranger sees in the 30-minute first demo. The demo is your screen. Build the desk first. Technician status is P1 after G2. Customer paste-intake is not P0. Screen order and clicks: [`docs/workflow.md`](../../workflow.md) §8. Stories: [`docs/usecases.md`](../../usecases.md).
 
 ---
 
@@ -51,20 +51,23 @@ Route groups still must not each define a root `page.tsx`. Named paths inside gr
 
 **Week 2.** Compare, approve, committed snapshot, trace. Wire unavailable and overrun simulators. Location panel if it helps the story; not a live map.
 
-**Week 3.** Loading / empty / failure states, copy, keyboard path, rehearsal mode, demo reset control. Technician status only if G2 is green.
+**Week 3.** Loading / empty / failure states, copy, keyboard path, demo reset control. Drive five timed 30-minute rehearsals. Technician status only if G2 is green.
 
 ---
 
 ## 5. Demo surface
 
-| Beat | On screen |
+Thirty minutes. Same product as G3. Do not add a second surface for the talk.
+
+| Time | On screen |
 |---|---|
+| Problem | Not a slide dump. One sentence, then the empty-looking bottleneck on the board. |
+| Architecture | One diagram. Then the live URL. |
 | Establish | Six techs, load, locked promises |
-| Trigger | Raffles Place job; nearest van visibly unqualified |
-| Compare | SLA-first vs minimal-disruption, metrics from the server |
-| Decide | Medium-risk approval |
-| Recover | New snapshot |
-| Trust | Why / why-not + audit drawer |
+| Urgent | Raffles Place; nearest van unqualified; two plans; approve; new snapshot |
+| Unavailable | In-progress stays; remaining jobs move as a set |
+| Overrun | Frozen horizon; downstream impact |
+| Trust | Injection quoted, infeasible blocked, trace drawer, eval summary |
 
 ---
 

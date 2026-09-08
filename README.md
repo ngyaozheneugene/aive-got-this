@@ -8,7 +8,7 @@ An agent-assisted control tower for a Singapore HVAC SME. The day is already boo
 
 > **Principle.** The model chooses the next step and explains from stored evidence. Code decides who is eligible, what the schedule is, and what may be written.
 
-The working plan is [`docs/implementation-plan.md`](docs/implementation-plan.md). Stack detail is [`docs/tech-stack.md`](docs/tech-stack.md). Ownership is [`docs/team/README.md`](docs/team/README.md). The v0.4 WhatsApp / App Runner / Cognito proposal is historical (`docs/Dispatch_Coordinator_Agent_Proposal.docx`).
+Agents start at [`AGENTS.md`](AGENTS.md) and the board at [`docs/tasks.md`](docs/tasks.md). The working plan is [`docs/implementation-plan.md`](docs/implementation-plan.md). Product loop is [`docs/workflow.md`](docs/workflow.md). Use cases are [`docs/usecases.md`](docs/usecases.md). Stack detail is [`docs/tech-stack.md`](docs/tech-stack.md). Ownership is [`docs/team/README.md`](docs/team/README.md). The v0.4 WhatsApp / App Runner / Cognito proposal is historical (`docs/Dispatch_Coordinator_Agent_Proposal.docx`).
 
 ---
 
@@ -67,7 +67,11 @@ aive-got-this/
 ├── db/schema/schema.sql     product schema
 ├── seed/                    Eastwind Aircon Tuesday
 ├── evals/                   g-suite, a-suite, x-suite
+├── AGENTS.md                session playbook for coding agents
+├── docs/tasks.md            living gate board (tick boxes)
 ├── docs/implementation-plan.md
+├── docs/workflow.md
+├── docs/usecases.md
 └── docs/team/               member briefs
 ```
 
@@ -80,13 +84,17 @@ Import rules:
 
 ---
 
-## Demo (four minutes)
+## Demo (30 minutes)
 
-1. Show six technicians and the locked promises on the board.
-2. Raise a Raffles Place job that the nearest van cannot legally take.
-3. Show two plans (SLA-first vs minimal-disruption) and the reasons.
-4. Approve a medium-risk change. New snapshot. Open the trace.
-5. Mention the injection and infeasible evals; do not spend the minute on WhatsApp intake.
+The first live demo is 30 minutes. One person drives the desk. One person narrates.
+
+1. Problem and who it is for (Eastwind, day already booked).
+2. Architecture: `propose()`, validator, approval, Lightsail, gateway JSON tools.
+3. Tuesday board. Raffles Place urgent job. Two plans. Approve. New snapshot.
+4. Technician unavailable, then a 45-minute overrun.
+5. Injection note, infeasible case, G/A/X, trace drawer, spend vs $100.
+
+Do not open with WhatsApp intake. Do not fill the extra time with OpenClaw or a map. Keep a short backup recording of the urgent-job spine if the box dies.
 
 ---
 

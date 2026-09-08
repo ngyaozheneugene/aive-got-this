@@ -5,7 +5,7 @@
 **Plan role:** B
 **Secondary reviewer:** member 2
 
-You own the loop the judges score. You do not own eligibility, scores, or schedule writes.
+You own the loop the judges score. You do not own eligibility, scores, or schedule writes. Tool order: [`docs/workflow.md`](../../workflow.md) §6. Injection and gateway-down: [`docs/usecases.md`](../../usecases.md) UC-05, UC-08.
 
 ---
 

@@ -5,7 +5,7 @@
 **Plan role:** A
 **Secondary reviewer:** member 1
 
-You own who may go and what a legal recovery looks like. The model never does either. Insertion unblocks G1. OR-Tools is the product engine for technician-unavailable and overrun.
+You own who may go and what a legal recovery looks like. The model never does either. Insertion unblocks G1. OR-Tools is the product engine for technician-unavailable and overrun. Product stories: [`docs/usecases.md`](../../usecases.md) UC-01–UC-04, UC-06.
 
 ---
 

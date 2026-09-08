@@ -5,7 +5,7 @@
 **Plan role:** D
 **Secondary reviewer:** member 4
 
-You own the box and the write path. Other people cannot commit a schedule, reset the demo, or deploy without you. You do not own eligibility, OR-Tools, or the desk UI.
+You own the box and the write path. Other people cannot commit a schedule, reset the demo, or deploy without you. You do not own eligibility, OR-Tools, or the desk UI. Event and commit path: [`docs/workflow.md`](../../workflow.md). Stale, reset, and fail-closed commit: [`docs/usecases.md`](../../usecases.md) UC-07, UC-10, UC-12.
 
 ---
 

@@ -2,6 +2,10 @@
 
 **Team:** AI've Got This
 **Source of truth:** [`docs/implementation-plan.md`](../implementation-plan.md)
+**Agent playbook:** [`AGENTS.md`](../../AGENTS.md)
+**Task board:** [`docs/tasks.md`](../tasks.md)
+**Workflow:** [`docs/workflow.md`](../workflow.md)
+**Use cases:** [`docs/usecases.md`](../usecases.md)
 **Stack:** [`docs/tech-stack.md`](../tech-stack.md)
 **README:** product, stack, and how to run — [`README.md`](../../README.md)
 
@@ -47,6 +51,8 @@ aive-got-this/
 ├── evals/x-suite/              3
 └── docs/
     ├── implementation-plan.md
+    ├── workflow.md
+    ├── usecases.md
     ├── adr/
     └── team/
 ```
@@ -88,4 +94,8 @@ Without the memory adapter, members 2–4 wait on Postgres. That is still the hi
 - Legal skill gates cannot be overridden, including by the desk.
 - Breaking `src/shared/` needs a reviewer from a consuming stream.
 
+The first live demo is 30 minutes. Member 4 drives the desk. Member 3 narrates. Member 1 recovers the box. Member 2 takes solver questions. Same product as G3; do not add a second surface for the extra time.
+
 Work on `member-N/<short-topic>` branches off `main`.
+
+Coding agents: start at [`AGENTS.md`](../../AGENTS.md). Track work only in [`docs/tasks.md`](../tasks.md). Cursor injects `.cursor/rules/` from the files you have open.

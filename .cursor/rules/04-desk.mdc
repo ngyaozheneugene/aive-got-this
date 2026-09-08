@@ -1,0 +1,17 @@
+---
+description: Desk stream — timeline, compare, approve, trace
+globs: src/app/(desk)/**/*,src/app/(technician)/**/*,src/app/(customer)/**/*,src/app/_components/**/*,src/app/page.tsx,src/app/layout.tsx,public/**/*
+alwaysApply: false
+---
+
+# Member 4 — desk
+
+Read `docs/team/member-4/README.md`, `docs/workflow.md` §8, `docs/usecases.md`.
+
+- You do not own `src/app/api/`. Call it. Render server read models; do not join a second board in client state.
+- Why? shows stored reason codes and metrics. Do not re-score in the browser.
+- Untrusted notes render as quotes. Overrides take a reason; legal gates still fail server-side.
+- P0 screens: timeline, event simulator, two-plan compare, risk, approve/reject, trace, demo reset.
+- Technician status is P1 after G2. `(customer)/` is not P0. No live map.
+- Demo roles, not Cognito. 30-minute demo is this desk, not a second surface.
+- Route groups must not each define a root `page.tsx`.
