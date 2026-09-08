@@ -23,5 +23,18 @@ services:
       timeout: 3s
       retries: 10
 
+  optimizer:
+    build: ./services/optimizer
+    container_name: aive-optimizer
+    ports:
+      - "8081:8081"
+    environment:
+      SOLVER_TIMEOUT_SECONDS: "10"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   pgdata:

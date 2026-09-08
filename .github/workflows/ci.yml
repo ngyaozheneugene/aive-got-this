@@ -28,11 +28,9 @@ jobs:
     name: A and X suites
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     env:
-      AWS_REGION: ap-southeast-1
+      LLM_GATEWAY_URL: ${{ secrets.LLM_GATEWAY_URL }}
+      LLM_GATEWAY_API_KEY: ${{ secrets.LLM_GATEWAY_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,9 +38,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-southeast-1
       - run: npm run test:a
       - run: npm run test:x

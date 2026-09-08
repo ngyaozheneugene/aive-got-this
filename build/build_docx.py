@@ -224,7 +224,7 @@ MERMAID_STEPS = [
     "An event or the 15-minute tick starts the run.",
     "Load the job, the board snapshot and the history.",
     "PLAN. Pick exactly one named playbook and log it.",
-    "ACT. Call tools. Each one re-validates against RDS.",
+    "ACT. Call tools. Each one re-validates against Postgres.",
     "VERIFY. Read the board back. Invariants must still hold.",
     "If the policy says needs-desk, call request_desk_approval, interrupt and wait.",
     "The desk approves or rejects, the same thread_id resumes, and decision_log is written.",

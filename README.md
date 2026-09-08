@@ -8,7 +8,7 @@ An agent-assisted control tower for a Singapore HVAC SME. The day is already boo
 
 > **Principle.** The model chooses the next step and explains from stored evidence. Code decides who is eligible, what the schedule is, and what may be written.
 
-The working plan is [`docs/implementation-plan.md`](docs/implementation-plan.md) (Word export: `docs/Dispatch_Coordinator_Implementation_Plan.docx`, via `npm run docx`). Ownership is [`docs/team/README.md`](docs/team/README.md). The v0.4 WhatsApp / App Runner / Cognito proposal is historical (`docs/Dispatch_Coordinator_Agent_Proposal.docx`).
+The working plan is [`docs/implementation-plan.md`](docs/implementation-plan.md). Stack detail is [`docs/tech-stack.md`](docs/tech-stack.md). Ownership is [`docs/team/README.md`](docs/team/README.md). The v0.4 WhatsApp / App Runner / Cognito proposal is historical (`docs/Dispatch_Coordinator_Agent_Proposal.docx`).
 
 ---
 
@@ -16,14 +16,16 @@ The working plan is [`docs/implementation-plan.md`](docs/implementation-plan.md)
 
 | Layer | Choice |
 |---|---|
+| Host | Ubuntu 24.04 Lightsail, 4 GB / 2 vCPU, Singapore |
+| Proxy | Caddy (TLS) |
 | App | Next.js 15 App Router |
-| Agent | LangGraph (JavaScript) + Zod, strict JSON tools against the organiser LLM gateway |
-| Database | Postgres 16 in Docker Compose; in-memory adapter for unit tests |
-| Eligibility and travel | Pure TypeScript in `src/matching` and `src/location` |
-| Whole-board solver | Python OR-Tools sidecar in `services/optimizer` |
-| Host | One Lightsail instance, Singapore, Docker Compose |
+| Agent | LangGraph (JavaScript) + Zod |
+| Model | Organiser gateway, Claude Sonnet 4.5, strict JSON tools |
+| Database | Postgres 16 in Compose |
+| Eligibility | TypeScript in `src/matching` |
+| Solver | FastAPI + OR-Tools sidecar (`services/optimizer`) |
 
-Do not add FastAPI as the product API, a second Vite SPA, Cognito, App Runner, or managed RDS.
+Do not add a second Vite SPA, Cognito, App Runner, Bedrock as our billed model, or managed RDS. FastAPI is the optimizer only.
 
 `propose(event, schedule, profile)` is the scheduler contract. G1 implements it with weighted insertion so an urgent job can appear on the desk. G3 puts OR-Tools behind the same contract for technician-unavailable and overrun. Insertion stays as the 10-second timeout fallback. An independent validator runs on every candidate.
 
@@ -33,7 +35,7 @@ Do not add FastAPI as the product API, a second Vite SPA, Cognito, App Runner, o
 
 ```bash
 npm ci
-npm run db:up          # Postgres 16
+npm run db:up          # Postgres 16 + optimizer sidecar
 cp .env.example .env   # then set the gateway key if you have one
 npm run dev            # http://localhost:3000
 ```
@@ -117,5 +119,5 @@ Four streams. Names live on the issue board; folders are already split.
 
 ## Revision
 
-- **v1.1** 9 Sep 2026 — Execution contract aligned with the control-tower plan: Lightsail, gateway, Next.js kept, OR-Tools sidecar, insertion for G1.
+- **v1.1** 9 Sep 2026 — Execution contract aligned with the control-tower plan: Lightsail, gateway Claude Sonnet 4.5, Next.js kept, FastAPI/OR-Tools sidecar.
 - **v0.4** 5 Sep 2026 — Scaffold and matching-engine proposal. Superseded.

@@ -1,6 +1,7 @@
 # Optimizer sidecar
 
-Python OR-Tools service. The Next.js app is the product; this container only implements `propose()`.
+# Python OR-Tools sidecar. FastAPI, as in the control-tower draft, isolated from Next.js.
+# GET /health and POST /propose. G1 may use TypeScript insertion instead.
 
 Member 2 owns the model. Member 1 owns Compose and Lightsail wiring.
 

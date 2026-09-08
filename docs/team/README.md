@@ -2,6 +2,7 @@
 
 **Team:** AI've Got This
 **Source of truth:** [`docs/implementation-plan.md`](../implementation-plan.md)
+**Stack:** [`docs/tech-stack.md`](../tech-stack.md)
 **README:** product, stack, and how to run — [`README.md`](../../README.md)
 
 Who owns which folders, what each person publishes, and what must exist before the four streams can run in parallel. Member briefs live in `docs/team/member-N/`.

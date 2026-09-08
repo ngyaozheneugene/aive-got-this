@@ -21,6 +21,7 @@ A control tower for the moment a field-service day breaks. When an urgent job ar
 | Checking architecture | §3 |
 | Checking the three-week calendar | §6 |
 | Scoring the rubric | §12 |
+| Checking the stack | [`docs/tech-stack.md`](tech-stack.md) |
 | Running the repo | root [`README.md`](../README.md) |
 
 The v0.4 proposal (WhatsApp intake, App Runner, Cognito, Bedrock) is historical. It remains at `docs/Dispatch_Coordinator_Agent_Proposal.docx`. Do not build it.
@@ -130,12 +131,14 @@ Next.js 15  ── LangGraph (JS) ── organiser LLM gateway
 
 | Layer | Choice | Why |
 |---|---|---|
-| Product UI and API | Next.js 15 App Router already on `origin/main` | Desk, technician, and HTTP handlers in one app. |
-| Agent | `@langchain/langgraph` + Zod | Already in `package.json`. Language of the graph does not matter if the tool schema is shared. |
-| Database | Postgres 16 in Compose; `src/db/memory` for tests | Schema and interface already exist. SQLite is not a rewrite target. |
-| Eligibility / travel / validator | TypeScript in `src/matching` and `src/location` | Pure functions, G-suite, no I/O. |
-| Whole-board solver | Python OR-Tools in `services/optimizer` | Official bindings are Python. Sidecar, not a second product. |
-| Host | One Lightsail box, Docker Compose | Fits US$100. No App Runner, Cognito, or managed RDS. |
+| Product UI and API | Next.js 15 App Router already on `main` | Desk and HTTP in one app. Draft's Vite SPA is not used. |
+| Agent | `@langchain/langgraph` + Zod | JSON tool protocol from the draft. JS, not Python. |
+| Model | Gateway Claude Sonnet 4.5, `X-API-Key` | From the draft. Not Bedrock in our account. |
+| Database | Postgres 16 in Compose; `src/db/memory` for tests | Schema already exists. Draft's SQLite is not a rewrite target. |
+| Eligibility / travel / validator | TypeScript in `src/matching` and `src/location` | G-suite with the gateway off. |
+| Optimizer | FastAPI + OR-Tools in `services/optimizer` | Draft's FastAPI/OR-Tools, as a sidecar. |
+| Proxy | Caddy on Lightsail | Draft's Nginx or Caddy. |
+| Host | One Lightsail box, 4 GB / 2 vCPU, Compose | From the draft. No App Runner, Cognito, or managed RDS. |
 
 ### 3.3 `propose()` contract
 

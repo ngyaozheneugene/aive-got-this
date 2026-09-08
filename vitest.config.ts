@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 // One config, three suites. CI splits them by --dir so the G suite can run on
-// every commit without touching Bedrock (README §17 O-12).
+// every commit without calling the LLM gateway.
 export default defineConfig({
   resolve: {
     alias: {

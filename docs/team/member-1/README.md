@@ -32,7 +32,7 @@ Give members 2–4 a frozen, seeded, typed data layer by the end of day two, the
 
 `infra/apprunner`, `infra/cognito`, `infra/rds`: leave empty. Demo logins, not Cognito. Postgres in Compose, not RDS.
 
-`src/platform/aws/` may hold Lightsail/S3 helpers later. Do not build Bedrock clients; the agent uses the organiser gateway.
+`src/platform/aws/` is unused. The agent uses the organiser gateway, not Bedrock.
 
 ---
 

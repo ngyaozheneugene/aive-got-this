@@ -23,5 +23,5 @@ The product must replan a whole board on technician-unavailable and job-overrun,
 
 - Compose grows a second service. Member 1 owns the container plumbing; member 2 owns the model.
 - Member 2 can unblock G1 in TypeScript if the sidecar is late.
-- `infra/apprunner`, `infra/cognito`, and `infra/rds` stay unused.
+- Gateway calls are HTTPS with the organiser key. AWS SDKs are not dependencies of the app.
 - The v0.4 README (WhatsApp intake as the spine, Bedrock as the LLM) is not the build contract.
