@@ -1,5 +1,6 @@
-# Local Postgres only. The app runs with `npm run dev`; nothing here is
-# deployed. RDS is the real thing (README §11).
+# Product data on this box. Next.js runs with `npm run dev` locally and in
+# Compose on Lightsail. After a schema change, recreate the volume:
+#   docker compose down -v && docker compose up -d postgres
 services:
   postgres:
     image: postgres:16-alpine

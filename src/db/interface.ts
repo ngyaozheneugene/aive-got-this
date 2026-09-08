@@ -1,6 +1,5 @@
-// Dispatch Coordinator Agent v0.4
-// Unified Database Interface Contract
-// Both Postgres (src/db/postgres) and InMemory (src/db/memory) implement this interface.
+// Dispatch Coordinator v1.1 — database interface.
+// Postgres is the product store. Memory is for tests.
 
 import {
   AppUser,
@@ -24,6 +23,11 @@ import {
   Approval,
   ApprovalStatus,
   ScoreBreakdown,
+  OperationalEvent,
+  OperationalEventStatus,
+  Proposal,
+  ProposalStatus,
+  CandidatePlan,
 } from '../shared/types/domain';
 
 export interface IDatabase {
@@ -35,6 +39,7 @@ export interface IDatabase {
   users: {
     getById(id: string): Promise<AppUser | null>;
     getByCognitoSub(sub: string): Promise<AppUser | null>;
+    getByDemoLogin(login: string): Promise<AppUser | null>;
     create(user: Omit<AppUser, 'id' | 'createdAt'>): Promise<AppUser>;
   };
 
@@ -146,5 +151,24 @@ export interface IDatabase {
     listPending(): Promise<Approval[]>;
     create(approval: Omit<Approval, 'id' | 'createdAt'>): Promise<Approval>;
     action(id: string, status: 'approved' | 'rejected', actionedBy: string, reason?: string): Promise<Approval>;
+  };
+
+  events: {
+    getById(id: string): Promise<OperationalEvent | null>;
+    create(event: Omit<OperationalEvent, 'id' | 'receivedAt'>): Promise<OperationalEvent>;
+    updateStatus(id: string, status: OperationalEventStatus): Promise<OperationalEvent>;
+  };
+
+  proposals: {
+    getById(id: string): Promise<Proposal | null>;
+    getByEventId(eventId: string): Promise<Proposal | null>;
+    create(proposal: Omit<Proposal, 'id' | 'createdAt'>): Promise<Proposal>;
+    updateStatus(id: string, status: ProposalStatus, recommendedPlanId?: string): Promise<Proposal>;
+  };
+
+  candidatePlans: {
+    getById(id: string): Promise<CandidatePlan | null>;
+    listByProposal(proposalId: string): Promise<CandidatePlan[]>;
+    create(plan: Omit<CandidatePlan, 'id' | 'createdAt'>): Promise<CandidatePlan>;
   };
 }

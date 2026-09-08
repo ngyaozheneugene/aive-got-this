@@ -1,6 +1,5 @@
-// Dispatch Coordinator Agent v0.4
-// Database Module Entrypoint
-// Selects InMemoryDatabase (for local/testing) or PostgresDatabase (for RDS/Docker) based on environment.
+// Dispatch Coordinator v1.1
+// Memory adapter for tests; Postgres when DATABASE_URL is set.
 
 import { IDatabase } from './interface';
 import { InMemoryDatabase } from './memory';

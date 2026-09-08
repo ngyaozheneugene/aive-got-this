@@ -24,6 +24,11 @@ import {
   DecisionLog,
   Approval,
   ScoreBreakdown,
+  OperationalEvent,
+  OperationalEventStatus,
+  Proposal,
+  ProposalStatus,
+  CandidatePlan,
 } from '../../shared/types/domain';
 
 export class InMemoryDatabase implements IDatabase {
@@ -44,6 +49,9 @@ export class InMemoryDatabase implements IDatabase {
   private boardSnapshots: BoardSnapshot[] = [];
   private decisionLogsMap = new Map<string, DecisionLog>();
   private approvalsMap = new Map<string, Approval>();
+  private eventsMap = new Map<string, OperationalEvent>();
+  private proposalsMap = new Map<string, Proposal>();
+  private candidatePlansMap = new Map<string, CandidatePlan>();
 
   private idCounter = 1;
 
@@ -75,6 +83,9 @@ export class InMemoryDatabase implements IDatabase {
     this.boardSnapshots = [];
     this.decisionLogsMap.clear();
     this.approvalsMap.clear();
+    this.eventsMap.clear();
+    this.proposalsMap.clear();
+    this.candidatePlansMap.clear();
     this.seedDefaultCatalog();
   }
 
@@ -140,8 +151,11 @@ export class InMemoryDatabase implements IDatabase {
         name: t.name,
         tier: t.tier,
         homeRegion: t.region,
+        currentCluster: t.region,
         maxMinutesDay: 480,
         acceptsOt: false,
+        parts: [],
+        tools: [],
         isActive: true,
         createdAt: this.nowIso(),
       };
@@ -168,6 +182,8 @@ export class InMemoryDatabase implements IDatabase {
     getById: async (id: string) => this.usersMap.get(id) || null,
     getByCognitoSub: async (sub: string) => 
       Array.from(this.usersMap.values()).find(u => u.cognitoSub === sub) || null,
+    getByDemoLogin: async (login: string) =>
+      Array.from(this.usersMap.values()).find(u => u.demoLogin === login) || null,
     create: async (user: Omit<AppUser, 'id' | 'createdAt'>) => {
       const newUser: AppUser = { ...user, id: this.generateId('usr'), createdAt: this.nowIso() };
       this.usersMap.set(newUser.id, newUser);
@@ -489,6 +505,56 @@ export class InMemoryDatabase implements IDatabase {
       approval.actionedAt = this.nowIso();
       this.approvalsMap.set(id, approval);
       return approval;
+    },
+  };
+
+  events = {
+    getById: async (id: string) => this.eventsMap.get(id) || null,
+    create: async (event: Omit<OperationalEvent, 'id' | 'receivedAt'>) => {
+      const created: OperationalEvent = {
+        ...event,
+        id: this.generateId('opev'),
+        receivedAt: this.nowIso(),
+      };
+      this.eventsMap.set(created.id, created);
+      return created;
+    },
+    updateStatus: async (id: string, status: OperationalEventStatus) => {
+      const event = this.eventsMap.get(id);
+      if (!event) throw new Error(`Event ${id} not found`);
+      event.status = status;
+      this.eventsMap.set(id, event);
+      return event;
+    },
+  };
+
+  proposals = {
+    getById: async (id: string) => this.proposalsMap.get(id) || null,
+    getByEventId: async (eventId: string) =>
+      Array.from(this.proposalsMap.values()).find(p => p.eventId === eventId) || null,
+    create: async (proposal: Omit<Proposal, 'id' | 'createdAt'>) => {
+      const created: Proposal = { ...proposal, id: this.generateId('prop'), createdAt: this.nowIso() };
+      this.proposalsMap.set(created.id, created);
+      return created;
+    },
+    updateStatus: async (id: string, status: ProposalStatus, recommendedPlanId?: string) => {
+      const proposal = this.proposalsMap.get(id);
+      if (!proposal) throw new Error(`Proposal ${id} not found`);
+      proposal.status = status;
+      if (recommendedPlanId) proposal.recommendedPlanId = recommendedPlanId;
+      this.proposalsMap.set(id, proposal);
+      return proposal;
+    },
+  };
+
+  candidatePlans = {
+    getById: async (id: string) => this.candidatePlansMap.get(id) || null,
+    listByProposal: async (proposalId: string) =>
+      Array.from(this.candidatePlansMap.values()).filter(p => p.proposalId === proposalId),
+    create: async (plan: Omit<CandidatePlan, 'id' | 'createdAt'>) => {
+      const created: CandidatePlan = { ...plan, id: this.generateId('plan'), createdAt: this.nowIso() };
+      this.candidatePlansMap.set(created.id, created);
+      return created;
     },
   };
 }

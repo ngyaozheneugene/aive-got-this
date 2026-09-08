@@ -1,6 +1,5 @@
-// Dispatch Coordinator Agent v0.4
-// Shared Domain Types & Read Models
-// Imports nothing (Rule 5: src/shared/ imports nothing)
+// Dispatch Coordinator v1.1
+// Shared domain types. Imports nothing.
 
 export type AppRole = 'technician' | 'desk' | 'admin';
 
@@ -53,6 +52,42 @@ export type AssignmentStatus =
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
+export type JobLockState = 'none' | 'promised' | 'in_progress';
+
+export type OperationalEventType =
+  | 'urgent_job'
+  | 'technician_unavailable'
+  | 'job_overrun';
+
+export type OperationalEventStatus =
+  | 'RECEIVED'
+  | 'VALIDATED'
+  | 'PLANNING'
+  | 'PROPOSAL_READY'
+  | 'AWAITING_APPROVAL'
+  | 'COMMITTED'
+  | 'INVALID'
+  | 'INFEASIBLE'
+  | 'REJECTED'
+  | 'SUPERSEDED'
+  | 'FAILED';
+
+export type PlanProfile = 'sla_first' | 'minimal_disruption';
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+export type AutonomyMode = 'auto' | 'approval' | 'block';
+
+export type ProposalStatus =
+  | 'GENERATING'
+  | 'VALIDATED'
+  | 'RECOMMENDED'
+  | 'APPROVED'
+  | 'COMMITTED'
+  | 'EXPIRED'
+  | 'SUPERSEDED'
+  | 'REJECTED';
+
 export type StageAExclusionReason = 
   | 'missing_cert'
   | 'cert_expired'
@@ -68,7 +103,8 @@ export type StageAExclusionReason =
 
 export interface AppUser {
   id: string;
-  cognitoSub: string;
+  demoLogin?: string;
+  cognitoSub?: string;
   role: AppRole;
   name: string;
   email?: string;
@@ -82,8 +118,11 @@ export interface Technician {
   name: string;
   tier: TechnicianTier;
   homeRegion: string;
+  currentCluster?: string;
   maxMinutesDay: number;
   acceptsOt: boolean;
+  parts?: string[];
+  tools?: string[];
   isActive: boolean;
   createdAt: string;
 }
@@ -152,6 +191,13 @@ export interface JobType {
   createdAt: string;
 }
 
+export interface JobTypeCert {
+  id: string;
+  jobTypeId: string;
+  certType: string;
+  brandRequired: boolean;
+}
+
 export interface Recurrence {
   id: string;
   siteId: string;
@@ -170,9 +216,13 @@ export interface Job {
   status: JobStatus;
   priority: JobPriority;
   windowType: WindowType;
+  lockState?: JobLockState;
   scheduledDate: string;
   windowStart?: string;
   windowEnd?: string;
+  durationMinutes?: number;
+  partsRequired?: string[];
+  toolsRequired?: string[];
   noteRaw: string;
   intakeParsed?: Record<string, unknown>;
   requiredCrewSize: number;
@@ -208,8 +258,11 @@ export interface Assignment {
   technicianId: string;
   status: AssignmentStatus;
   snapshotId: string;
+  windowStart?: string;
+  windowEnd?: string;
+  travelBeforeMinutes?: number;
   offeredAt: string;
-  expiresAt: string;
+  expiresAt?: string;
   acceptedAt?: string;
   scoreBreakdown: ScoreBreakdown;
   decisionLogId?: string;
@@ -239,36 +292,90 @@ export interface TravelMatrix {
 export interface BoardSnapshot {
   id: string;
   version: number;
+  sourceSnapshotId?: string;
+  triggerEventId?: string;
   snapshotData: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+  createdBy?: string;
+  committedAt?: string;
   createdAt: string;
 }
 
 export interface DecisionLog {
   id: string;
+  eventId?: string;
   eventType: string;
   playbook: string;
+  sequence?: number;
+  stage?: string;
   toolCalls: Array<{
     tool: string;
     args: Record<string, unknown>;
     result: Record<string, unknown>;
   }>;
   summary: string;
+  reasonCodes?: string[];
+  durationMs?: number;
+  result?: string;
   approvalId?: string;
   createdAt: string;
 }
 
 export interface Approval {
   id: string;
+  proposalId?: string;
   threadId: string;
-  jobId: string;
+  jobId?: string;
+  sourceSnapshotId?: string;
   triggerReason: string;
   recommendation: Record<string, unknown>;
   whoWouldBeLate?: Array<{ technicianId: string; name: string; delayedByMinutes: number }>;
+  policyReasons?: string[];
+  approvedPlanId?: string;
   status: ApprovalStatus;
   actionedBy?: string;
   actionedReason?: string;
   createdAt: string;
   actionedAt?: string;
+}
+
+export interface OperationalEvent {
+  id: string;
+  type: OperationalEventType;
+  rawText: string;
+  normalizedPayload: Record<string, unknown>;
+  sourceSnapshotId?: string;
+  affectedIds: string[];
+  validationIssues: string[];
+  status: OperationalEventStatus;
+  receivedAt: string;
+}
+
+export interface Proposal {
+  id: string;
+  eventId: string;
+  sourceSnapshotId: string;
+  recommendedPlanId?: string;
+  risk: RiskLevel;
+  autonomyMode: AutonomyMode;
+  status: ProposalStatus;
+  createdAt: string;
+}
+
+export interface CandidatePlan {
+  id: string;
+  proposalId: string;
+  sourceSnapshotId: string;
+  profile: PlanProfile;
+  assignments: Record<string, unknown>[];
+  changeSet: Record<string, unknown>[];
+  metrics: Record<string, unknown>;
+  validations: Record<string, unknown>;
+  solverTrace: Record<string, unknown>;
+  timedOut: boolean;
+  durationMs?: number;
+  status: 'VALIDATED' | 'REJECTED' | 'RECOMMENDED';
+  createdAt: string;
 }
 
 // ============================================================================
@@ -297,4 +404,11 @@ export interface DeskBoardItem {
   topRanked: RankedTechnician[];
   eligibleCount: number;
   excludedCount: number;
+}
+
+export interface DeskProposalView {
+  event: OperationalEvent;
+  proposal: Proposal;
+  plans: CandidatePlan[];
+  sourceSnapshot: BoardSnapshot;
 }

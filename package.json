@@ -1,8 +1,8 @@
 {
   "name": "aive-got-this",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "Dispatch Coordinator Agent — an AI coordinator for Singapore HVAC SMEs",
+  "description": "Dispatch Coordinator — agent-assisted recovery for a Singapore HVAC field-service day",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22"

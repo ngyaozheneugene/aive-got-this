@@ -12,10 +12,16 @@ next-env.d.ts
 # test output
 coverage/
 
-# secrets. SSM Parameter Store is the source; nothing here reaches git (§9, §11)
+# secrets. Nothing here reaches git.
 .env
 .env.*
 !.env.example
+
+# python sidecar
+__pycache__/
+*.pyc
+.venv/
+venv/
 
 # os and editor
 .DS_Store

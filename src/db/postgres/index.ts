@@ -1,6 +1,5 @@
-// Dispatch Coordinator Agent v0.4
-// RDS PostgreSQL Client Implementation
-// Connects to AWS RDS Postgres in production or local Postgres in Docker via environment variables.
+// Dispatch Coordinator v1.1
+// Postgres client. Local Compose or the Lightsail volume — not RDS.
 
 import postgres from 'postgres';
 import { IDatabase } from '../interface';
@@ -24,6 +23,11 @@ import {
   DecisionLog,
   Approval,
   ScoreBreakdown,
+  OperationalEvent,
+  OperationalEventStatus,
+  Proposal,
+  ProposalStatus,
+  CandidatePlan,
 } from '../../shared/types/domain';
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://dispatch:dispatch@localhost:5432/dispatch';
@@ -40,7 +44,11 @@ export class PostgresDatabase implements IDatabase {
   }
 
   public async reset(): Promise<void> {
-    await this.sql`TRUNCATE TABLE status_event, assignment, job_requirement, job, site_memory, recurrence, site, customer, shift, technician_cert, technician, app_user, travel_matrix, board_snapshot, decision_log, approval, intake_message RESTART IDENTITY CASCADE;`;
+    await this.sql`TRUNCATE TABLE
+      candidate_plan, approval, proposal, decision_log, operational_event, board_snapshot,
+      status_event, assignment, job_requirement, job, site_memory, recurrence, site, customer,
+      shift, technician_cert, technician, app_user, travel_matrix, intake_message, dispatch_policy
+      RESTART IDENTITY CASCADE`;
   }
 
   public async seed(): Promise<void> {
@@ -50,18 +58,22 @@ export class PostgresDatabase implements IDatabase {
   // Users Implementation
   users = {
     getById: async (id: string) => {
-      const rows = await this.sql<AppUser[]>`SELECT id, cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt" FROM app_user WHERE id = ${id}`;
+      const rows = await this.sql<AppUser[]>`SELECT id, demo_login as "demoLogin", cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt" FROM app_user WHERE id = ${id}`;
       return rows[0] || null;
     },
     getByCognitoSub: async (sub: string) => {
-      const rows = await this.sql<AppUser[]>`SELECT id, cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt" FROM app_user WHERE cognito_sub = ${sub}`;
+      const rows = await this.sql<AppUser[]>`SELECT id, demo_login as "demoLogin", cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt" FROM app_user WHERE cognito_sub = ${sub}`;
+      return rows[0] || null;
+    },
+    getByDemoLogin: async (login: string) => {
+      const rows = await this.sql<AppUser[]>`SELECT id, demo_login as "demoLogin", cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt" FROM app_user WHERE demo_login = ${login}`;
       return rows[0] || null;
     },
     create: async (user: Omit<AppUser, 'id' | 'createdAt'>) => {
       const rows = await this.sql<AppUser[]>`
-        INSERT INTO app_user (cognito_sub, role, name, email, phone)
-        VALUES (${user.cognitoSub}, ${user.role}, ${user.name}, ${user.email || null}, ${user.phone || null})
-        RETURNING id, cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt"
+        INSERT INTO app_user (demo_login, cognito_sub, role, name, email, phone)
+        VALUES (${user.demoLogin || null}, ${user.cognitoSub || null}, ${user.role}, ${user.name}, ${user.email || null}, ${user.phone || null})
+        RETURNING id, demo_login as "demoLogin", cognito_sub as "cognitoSub", role, name, email, phone, created_at as "createdAt"
       `;
       return rows[0];
     },
@@ -71,20 +83,20 @@ export class PostgresDatabase implements IDatabase {
   technicians = {
     getById: async (id: string) => {
       const rows = await this.sql<Technician[]>`
-        SELECT id, user_id as "userId", name, tier, home_region as "homeRegion", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", is_active as "isActive", created_at as "createdAt"
+        SELECT id, user_id as "userId", name, tier, home_region as "homeRegion", current_cluster as "currentCluster", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", parts, tools, is_active as "isActive", created_at as "createdAt"
         FROM technician WHERE id = ${id}
       `;
       return rows[0] || null;
     },
     listAll: async () => {
       return await this.sql<Technician[]>`
-        SELECT id, user_id as "userId", name, tier, home_region as "homeRegion", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", is_active as "isActive", created_at as "createdAt"
+        SELECT id, user_id as "userId", name, tier, home_region as "homeRegion", current_cluster as "currentCluster", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", parts, tools, is_active as "isActive", created_at as "createdAt"
         FROM technician
       `;
     },
     listActive: async () => {
       return await this.sql<Technician[]>`
-        SELECT id, user_id as "userId", name, tier, home_region as "homeRegion", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", is_active as "isActive", created_at as "createdAt"
+        SELECT id, user_id as "userId", name, tier, home_region as "homeRegion", current_cluster as "currentCluster", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", parts, tools, is_active as "isActive", created_at as "createdAt"
         FROM technician WHERE is_active = true
       `;
     },
@@ -110,9 +122,9 @@ export class PostgresDatabase implements IDatabase {
     },
     create: async (tech: Omit<Technician, 'id' | 'createdAt'>) => {
       const rows = await this.sql<Technician[]>`
-        INSERT INTO technician (user_id, name, tier, home_region, max_minutes_day, accepts_ot, is_active)
-        VALUES (${tech.userId || null}, ${tech.name}, ${tech.tier}, ${tech.homeRegion}, ${tech.maxMinutesDay}, ${tech.acceptsOt}, ${tech.isActive})
-        RETURNING id, user_id as "userId", name, tier, home_region as "homeRegion", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", is_active as "isActive", created_at as "createdAt"
+        INSERT INTO technician (user_id, name, tier, home_region, current_cluster, max_minutes_day, accepts_ot, parts, tools, is_active)
+        VALUES (${tech.userId || null}, ${tech.name}, ${tech.tier}, ${tech.homeRegion}, ${tech.currentCluster || tech.homeRegion}, ${tech.maxMinutesDay}, ${tech.acceptsOt}, ${tech.parts || []}, ${tech.tools || []}, ${tech.isActive})
+        RETURNING id, user_id as "userId", name, tier, home_region as "homeRegion", current_cluster as "currentCluster", max_minutes_day as "maxMinutesDay", accepts_ot as "acceptsOt", parts, tools, is_active as "isActive", created_at as "createdAt"
       `;
       return rows[0];
     },
@@ -235,14 +247,14 @@ export class PostgresDatabase implements IDatabase {
   // Jobs Implementation
   jobs = {
     getById: async (id: string) => {
-      const rows = await this.sql<Job[]>`SELECT id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", scheduled_date as "scheduledDate", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt" FROM job WHERE id = ${id}`;
+      const rows = await this.sql<Job[]>`SELECT id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", lock_state as "lockState", scheduled_date as "scheduledDate", window_start as "windowStart", window_end as "windowEnd", duration_minutes as "durationMinutes", parts_required as "partsRequired", tools_required as "toolsRequired", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt" FROM job WHERE id = ${id}`;
       return rows[0] || null;
     },
     create: async (job: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>) => {
       const rows = await this.sql<Job[]>`
-        INSERT INTO job (customer_id, site_id, job_type_id, status, priority, window_type, scheduled_date, note_raw, required_crew_size, board_version_at_rank, confidence_score)
-        VALUES (${job.customerId}, ${job.siteId}, ${job.jobTypeId}, ${job.status}, ${job.priority}, ${job.windowType}, ${job.scheduledDate}::date, ${job.noteRaw}, ${job.requiredCrewSize}, ${job.boardVersionAtRank}, ${job.confidenceScore})
-        RETURNING id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", scheduled_date as "scheduledDate", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt"
+        INSERT INTO job (customer_id, site_id, job_type_id, status, priority, window_type, lock_state, scheduled_date, window_start, window_end, duration_minutes, parts_required, tools_required, note_raw, required_crew_size, board_version_at_rank, confidence_score)
+        VALUES (${job.customerId}, ${job.siteId}, ${job.jobTypeId}, ${job.status}, ${job.priority}, ${job.windowType}, ${job.lockState || 'none'}, ${job.scheduledDate}::date, ${job.windowStart || null}, ${job.windowEnd || null}, ${job.durationMinutes || 60}, ${job.partsRequired || []}, ${job.toolsRequired || []}, ${job.noteRaw}, ${job.requiredCrewSize}, ${job.boardVersionAtRank}, ${job.confidenceScore})
+        RETURNING id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", lock_state as "lockState", scheduled_date as "scheduledDate", window_start as "windowStart", window_end as "windowEnd", duration_minutes as "durationMinutes", parts_required as "partsRequired", tools_required as "toolsRequired", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt"
       `;
       return rows[0];
     },
@@ -252,7 +264,7 @@ export class PostgresDatabase implements IDatabase {
 
       const rows = await this.sql<Job[]>`
         UPDATE job SET status = ${status}, updated_at = NOW() WHERE id = ${jobId}
-        RETURNING id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", scheduled_date as "scheduledDate", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt"
+        RETURNING id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", lock_state as "lockState", scheduled_date as "scheduledDate", window_start as "windowStart", window_end as "windowEnd", duration_minutes as "durationMinutes", parts_required as "partsRequired", tools_required as "toolsRequired", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt"
       `;
       // Dispatch status event log
       await this.sql`
@@ -262,10 +274,10 @@ export class PostgresDatabase implements IDatabase {
       return rows[0];
     },
     listUnassigned: async () => {
-      return await this.sql<Job[]>`SELECT id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", scheduled_date as "scheduledDate", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt" FROM job WHERE status IN ('unassigned', 'received')`;
+      return await this.sql<Job[]>`SELECT id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", lock_state as "lockState", scheduled_date as "scheduledDate", window_start as "windowStart", window_end as "windowEnd", duration_minutes as "durationMinutes", parts_required as "partsRequired", tools_required as "toolsRequired", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt" FROM job WHERE status IN ('unassigned', 'received')`;
     },
     listByScheduledDate: async (dateStr: string) => {
-      return await this.sql<Job[]>`SELECT id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", scheduled_date as "scheduledDate", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt" FROM job WHERE scheduled_date = ${dateStr}::date`;
+      return await this.sql<Job[]>`SELECT id, customer_id as "customerId", site_id as "siteId", job_type_id as "jobTypeId", status, priority, window_type as "windowType", lock_state as "lockState", scheduled_date as "scheduledDate", window_start as "windowStart", window_end as "windowEnd", duration_minutes as "durationMinutes", parts_required as "partsRequired", tools_required as "toolsRequired", note_raw as "noteRaw", required_crew_size as "requiredCrewSize", board_version_at_rank as "boardVersionAtRank", confidence_score as "confidenceScore", created_at as "createdAt", updated_at as "updatedAt" FROM job WHERE scheduled_date = ${dateStr}::date`;
     },
   };
 
@@ -418,8 +430,8 @@ export class PostgresDatabase implements IDatabase {
     },
     create: async (approval: Omit<Approval, 'id' | 'createdAt'>) => {
       const rows = await this.sql<Approval[]>`
-        INSERT INTO approval (thread_id, job_id, trigger_reason, recommendation, who_would_be_late)
-        VALUES (${approval.threadId}, ${approval.jobId}, ${approval.triggerReason}, ${JSON.stringify(approval.recommendation)}, ${approval.whoWouldBeLate ? JSON.stringify(approval.whoWouldBeLate) : null})
+        INSERT INTO approval (proposal_id, thread_id, job_id, source_snapshot_id, trigger_reason, recommendation, who_would_be_late, policy_reasons, approved_plan_id)
+        VALUES (${approval.proposalId || null}, ${approval.threadId}, ${approval.jobId || null}, ${approval.sourceSnapshotId || null}, ${approval.triggerReason}, ${JSON.stringify(approval.recommendation)}, ${approval.whoWouldBeLate ? JSON.stringify(approval.whoWouldBeLate) : null}, ${JSON.stringify(approval.policyReasons || [])}, ${approval.approvedPlanId || null})
         RETURNING id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
       `;
       return rows[0];
@@ -429,6 +441,122 @@ export class PostgresDatabase implements IDatabase {
         UPDATE approval SET status = ${status}, actioned_by = ${actionedBy}, actioned_reason = ${reason || null}, actioned_at = NOW()
         WHERE id = ${id}
         RETURNING id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+      `;
+      return rows[0];
+    },
+  };
+
+  events = {
+    getById: async (id: string) => {
+      const rows = await this.sql<OperationalEvent[]>`
+        SELECT id, type, raw_text as "rawText", normalized_payload as "normalizedPayload",
+               source_snapshot_id as "sourceSnapshotId", affected_ids as "affectedIds",
+               validation_issues as "validationIssues", status, received_at as "receivedAt"
+        FROM operational_event WHERE id = ${id}
+      `;
+      return rows[0] || null;
+    },
+    create: async (event: Omit<OperationalEvent, 'id' | 'receivedAt'>) => {
+      const rows = await this.sql<OperationalEvent[]>`
+        INSERT INTO operational_event (type, raw_text, normalized_payload, source_snapshot_id, affected_ids, validation_issues, status)
+        VALUES (${event.type}, ${event.rawText}, ${JSON.stringify(event.normalizedPayload)}, ${event.sourceSnapshotId || null}, ${JSON.stringify(event.affectedIds)}, ${JSON.stringify(event.validationIssues)}, ${event.status})
+        RETURNING id, type, raw_text as "rawText", normalized_payload as "normalizedPayload",
+                  source_snapshot_id as "sourceSnapshotId", affected_ids as "affectedIds",
+                  validation_issues as "validationIssues", status, received_at as "receivedAt"
+      `;
+      return rows[0];
+    },
+    updateStatus: async (id: string, status: OperationalEventStatus) => {
+      const rows = await this.sql<OperationalEvent[]>`
+        UPDATE operational_event SET status = ${status} WHERE id = ${id}
+        RETURNING id, type, raw_text as "rawText", normalized_payload as "normalizedPayload",
+                  source_snapshot_id as "sourceSnapshotId", affected_ids as "affectedIds",
+                  validation_issues as "validationIssues", status, received_at as "receivedAt"
+      `;
+      return rows[0];
+    },
+  };
+
+  proposals = {
+    getById: async (id: string) => {
+      const rows = await this.sql<Proposal[]>`
+        SELECT id, event_id as "eventId", source_snapshot_id as "sourceSnapshotId",
+               recommended_plan_id as "recommendedPlanId", risk, autonomy_mode as "autonomyMode",
+               status, created_at as "createdAt"
+        FROM proposal WHERE id = ${id}
+      `;
+      return rows[0] || null;
+    },
+    getByEventId: async (eventId: string) => {
+      const rows = await this.sql<Proposal[]>`
+        SELECT id, event_id as "eventId", source_snapshot_id as "sourceSnapshotId",
+               recommended_plan_id as "recommendedPlanId", risk, autonomy_mode as "autonomyMode",
+               status, created_at as "createdAt"
+        FROM proposal WHERE event_id = ${eventId}
+        ORDER BY created_at DESC LIMIT 1
+      `;
+      return rows[0] || null;
+    },
+    create: async (proposal: Omit<Proposal, 'id' | 'createdAt'>) => {
+      const rows = await this.sql<Proposal[]>`
+        INSERT INTO proposal (event_id, source_snapshot_id, recommended_plan_id, risk, autonomy_mode, status)
+        VALUES (${proposal.eventId}, ${proposal.sourceSnapshotId}, ${proposal.recommendedPlanId || null}, ${proposal.risk}, ${proposal.autonomyMode}, ${proposal.status})
+        RETURNING id, event_id as "eventId", source_snapshot_id as "sourceSnapshotId",
+                  recommended_plan_id as "recommendedPlanId", risk, autonomy_mode as "autonomyMode",
+                  status, created_at as "createdAt"
+      `;
+      return rows[0];
+    },
+    updateStatus: async (id: string, status: ProposalStatus, recommendedPlanId?: string) => {
+      const rows = await this.sql<Proposal[]>`
+        UPDATE proposal
+        SET status = ${status},
+            recommended_plan_id = COALESCE(${recommendedPlanId || null}, recommended_plan_id)
+        WHERE id = ${id}
+        RETURNING id, event_id as "eventId", source_snapshot_id as "sourceSnapshotId",
+                  recommended_plan_id as "recommendedPlanId", risk, autonomy_mode as "autonomyMode",
+                  status, created_at as "createdAt"
+      `;
+      return rows[0];
+    },
+  };
+
+  candidatePlans = {
+    getById: async (id: string) => {
+      const rows = await this.sql<CandidatePlan[]>`
+        SELECT id, proposal_id as "proposalId", source_snapshot_id as "sourceSnapshotId", profile,
+               assignments, change_set as "changeSet", metrics, validations,
+               solver_trace as "solverTrace", timed_out as "timedOut", duration_ms as "durationMs",
+               status, created_at as "createdAt"
+        FROM candidate_plan WHERE id = ${id}
+      `;
+      return rows[0] || null;
+    },
+    listByProposal: async (proposalId: string) => {
+      return await this.sql<CandidatePlan[]>`
+        SELECT id, proposal_id as "proposalId", source_snapshot_id as "sourceSnapshotId", profile,
+               assignments, change_set as "changeSet", metrics, validations,
+               solver_trace as "solverTrace", timed_out as "timedOut", duration_ms as "durationMs",
+               status, created_at as "createdAt"
+        FROM candidate_plan WHERE proposal_id = ${proposalId}
+      `;
+    },
+    create: async (plan: Omit<CandidatePlan, 'id' | 'createdAt'>) => {
+      const rows = await this.sql<CandidatePlan[]>`
+        INSERT INTO candidate_plan (
+          proposal_id, source_snapshot_id, profile, assignments, change_set, metrics,
+          validations, solver_trace, timed_out, duration_ms, status
+        )
+        VALUES (
+          ${plan.proposalId}, ${plan.sourceSnapshotId}, ${plan.profile},
+          ${JSON.stringify(plan.assignments)}, ${JSON.stringify(plan.changeSet)},
+          ${JSON.stringify(plan.metrics)}, ${JSON.stringify(plan.validations)},
+          ${JSON.stringify(plan.solverTrace)}, ${plan.timedOut}, ${plan.durationMs || null}, ${plan.status}
+        )
+        RETURNING id, proposal_id as "proposalId", source_snapshot_id as "sourceSnapshotId", profile,
+                  assignments, change_set as "changeSet", metrics, validations,
+                  solver_trace as "solverTrace", timed_out as "timedOut", duration_ms as "durationMs",
+                  status, created_at as "createdAt"
       `;
       return rows[0];
     },

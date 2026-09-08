@@ -1,10 +1,9 @@
-// Placeholder entry point. Week 1 replaces this with the Cognito-group redirect
-// that sends a customer, a technician and a desk user to their own surface.
+// Placeholder. Week 1 sends a demo role to the desk. Not Cognito.
 export default function Home() {
   return (
     <main>
       <h1>Dispatch Coordinator</h1>
-      <p>Scaffold only. See README section 18 for what lands in which week.</p>
+      <p>Scaffold only. See docs/implementation-plan.md for what lands in which week.</p>
     </main>
   );
 }

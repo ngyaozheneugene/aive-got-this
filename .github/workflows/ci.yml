@@ -1,7 +1,7 @@
 name: CI
 
-# G runs on every commit: pure functions, no model, no AWS.
-# A and X call Bedrock, so they run nightly and on demand (README §17 O-12).
+# G runs on every commit: pure functions, no model, no gateway.
+# A and X call the organiser LLM gateway, so they run nightly and on demand.
 on:
   push:
   pull_request:

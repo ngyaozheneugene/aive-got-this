@@ -1,26 +1,24 @@
-# Team split and ownership v1
+# Team split and ownership
 
-**Team:** AI've Got This, four people, five days a week, three weeks<br>
-**Source of truth:** the root [`README.md`](../../README.md)<br>
-**Status:** Ownership is settled. The contracts in §3 are the only thing that must be agreed before parallel work starts.
+**Team:** AI've Got This
+**Source of truth:** [`docs/implementation-plan.md`](../implementation-plan.md)
+**README:** product, stack, and how to run — [`README.md`](../../README.md)
 
-This document says who owns which folders, what each person publishes to the others, and what has to exist before the four streams can run without blocking each other. Each member has a brief of their own in `docs/team/member-N/`.
+Who owns which folders, what each person publishes, and what must exist before the four streams can run in parallel. Member briefs live in `docs/team/member-N/`.
 
 ---
 
 ## 1. The split
 
-The proposal already names six modules and four import rules (root README §11), so the split follows those boundaries rather than inventing new ones. One person owns the data layer, one owns the pure decision code, one owns the agents, and one owns the surfaces.
-
 | # | Stream | Owns | Brief |
 |---|---|---|---|
-| 1 | Platform and data | `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/` | [member-1](member-1/README.md) |
-| 2 | Matching and location | `src/matching/`, `src/location/`, `evals/g-suite/`, `evals/fixtures/` | [member-2](member-2/README.md) |
-| 3 | Agent and orchestration | `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | [member-3](member-3/README.md) |
-| 4 | Surfaces | `src/app/`, except `src/app/api/` | [member-4](member-4/README.md) |
-| all | Shared contracts and decisions | `src/shared/`, `docs/adr/` | this file |
+| 1 | Platform and data | `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/`, Compose/Lightsail | [member-1](member-1/README.md) |
+| 2 | Scheduler | `src/matching/`, `src/location/`, `services/optimizer/`, `evals/g-suite/`, `evals/fixtures/` | [member-2](member-2/README.md) |
+| 3 | Agent | `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | [member-3](member-3/README.md) |
+| 4 | Desk | `src/app/` except `src/app/api/` | [member-4](member-4/README.md) |
+| all | Shared contracts | `src/shared/`, `docs/adr/` | this file |
 
-> **Why:** `src/dispatch/` sits with member 1 rather than with the agent or the web person because both of those write through it. `status_event` is append-only and Dispatch is its only writer, so the module belongs with whoever owns the schema and its invariants.
+`src/dispatch/` stays with member 1: both the agent and the desk write through it. `status_event` is append-only and Dispatch is its only writer.
 
 ---
 
@@ -28,139 +26,65 @@ The proposal already names six modules and four import rules (root README §11),
 
 ```text
 aive-got-this/
-├── .github/workflows/          1  CI: G per commit, A and X on a schedule
-├── Dockerfile                  1  App Runner image, Next standalone
-├── docker-compose.yml          1  local Postgres only, never deployed
-├── package.json, tsconfig.json, vitest.config.ts, next.config.ts
-│                               1  build, typecheck, the three test suites
-├── db/
-│   ├── schema/                 1  schema.sql, frozen day two
-│   └── migrations/             1  changes after the freeze
-├── seed/                       1  16 technicians, certs with one expiry, ~40 jobs
-├── infra/
-│   ├── apprunner/              1  the PWA service
-│   ├── rds/                    1  db.t4g.micro, three DB roles
-│   ├── cognito/                1  technician / desk / admin groups
-│   ├── scheduler/              1  the 15-minute tick
-│   ├── s3/                     1  imports and eval artefacts
-│   ├── ssm/                    1  secrets, none in git
-│   └── observability/          1  CloudWatch, budget alert at $80
-├── public/                     4  PWA manifest and icons
-├── src/
-│   ├── app/                       the ONLY routable tree, Next.js App Router
-│   │   ├── (customer)/         4  paste a message, status and ETA
-│   │   ├── (technician)/       4  clock in, offers, today, escalate
-│   │   ├── (desk)/             4  board, approval cards, Why?
-│   │   ├── _components/        4  shared across the three surfaces
-│   │   └── api/                1  handlers: intake, coordinator, desk, webhooks
-│   ├── shared/
-│   │   ├── contracts/         all Zod schemas shared by model, server and UI
-│   │   ├── types/             all read models and enums
-│   │   └── config/            all weights, thresholds, caps
-│   ├── platform/aws/           1  the ONLY place a Bedrock, S3 or SSM client is built
-│   ├── db/
-│   │   ├── postgres/           1  the real client
-│   │   └── memory/             1  in-memory double, so 2/3/4 test without RDS
-│   ├── people/                 1  app_user, technician, technician_cert, shift
-│   ├── catalog/                1  customer, site, site_memory, job_type, recurrence
-│   ├── dispatch/               1  job, job_requirement, assignment, status_event
-│   ├── matching/
-│   │   ├── gates/              2  Stage A, eligibility
-│   │   └── scoring/            2  Stage B, ranking and crew size
-│   ├── location/
-│   │   ├── postal/             2  postal to region and estate
-│   │   └── matrix/             2  travel matrix, insertion cost, peak
-│   └── agent/
-│       ├── runtime/            3  LangGraph, RDS checkpointer, interrupt and resume
-│       ├── playbooks/          3  one graph per trigger
-│       ├── prompts/            3  delimited data blocks, never instructions
-│       └── tools/
-│           ├── intake/         3  registry 1, draft jobs only
-│           ├── coordinator/    3  registry 2, state through validated tools
-│           └── desk/           3  registry 3, acts as the signed-in user
-├── evals/
-│   ├── g-suite/                2  no model, pure functions
-│   ├── a-suite/                3  agent, asserts on tool calls
-│   ├── x-suite/                3  adversarial, asserts on tool calls
-│   ├── fixtures/               2  committed travel matrix and seed cases
-│   └── reports/               all offline metrics, week 1 against week 3
+├── .github/workflows/          1  G per commit; A and X on a schedule
+├── Dockerfile                  1  Next.js image for Lightsail
+├── docker-compose.yml          1  Postgres + optimizer sidecar
+├── services/optimizer/         2  OR-Tools; member 1 owns Compose wiring
+├── db/schema/                  1  schema.sql
+├── seed/                       1  Eastwind Aircon Tuesday
+├── src/app/
+│   ├── (desk)/                 4  timeline, compare, approve, trace
+│   ├── (technician)/           4  P1 status page
+│   ├── (customer)/             4  not P0
+│   └── api/                    1  schedule, events, proposals, commit, reset
+├── src/shared/                all
+├── src/matching/               2  gate, insertion propose(), validator
+├── src/location/               2
+├── src/agent/                  3
+├── evals/g-suite/              2
+├── evals/a-suite/              3
+├── evals/x-suite/              3
 └── docs/
-    ├── adr/                   all one file per open question resolved
-    └── team/                  these briefs
+    ├── implementation-plan.md
+    ├── adr/
+    └── team/
 ```
 
-> **Why `src/app/` rather than `src/web/`:** Next.js routes only from `app/` or `src/app/`. A separate `src/web/` tree would need a router living somewhere else to import it, and the API handlers had no home at all. The three surfaces are route groups, which keeps the member-4 split intact while making it something the framework understands.
-
-> **Why `src/app/api/` sits with member 1:** the handlers are thin adapters onto the Dispatch write path and the agent runtime, and they validate with member 3 Zod contracts out of `src/shared/contracts/` rather than a second copy. Keeping them with the owner of the state machine keeps the server side of every tool in one head.
+`infra/apprunner`, `infra/cognito`, and `infra/rds` are unused. Do not fill them.
 
 ---
 
-## 3. Contracts, and why they come first
+## 3. Contracts first
 
-Four people cannot work in parallel against folders alone. Everything crosses at `src/shared/`, so that folder is written on day one and frozen on day two alongside the schema.
+| Contract | Published by | Consumed by |
+|---|---|---|
+| `propose()` input/output + reason codes | 2 | 1, 3, 4 |
+| Tool Zod schemas | 3 | 3 and 1 (handlers) |
+| Read models (board, proposal, approval card) | 1 | 4 |
+| Domain events (`job.urgent`, `tech.unavailable`, `job.overrun`) | 1 | 3 |
+| In-memory DB double | 1 | 2, 3, 4 |
 
-| Contract | Published by | Consumed by | Shape |
-|---|---|---|---|
-| Tool schemas | 3 | 3 for the model, 1 for the server | One Zod schema per tool, shared by both sides |
-| `EligibleTechnician`, `RankedTechnician` | 2 | 3, 4 | Stage A and Stage B outputs, including every exclusion reason |
-| Scoring constants | 2 | 2, and read by 4 for the Why? panel | Weights, sub-weights, over-qualification penalty, crew triggers |
-| Read models | 1 | 4 | Board, job, technician day, approval card |
-| Domain events | 1 | 3 | `job.created`, `tech.declined`, `tech.no_show`, and the rest |
-| In-memory DB double | 1 | 2, 3, 4 | Lets everyone test before RDS exists |
-
-> **Warning:** the in-memory double in `src/db/memory/` is the highest-value thing member 1 ships in the first two days. Without it, members 2, 3 and 4 are blocked on RDS and Cognito, and week 1 loses two days it does not have.
+Without the memory adapter, members 2–4 wait on Postgres. That is still the highest-value day-two deliverable from member 1. They do not wait on Cognito or RDS.
 
 ---
 
-## 4. Order of work in week 1
+## 4. Week 1 order
 
-Week 1 carries the whole scheduler, so sequencing matters more than in the later weeks.
-
-1. **Day 1.** Everyone agrees `src/shared/contracts/` and `src/shared/types/`. Member 1 drafts `db/schema/schema.sql`.
-2. **Day 2.** Schema frozen. In-memory double lands. Members 2, 3 and 4 unblock and go parallel.
-3. **Days 3 to 4.** Stage A and Stage B green on G-01 to G-06. Intake agent green on A-01, A-06, X-01. Desk board renders a ranked top three from fixtures.
-4. **Day 5.** Wire the real path end to end: pasted message becomes a job, Wei is hidden, Ahmad is offered, the technician accepts, customer status moves.
+1. **Day 1.** Freeze `src/shared/` against the implementation plan. Member 1 confirms schema deltas (snapshots, proposals) as ADRs, not a silent rewrite.
+2. **Day 2.** G0: fixtures, memory adapter, gateway smoke, optimizer `/health` container.
+3. **Days 3–4.** Seed paints a timeline. Insertion `propose()` returns two valid plans for Raffles Place. Desk renders fixtures.
+4. **Day 5.** G1: urgent event through API to a visible proposal.
 
 ---
 
-## 5. Open questions and who resolves them
+## 5. Rules for everyone
 
-Root README §17 lists twelve. Each one is assigned here, and each resolution lands as a short file in `docs/adr/`.
+- `src/matching/` never imports HTTP or a database client.
+- `src/agent/` never imports SQL.
+- `src/shared/` imports nothing.
+- Untrusted text lands in a `*_raw` column and reaches the model only inside a delimited data block.
+- The model never computes a score and never writes the board.
+- Legal skill gates cannot be overridden, including by the desk.
+- Breaking `src/shared/` needs a reviewer from a consuming stream.
 
-| Id | Subject | Owner | Due |
-|---|---|---|---|
-| O-01 | Snapshot lock against the 10-minute offer window | 1, with 3 | Week 1, day 3 |
-| O-02 | Structured site memory instead of free text in the score | 1, with 2 | Week 1, day 2, it changes the schema |
-| O-03 | X-07, stored injection through a site note | 3 | Week 2 |
-| O-04 | Rate limit and verification on `lookup_site_by_phone` | 1, with 3 | Week 2 |
-| O-05 | Terminal state when candidates are exhausted | 1, with 3 | Week 2 |
-| O-06 | LEW as a hard gate or a flag | 2 | Week 1, day 2, it changes Stage A |
-| O-07 | Publish the qualification sub-weights | 2 | Week 1, day 3, G-01 is meaningless until then |
-| O-08 | The week-1 cut list | Whole team | Week 1, day 1 |
-| O-09 | Crew-of-two offer protocol | 1, with 3 | Week 3 |
-| O-10 | Certificate expiry after assignment | 3, with 1 | Week 3 |
-| O-11 | Scheduler for the 15-minute tick | 1 | Week 3 |
-| O-12 | Keeping A and X suites cheap and deterministic in CI | 3, with 1 | Week 2 |
-
-Four of these change the schema or Stage A, so they are due in week 1 rather than when the feature ships: O-02, O-06, O-07 and the O-08 cut list.
-
----
-
-## 6. Rules that hold for everyone
-
-These come from root README §9 and §11. They are not style preferences; the safety story in the rubric depends on them.
-
-- **`src/matching/` never imports HTTP or the AWS SDK.** It is pure functions, and that is what makes the ranking auditable.
-- **`src/agent/` never imports SQL.** It reaches the database only through tools that re-validate.
-- **`src/catalog/` never calls `src/matching/`.** The catalogue describes work; it does not choose who does it.
-- **Customer status is a read of `src/dispatch/`.** Never a second store.
-- **`src/shared/` imports nothing.** It is types, Zod contracts and constants. If it needs an import from a module, the dependency is pointing the wrong way.
-- **AWS clients are built in `src/platform/aws/` and nowhere else.** That is what makes the rule about Matching never importing the AWS SDK checkable in review.
-- **Untrusted text lands in a `*_raw` column** and reaches the model only inside a delimited data block.
-- **The model never computes a score.** If you find yourself asking a model to rank, stop and put it in `src/matching/scoring/`.
-
----
-
-## 7. Branch and review
-
-Work on `member-N/<short-topic>` branches off `main`. A change that touches `src/shared/` needs a second pair of eyes from whoever consumes that contract, because it breaks other people's builds; anything inside your own folders does not.
+Work on `member-N/<short-topic>` branches off `main`.

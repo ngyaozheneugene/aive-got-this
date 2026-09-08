@@ -1,5 +1,4 @@
-# Next.js standalone image for App Runner (README §11). Also the image the
-# t3.small fallback runs alongside Postgres in Docker.
+# Next.js standalone image for the Lightsail Compose stack.
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -24,5 +23,5 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
 EXPOSE 8080
-# No secrets baked in. Bedrock, RDS and Cognito config come from SSM at runtime.
+# No secrets baked in. Gateway key and DATABASE_URL come from the environment.
 CMD ["node", "server.js"]

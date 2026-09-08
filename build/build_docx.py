@@ -1,8 +1,6 @@
-"""Render README.md into Dispatch_Coordinator_Agent_Proposal.docx.
+"""Render docs/implementation-plan.md into Dispatch_Coordinator_Implementation_Plan.docx.
 
-The .docx keeps its original styling: the body XML is regenerated from the
-Markdown, while styles.xml, numbering.xml, header1.xml and footer1.xml are
-carried over untouched from the existing file.
+Styles are copied from the historical v0.4 proposal docx. That file is not overwritten.
 
 Usage:  python build/build_docx.py
 """
@@ -14,8 +12,9 @@ import shutil
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-README = os.path.join(ROOT, "README.md")
-DOCX = os.path.join(ROOT, "docs", "Dispatch_Coordinator_Agent_Proposal.docx")
+README = os.path.join(ROOT, "docs", "implementation-plan.md")
+STYLE_DOCX = os.path.join(ROOT, "docs", "Dispatch_Coordinator_Agent_Proposal.docx")
+DOCX = os.path.join(ROOT, "docs", "Dispatch_Coordinator_Implementation_Plan.docx")
 
 # Design tokens lifted from the existing document.
 FONT = '<w:rFonts w:ascii="Arial" w:cs="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>'
@@ -26,7 +25,7 @@ HEAD_FILL = "16325C"
 CELL_BORDER = "C9D2DC"
 TEXT_W = 9360  # printable width in DXA
 
-SUBTITLE = "An AI coordinator for Singapore HVAC SMEs"
+SUBTITLE = "Agent-assisted recovery for a Singapore HVAC field-service day"
 
 BODY_SZ = 22
 CELL_SZ = 17
@@ -246,7 +245,7 @@ def parse(md):
             after=80,
         )
     )
-    body.append(para(run("Dispatch Coordinator Agent", bold=True, sz=48), after=60))
+    body.append(para(run("Dispatch Coordinator", bold=True, sz=48), after=60))
     body.append(para(run(SUBTITLE, sz=26), after=120))
 
     while i < len(lines):
@@ -352,7 +351,7 @@ def main():
     document += "<w:body>" + parse(md) + SECTPR + "</w:body></w:document>"
 
     tmp = DOCX + ".tmp"
-    with zipfile.ZipFile(DOCX) as src, zipfile.ZipFile(
+    with zipfile.ZipFile(STYLE_DOCX) as src, zipfile.ZipFile(
         tmp, "w", zipfile.ZIP_DEFLATED
     ) as dst:
         for item in src.infolist():
