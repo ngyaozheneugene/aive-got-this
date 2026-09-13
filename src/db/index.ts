@@ -13,11 +13,12 @@ let dbInstance: IDatabase | null = null;
 
 export function getDatabase(): IDatabase {
   if (!dbInstance) {
-    const useMemory = process.env.USE_MEMORY_DB === 'true' || process.env.NODE_ENV === 'test' || !process.env.DATABASE_URL;
+    const useMemory =
+      process.env.NODE_ENV === 'test' || process.env.USE_MEMORY_DB !== 'false';
     if (useMemory) {
       dbInstance = new InMemoryDatabase();
     } else {
-      dbInstance = new PostgresDatabase();
+      dbInstance = new PostgresDatabase() as IDatabase;
     }
   }
   return dbInstance;

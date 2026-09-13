@@ -18,10 +18,10 @@ This file is the session entrypoint. Cursor rules in `.cursor/rules/` repeat the
 
 | Touch | Stream | Brief |
 |---|---|---|
-| `db/`, `seed/`, `src/db/`, `src/app/api/`, Compose, CI, Lightsail | 1 Platform | [`docs/team/member-1/README.md`](docs/team/member-1/README.md) |
-| `src/matching/`, `src/location/`, `services/optimizer/`, `evals/g-suite/` | 2 Scheduler | [`docs/team/member-2/README.md`](docs/team/member-2/README.md) |
-| `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | 3 Agent | [`docs/team/member-3/README.md`](docs/team/member-3/README.md) |
-| `src/app/` except `src/app/api/` | 4 Desk | [`docs/team/member-4/README.md`](docs/team/member-4/README.md) |
+| `db/`, `seed/`, `src/db/`, `src/app/api/`, Compose, CI, Lightsail | 1 Platform (Eugene) | [`docs/team/member-1/README.md`](docs/team/member-1/README.md) |
+| `src/matching/`, `src/location/`, `services/optimizer/`, `evals/g-suite/` | 2 Scheduler (Damon) | [`docs/team/member-2/README.md`](docs/team/member-2/README.md) |
+| `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | 3 Agent (Deen) | [`docs/team/member-3/README.md`](docs/team/member-3/README.md) |
+| `src/app/` except `src/app/api/` | 4 Desk (Khant) | [`docs/team/member-4/README.md`](docs/team/member-4/README.md) |
 | `src/shared/`, `docs/adr/` | all | Breaking change needs a consuming-stream reviewer |
 
 Stay in your stream’s folders. Do not “helpfully” rewrite another stream.
@@ -29,7 +29,7 @@ Stay in your stream’s folders. Do not “helpfully” rewrite another stream.
 ## Hard constraints
 
 - Model chooses the next **named tool**. Code owns eligibility, scores, validation, risk, and writes.
-- `src/shared/` imports nothing. `src/matching/` has no HTTP, no DB client, no AWS SDK. `src/agent/` never imports SQL.
+- `src/shared/contracts/` may import `zod`. The rest of `src/shared/` imports nothing else. `src/matching/` has no HTTP, no DB client, no AWS SDK. `src/agent/` never imports SQL.
 - Browser never writes the board. Only commit, after validator + policy + source snapshot.
 - Untrusted text stays in `*_raw` and is quoted to the model. Injection is data.
 - Two profiles: `sla_first` and `minimal_disruption`. Metrics are backend-owned.
@@ -48,7 +48,7 @@ v0.4 proposal doc is historical. Do not implement it.
 
 - Branch: `member-N/<short-topic>` off `main`.
 - Desk APIs: `/api/schedule/current`, `/api/events`, `/api/proposals/{id}`, decision, commit, audit, `/api/demo/reset`.
-- Do not grow `src/app/api/intake|coordinator|webhooks` as the product API. Replace with the paths above.
+- Do not recreate `src/app/api/intake|coordinator|webhooks`.
 - Optimizer `POST /propose` is internal. Browser does not call it.
 
 ## Done means

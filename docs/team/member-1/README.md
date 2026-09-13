@@ -1,5 +1,6 @@
 # Member 1: platform and data
 
+**Person:** Eugene
 **Stream:** Lightsail, Compose, schema, seed, Dispatch writes
 **Folders:** `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/`
 **Plan role:** D
@@ -21,7 +22,7 @@ Give members 2–4 a frozen, seeded, typed data layer by the end of day two, the
 |---|---|
 | `db/schema/` | Product schema. Additive changes for proposals/events go through an ADR. |
 | `db/migrations/` | After the freeze. |
-| `seed/` | Eastwind Aircon: 6–10 technicians, 12–25 jobs, Raffles Place urgent, one locked SLA, one scarce cert. |
+| `seed/` | Pointer only. Canonical Tuesday is `src/shared/fixtures/eastwind.ts` until SQL apply lands. |
 | `src/db/postgres/` | Product client. |
 | `src/db/memory/` | Same interface. Highest-value day-two ship. |
 | `src/people/`, `src/catalog/`, `src/dispatch/` | Domain modules. Recurrence stays unused (P2). |

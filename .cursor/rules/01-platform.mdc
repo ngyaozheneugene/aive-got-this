@@ -13,6 +13,6 @@ Read `docs/team/member-1/README.md` and `docs/tasks.md`.
 - Untrusted text in `*_raw`. Demo logins, not Cognito.
 - Stale snapshot and missing medium-risk approval must fail closed (UC-07, UC-12).
 - `POST /api/demo/reset` restores Eastwind Tuesday (UC-10).
-- Replace `src/app/api/{intake,coordinator,webhooks}` with schedule/events/proposals/commit/reset.
+- Product APIs: `/api/schedule/current`, events, proposals, decision, commit, audit, `/api/demo/reset`. Do not recreate intake/coordinator/webhooks.
 - Do not reimplement ranking in SQL. Do not fill `infra/apprunner|cognito|rds` or `src/platform/aws/`.
 - Memory adapter is what unblocks members 2–4. Prefer shipping that over Lightsail polish before G1.

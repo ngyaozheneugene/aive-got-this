@@ -1,9 +1,13 @@
-// Placeholder. Week 1 sends a demo role to the desk. Not Cognito.
+import Link from 'next/link';
+
 export default function Home() {
   return (
-    <main>
+    <main style={{ fontFamily: 'system-ui', padding: 24 }}>
       <h1>Dispatch Coordinator</h1>
-      <p>Scaffold only. See docs/implementation-plan.md for what lands in which week.</p>
+      <p>Eastwind Aircon control tower. Demo role is the desk — not Cognito.</p>
+      <p>
+        <Link href="/desk">Open coordinator desk</Link>
+      </p>
     </main>
   );
 }

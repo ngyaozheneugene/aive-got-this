@@ -1,5 +1,6 @@
 # Member 3: agent
 
+**Person:** Deen
 **Stream:** LangGraph supervisor, JSON tools, risk policy, A and X suites
 **Folders:** `src/agent/`, `evals/a-suite/`, `evals/x-suite/`
 **Plan role:** B

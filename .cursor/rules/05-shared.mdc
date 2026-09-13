@@ -6,9 +6,9 @@ alwaysApply: false
 
 # Shared contracts
 
-`src/shared/` imports nothing. Breaking changes need a reviewer from a consuming stream and a short ADR.
+`src/shared/` may import `zod` in `contracts/` only. Breaking changes need a reviewer from a consuming stream and a short ADR.
 
-Put here: domain types, Zod for events/tools/`propose()`, reason codes, plan-profile weights, timeouts.
+Put here: domain types, Zod for events/tools/`propose()`, reason codes, plan-profile weights, timeouts, Eastwind fixture.
 
 Do not put HTTP clients, SQL, React, or LangGraph imports here.
 

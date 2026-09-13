@@ -1,5 +1,6 @@
 # Member 2: scheduler
 
+**Person:** Damon
 **Stream:** Eligibility, travel, `propose()`, OR-Tools sidecar, G-suite
 **Folders:** `src/matching/`, `src/location/`, `services/optimizer/`, `evals/g-suite/`, `evals/fixtures/`
 **Plan role:** A

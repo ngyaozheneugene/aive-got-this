@@ -15,15 +15,15 @@ Who owns which folders, what each person publishes, and what must exist before t
 
 ## 1. The split
 
-| # | Stream | Owns | Brief |
-|---|---|---|---|
-| 1 | Platform and data | `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/`, Compose/Lightsail | [member-1](member-1/README.md) |
-| 2 | Scheduler | `src/matching/`, `src/location/`, `services/optimizer/`, `evals/g-suite/`, `evals/fixtures/` | [member-2](member-2/README.md) |
-| 3 | Agent | `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | [member-3](member-3/README.md) |
-| 4 | Desk | `src/app/` except `src/app/api/` | [member-4](member-4/README.md) |
-| all | Shared contracts | `src/shared/`, `docs/adr/` | this file |
+| # | Name | Stream | Owns | Brief |
+|---|---|---|---|---|
+| 1 | Eugene | Platform and data | `infra/`, `db/`, `seed/`, `src/db/`, `src/platform/`, `src/people/`, `src/catalog/`, `src/dispatch/`, `src/app/api/`, `.github/`, Compose/Lightsail | [member-1](member-1/README.md) |
+| 2 | Damon | Scheduler | `src/matching/`, `src/location/`, `services/optimizer/`, `evals/g-suite/`, `evals/fixtures/` | [member-2](member-2/README.md) |
+| 3 | Deen | Agent | `src/agent/`, `evals/a-suite/`, `evals/x-suite/` | [member-3](member-3/README.md) |
+| 4 | Khant | Desk | `src/app/` except `src/app/api/` | [member-4](member-4/README.md) |
+| all | | Shared contracts | `src/shared/`, `docs/adr/` | this file |
 
-`src/dispatch/` stays with member 1: both the agent and the desk write through it. `status_event` is append-only and Dispatch is its only writer.
+`src/dispatch/` stays with Eugene (member 1): both the agent and the desk write through it. `status_event` is append-only and Dispatch is its only writer.
 
 ---
 
@@ -88,13 +88,13 @@ Without the memory adapter, members 2–4 wait on Postgres. That is still the hi
 
 - `src/matching/` never imports HTTP or a database client.
 - `src/agent/` never imports SQL.
-- `src/shared/` imports nothing.
+- `src/shared/` may import `zod` in `contracts/` only.
 - Untrusted text lands in a `*_raw` column and reaches the model only inside a delimited data block.
 - The model never computes a score and never writes the board.
 - Legal skill gates cannot be overridden, including by the desk.
 - Breaking `src/shared/` needs a reviewer from a consuming stream.
 
-The first live demo is 30 minutes. Member 4 drives the desk. Member 3 narrates. Member 1 recovers the box. Member 2 takes solver questions. Same product as G3; do not add a second surface for the extra time.
+The first live demo is 30 minutes. Khant drives the desk. Deen narrates. Eugene recovers the box. Damon takes solver questions. Same product as G3; do not add a second surface for the extra time.
 
 Work on `member-N/<short-topic>` branches off `main`.
 

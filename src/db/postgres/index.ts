@@ -2,7 +2,6 @@
 // Postgres client. Local Compose or the Lightsail volume — not RDS.
 
 import postgres from 'postgres';
-import { IDatabase } from '../interface';
 import {
   AppUser,
   Technician,
@@ -19,20 +18,22 @@ import {
   JobRequirement,
   Assignment,
   StatusEvent,
+  TravelMatrix,
   BoardSnapshot,
   DecisionLog,
   Approval,
-  ScoreBreakdown,
+  PlanMetrics,
   OperationalEvent,
   OperationalEventStatus,
   Proposal,
   ProposalStatus,
   CandidatePlan,
+  emptyPlanMetrics,
 } from '../../shared/types/domain';
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://dispatch:dispatch@localhost:5432/dispatch';
 
-export class PostgresDatabase implements IDatabase {
+export class PostgresDatabase {
   private sql: postgres.Sql;
 
   constructor(connectionString?: string) {
@@ -299,54 +300,75 @@ export class PostgresDatabase implements IDatabase {
   // Assignments Implementation
   assignments = {
     getById: async (id: string) => {
-      const rows = await this.sql<Assignment[]>`SELECT id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "scoreBreakdown" FROM assignment WHERE id = ${id}`;
+      const rows = await this.sql<Assignment[]>`SELECT id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics" FROM assignment WHERE id = ${id}`;
       return rows[0] || null;
     },
     getByJobId: async (jobId: string) => {
-      return await this.sql<Assignment[]>`SELECT id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "scoreBreakdown" FROM assignment WHERE job_id = ${jobId}`;
+      return await this.sql<Assignment[]>`SELECT id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics" FROM assignment WHERE job_id = ${jobId}`;
     },
     getActiveForTechnician: async (technicianId: string, dateStr: string) => {
       return await this.sql<Assignment[]>`
-        SELECT a.id, a.job_id as "jobId", a.technician_id as "technicianId", a.status, a.snapshot_id as "snapshotId", a.offered_at as "offeredAt", a.expires_at as "expiresAt", a.accepted_at as "acceptedAt", a.score_breakdown as "scoreBreakdown"
+        SELECT a.id, a.job_id as "jobId", a.technician_id as "technicianId", a.status, a.snapshot_id as "snapshotId", a.offered_at as "offeredAt", a.expires_at as "expiresAt", a.accepted_at as "acceptedAt", a.score_breakdown as "metrics"
         FROM assignment a
         JOIN job j ON a.job_id = j.id
         WHERE a.technician_id = ${technicianId} AND j.scheduled_date = ${dateStr}::date AND a.status IN ('offered', 'accepted')
       `;
+    },
+    listAll: async () => {
+      return await this.sql<Assignment[]>`SELECT id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics" FROM assignment`;
+    },
+    createCommitted: async (params: {
+      jobId: string;
+      technicianId: string;
+      snapshotId: string;
+      windowStart?: string;
+      windowEnd?: string;
+      travelBeforeMinutes?: number;
+      metrics?: PlanMetrics;
+    }) => {
+      const metrics = params.metrics ?? emptyPlanMetrics();
+      const rows = await this.sql<Assignment[]>`
+        INSERT INTO assignment (job_id, technician_id, snapshot_id, status, window_start, window_end, travel_before_minutes, offered_at, accepted_at, score_breakdown)
+        VALUES (${params.jobId}, ${params.technicianId}, ${params.snapshotId}, 'accepted', ${params.windowStart || null}, ${params.windowEnd || null}, ${params.travelBeforeMinutes ?? null}, NOW(), NOW(), ${JSON.stringify(metrics)})
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
+      `;
+      return rows[0];
     },
     createOffer: async (params: {
       jobId: string;
       technicianId: string;
       snapshotId: string;
       expiresInMinutes?: number;
-      scoreBreakdown: ScoreBreakdown;
+      metrics?: PlanMetrics;
       decisionLogId?: string;
     }) => {
       const minutes = params.expiresInMinutes || 10;
+      const metrics = params.metrics ?? emptyPlanMetrics();
       const rows = await this.sql<Assignment[]>`
         INSERT INTO assignment (job_id, technician_id, snapshot_id, offered_at, expires_at, score_breakdown, decision_log_id)
-        VALUES (${params.jobId}, ${params.technicianId}, ${params.snapshotId}, NOW(), NOW() + ${minutes + ' minutes'}::interval, ${JSON.stringify(params.scoreBreakdown)}, ${params.decisionLogId || null})
-        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "scoreBreakdown"
+        VALUES (${params.jobId}, ${params.technicianId}, ${params.snapshotId}, NOW(), NOW() + ${minutes + ' minutes'}::interval, ${JSON.stringify(metrics)}, ${params.decisionLogId || null})
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
       `;
       return rows[0];
     },
     acceptOffer: async (assignmentId: string) => {
       const rows = await this.sql<Assignment[]>`
         UPDATE assignment SET status = 'accepted', accepted_at = NOW() WHERE id = ${assignmentId}
-        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "scoreBreakdown"
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
       `;
       return rows[0];
     },
     declineOffer: async (assignmentId: string) => {
       const rows = await this.sql<Assignment[]>`
         UPDATE assignment SET status = 'declined' WHERE id = ${assignmentId}
-        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "scoreBreakdown"
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
       `;
       return rows[0];
     },
     expireOffer: async (assignmentId: string) => {
       const rows = await this.sql<Assignment[]>`
         UPDATE assignment SET status = 'expired' WHERE id = ${assignmentId}
-        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "scoreBreakdown"
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
       `;
       return rows[0];
     },
@@ -365,12 +387,19 @@ export class PostgresDatabase implements IDatabase {
   // Travel Matrix Implementation
   travelMatrix = {
     getTravelMinutes: async (fromCluster: string, toCluster: string, isPeak: boolean = false) => {
-      if (fromCluster === toCluster) return 5;
       const rows = await this.sql<{ minutes: number; peak_minutes: number }[]>`
         SELECT minutes, peak_minutes FROM travel_matrix WHERE from_cluster = ${fromCluster} AND to_cluster = ${toCluster}
       `;
-      if (!rows[0]) return 20;
+      if (!rows[0]) {
+        throw new Error(`TRAVEL_MATRIX_MISSING:${fromCluster}->${toCluster}`);
+      }
       return isPeak ? rows[0].peak_minutes : rows[0].minutes;
+    },
+    listAll: async () => {
+      return await this.sql<TravelMatrix[]>`
+        SELECT id, from_cluster as "fromCluster", to_cluster as "toCluster", minutes, peak_minutes as "peakMinutes", source, created_at as "createdAt"
+        FROM travel_matrix
+      `;
     },
     setMatrix: async (entries: Array<{ fromCluster: string; toCluster: string; minutes: number; peakMinutes: number }>) => {
       for (const e of entries) {
@@ -389,16 +418,35 @@ export class PostgresDatabase implements IDatabase {
       const rows = await this.sql<{ max_ver: number }[]>`SELECT COALESCE(MAX(version), 0) as max_ver FROM board_snapshot`;
       return rows[0]?.max_ver || 0;
     },
-    getSnapshot: async (version: number) => {
-      const rows = await this.sql<BoardSnapshot[]>`SELECT id, version, snapshot_data as "snapshotData", created_at as "createdAt" FROM board_snapshot WHERE version = ${version}`;
+    getLatest: async () => {
+      const rows = await this.sql<BoardSnapshot[]>`
+        SELECT id, version, source_snapshot_id as "sourceSnapshotId", trigger_event_id as "triggerEventId",
+               snapshot_data as "snapshotData", metrics, created_by as "createdBy", committed_at as "committedAt",
+               created_at as "createdAt"
+        FROM board_snapshot ORDER BY version DESC LIMIT 1
+      `;
       return rows[0] || null;
     },
-    createSnapshot: async (data: Record<string, unknown>) => {
+    getSnapshot: async (version: number) => {
+      const rows = await this.sql<BoardSnapshot[]>`
+        SELECT id, version, source_snapshot_id as "sourceSnapshotId", trigger_event_id as "triggerEventId",
+               snapshot_data as "snapshotData", metrics, created_by as "createdBy", committed_at as "committedAt",
+               created_at as "createdAt"
+        FROM board_snapshot WHERE version = ${version}
+      `;
+      return rows[0] || null;
+    },
+    createSnapshot: async (
+      data: Record<string, unknown>,
+      extra?: { sourceSnapshotId?: string; triggerEventId?: string },
+    ) => {
       const nextVer = (await this.boardSnapshots.getLatestVersion()) + 1;
       const rows = await this.sql<BoardSnapshot[]>`
-        INSERT INTO board_snapshot (version, snapshot_data)
-        VALUES (${nextVer}, ${JSON.stringify(data)})
-        RETURNING id, version, snapshot_data as "snapshotData", created_at as "createdAt"
+        INSERT INTO board_snapshot (version, snapshot_data, source_snapshot_id, trigger_event_id)
+        VALUES (${nextVer}, ${JSON.stringify(data)}, ${extra?.sourceSnapshotId || null}, ${extra?.triggerEventId || null})
+        RETURNING id, version, source_snapshot_id as "sourceSnapshotId", trigger_event_id as "triggerEventId",
+                  snapshot_data as "snapshotData", metrics, created_by as "createdBy", committed_at as "committedAt",
+                  created_at as "createdAt"
       `;
       return rows[0];
     },

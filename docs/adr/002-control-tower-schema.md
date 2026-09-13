@@ -20,4 +20,4 @@ Leave `recurrence` and `intake_message` in place unused (P2). Prefer `risk_polic
 
 ## Consequences
 
-TypeScript types and `IDatabase` gained `events`, `proposals`, and `candidatePlans`. Offer/accept remains for a P1 technician flow. Eastwind seed (6–10 techs) is still to land; the memory double still plants 16 names for old G-suite sketches.
+See [`docs/adr/003-g0-contracts.md`](adr/003-g0-contracts.md). TypeScript types and `IDatabase` gained `events`, `proposals`, and `candidatePlans`. Offer/accept remains for a P1 technician flow. Eastwind seed is `src/shared/fixtures/eastwind.ts` (6 technicians, 12 jobs).

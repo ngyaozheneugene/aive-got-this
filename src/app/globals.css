@@ -1,0 +1,16 @@
+html,
+body {
+  margin: 0;
+  background: #f4f1ea;
+  color: #161410;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+a {
+  color: #16325c;
+}

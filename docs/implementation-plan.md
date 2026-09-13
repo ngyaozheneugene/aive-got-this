@@ -167,18 +167,18 @@ The agent may propose. It cannot bypass the optimizer, the validator, the risk p
 
 Existing member numbers stay. Plan roles A–D map onto them.
 
-| Plan role | Member | Owns | Secondary |
-|---|---|---|---|
-| D — platform | 1 | Compose, Lightsail, `db/`, `seed/`, `src/db/`, people/catalog/dispatch, `src/app/api/` commit/version/reset, CI | 4 |
-| A — scheduler | 2 | `src/matching/`, `src/location/`, `services/optimizer/`, validator, G-suite, fixtures | 1 |
-| B — agent | 3 | `src/agent/`, risk policy, A/X suites, tool Zod contracts | 2 |
-| C — desk | 4 | `src/app/(desk)/`, `(technician)/` as P1, comparison, approval UI, trace | 3 |
+| Plan role | Member | Name | Owns | Secondary |
+|---|---|---|---|---|
+| D — platform | 1 | Eugene | Compose, Lightsail, `db/`, `seed/`, `src/db/`, people/catalog/dispatch, `src/app/api/` commit/version/reset, CI | Khant |
+| A — scheduler | 2 | Damon | `src/matching/`, `src/location/`, `services/optimizer/`, validator, G-suite, fixtures | Eugene |
+| B — agent | 3 | Deen | `src/agent/`, risk policy, A/X suites, tool Zod contracts | Damon |
+| C — desk | 4 | Khant | `src/app/(desk)/`, `(technician)/` as P1, comparison, approval UI, trace | Deen |
 
 Shared: `src/shared/`, `docs/adr/`.
 
 ### 4.1 RACI (critical deliverables)
 
-| Deliverable | 1 | 2 | 3 | 4 |
+| Deliverable | Eugene (1) | Damon (2) | Deen (3) | Khant (4) |
 |---|---|---|---|---|
 | Shared schemas and `propose()` | C | A/R | C | C |
 | Seed and scenario fixtures | A/R | C | I | C |
@@ -197,10 +197,10 @@ The first live demo is 30 minutes. It is not four narrators.
 
 | Seat | During the 30 minutes |
 |---|---|
-| 4 | One mouse on the desk |
-| 3 | Narrates the loop (usually) |
-| 1 | Recovers Lightsail if the box dies |
-| 2 | Solver / `propose()` Q&A |
+| Khant (4) | One mouse on the desk |
+| Deen (3) | Narrates the loop (usually) |
+| Eugene (1) | Recovers Lightsail if the box dies |
+| Damon (2) | Solver / `propose()` Q&A |
 
 ---
 
@@ -398,7 +398,7 @@ Customer paste-intake is not an opening beat.
 
 The repository already exists. Do not create another one.
 
-1. Assign members 1–4 to the table in §4.
+1. Assign members 1–4 to the table in §4. Done: Eugene, Damon, Deen, Khant.
 2. Freeze IDs, statuses, reason codes, and `propose()` onto `src/shared/`.
 3. Seed Eastwind Aircon: six technicians, twelve jobs, Raffles Place urgent, locked SLA, scarce cert. One reset paints the desk.
 4. Desk wireframe: timeline, two-plan compare, approve.
@@ -416,4 +416,4 @@ Until G1 passes, do not spend material time on OpenClaw, live maps, OR-Tools pol
 | Version | Date | Notes |
 |---|---|---|
 | v1.0 | 8 Sep 2026 | Internal draft labelled DispatchIQ. FastAPI + Vite + SQLite + in-process OR-Tools. |
-| v1.1 | 9 Sep 2026 | Generic product name. Keep Next.js and Postgres. OR-Tools as sidecar. Insertion for G1; solver P0 for replans. Align with `origin/main`. First live demo set to 30 minutes. Workflow and use cases in `docs/workflow.md` and `docs/usecases.md`. |
+| v1.1 | 9 Sep 2026 | Generic product name. Keep Next.js and Postgres. OR-Tools as sidecar. Insertion for G1; solver P0 for replans. Align with `origin/main`. First live demo set to 30 minutes. Workflow and use cases in `docs/workflow.md` and `docs/usecases.md`. G0 contracts and Eastwind fixture in code (`docs/adr/003-g0-contracts.md`). |

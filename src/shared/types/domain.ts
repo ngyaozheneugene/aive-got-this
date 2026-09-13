@@ -88,14 +88,30 @@ export type ProposalStatus =
   | 'SUPERSEDED'
   | 'REJECTED';
 
-export type StageAExclusionReason = 
+export type StageAExclusionReason =
   | 'missing_cert'
   | 'cert_expired'
   | 'tier_too_low'
   | 'not_clocked_in'
   | 'on_leave_or_mc'
   | 'max_minutes_exceeded'
-  | 'no_fit_in_window';
+  | 'no_fit_in_window'
+  | 'missing_parts'
+  | 'missing_tools'
+  | 'locked_job'
+  | 'in_progress'
+  | 'travel_infeasible';
+
+export type ToolName =
+  | 'retrieve_board'
+  | 'propose'
+  | 'validate'
+  | 'classify_risk'
+  | 'request_approval'
+  | 'commit'
+  | 'audit';
+
+export type SolverEngine = 'insertion' | 'ortools' | 'stub';
 
 // ============================================================================
 // DOMAIN ENTITY INTERFACES
@@ -242,14 +258,29 @@ export interface JobRequirement {
   createdAt: string;
 }
 
-export interface ScoreBreakdown {
-  qualificationFit: number; // 45% weight
-  travelCost: number;       // 25% weight
-  clusterFit: number;       // 10% weight
-  workload: number;         // 10% weight
-  slaRisk: number;          // 10% weight
-  overQualificationPenalty: number;
-  totalScore: number;
+export interface PlanMetrics {
+  slaLatenessMinutes: number;
+  travelMinutes: number;
+  overtimeMinutes: number;
+  jobsMoved: number;
+  customersAffected: number;
+  unassignedCount: number;
+}
+
+export function emptyPlanMetrics(): PlanMetrics {
+  return {
+    slaLatenessMinutes: 0,
+    travelMinutes: 0,
+    overtimeMinutes: 0,
+    jobsMoved: 0,
+    customersAffected: 0,
+    unassignedCount: 0,
+  };
+}
+
+export interface PlanValidation {
+  ok: boolean;
+  violations: string[];
 }
 
 export interface Assignment {
@@ -264,7 +295,7 @@ export interface Assignment {
   offeredAt: string;
   expiresAt?: string;
   acceptedAt?: string;
-  scoreBreakdown: ScoreBreakdown;
+  metrics: PlanMetrics;
   decisionLogId?: string;
 }
 
@@ -362,20 +393,51 @@ export interface Proposal {
   createdAt: string;
 }
 
+export interface PlannedSlot {
+  jobId: string;
+  technicianId: string;
+  windowStart?: string;
+  windowEnd?: string;
+  travelBeforeMinutes?: number;
+}
+
 export interface CandidatePlan {
   id: string;
   proposalId: string;
   sourceSnapshotId: string;
   profile: PlanProfile;
-  assignments: Record<string, unknown>[];
+  assignments: PlannedSlot[];
   changeSet: Record<string, unknown>[];
-  metrics: Record<string, unknown>;
-  validations: Record<string, unknown>;
+  metrics: PlanMetrics;
+  validations: PlanValidation;
   solverTrace: Record<string, unknown>;
   timedOut: boolean;
   durationMs?: number;
   status: 'VALIDATED' | 'REJECTED' | 'RECOMMENDED';
   createdAt: string;
+}
+
+export interface BoardSchedule {
+  date: string;
+  snapshotId: string;
+  snapshotVersion: number;
+  technicians: Technician[];
+  jobs: Job[];
+  assignments: Assignment[];
+  travel: TravelMatrix[];
+}
+
+export interface ProposeInput {
+  event: OperationalEvent;
+  schedule: BoardSchedule;
+  profile: PlanProfile;
+}
+
+export interface ProposeOutput {
+  plans: CandidatePlan[];
+  engine: SolverEngine;
+  timedOut: boolean;
+  message?: string;
 }
 
 // ============================================================================
@@ -388,22 +450,26 @@ export interface EligibleTechnician {
   exclusionReasons: StageAExclusionReason[];
 }
 
-export interface RankedTechnician {
+export interface DeskTechnicianRow {
   technician: Technician;
-  rank: number;
-  scoreBreakdown: ScoreBreakdown;
-  travelMinutes: number;
-  isTopChoice: boolean;
+  shift?: Shift;
+  assignedJobIds: string[];
+  loadMinutes: number;
 }
 
-export interface DeskBoardItem {
+export interface DeskJobRow {
   job: Job;
   customer: Customer;
   site: Site;
-  assignedTechnician?: Technician;
-  topRanked: RankedTechnician[];
-  eligibleCount: number;
-  excludedCount: number;
+  assignment?: Assignment;
+  technician?: Technician;
+}
+
+export interface DeskBoard {
+  date: string;
+  snapshot: BoardSnapshot;
+  technicians: DeskTechnicianRow[];
+  jobs: DeskJobRow[];
 }
 
 export interface DeskProposalView {

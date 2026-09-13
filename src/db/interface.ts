@@ -21,8 +21,7 @@ import {
   BoardSnapshot,
   DecisionLog,
   Approval,
-  ApprovalStatus,
-  ScoreBreakdown,
+  PlanMetrics,
   OperationalEvent,
   OperationalEventStatus,
   Proposal,
@@ -108,12 +107,22 @@ export interface IDatabase {
     getById(id: string): Promise<Assignment | null>;
     getByJobId(jobId: string): Promise<Assignment[]>;
     getActiveForTechnician(technicianId: string, dateStr: string): Promise<Assignment[]>;
+    listAll(): Promise<Assignment[]>;
+    createCommitted(params: {
+      jobId: string;
+      technicianId: string;
+      snapshotId: string;
+      windowStart?: string;
+      windowEnd?: string;
+      travelBeforeMinutes?: number;
+      metrics?: PlanMetrics;
+    }): Promise<Assignment>;
     createOffer(params: {
       jobId: string;
       technicianId: string;
       snapshotId: string;
       expiresInMinutes?: number;
-      scoreBreakdown: ScoreBreakdown;
+      metrics?: PlanMetrics;
       decisionLogId?: string;
     }): Promise<Assignment>;
     acceptOffer(assignmentId: string): Promise<Assignment>;
@@ -130,14 +139,19 @@ export interface IDatabase {
   // Travel Matrix
   travelMatrix: {
     getTravelMinutes(fromCluster: string, toCluster: string, isPeak?: boolean): Promise<number>;
+    listAll(): Promise<TravelMatrix[]>;
     setMatrix(entries: Array<{ fromCluster: string; toCluster: string; minutes: number; peakMinutes: number }>): Promise<void>;
   };
 
   // Snapshots & Decision Logs
   boardSnapshots: {
     getLatestVersion(): Promise<number>;
+    getLatest(): Promise<BoardSnapshot | null>;
     getSnapshot(version: number): Promise<BoardSnapshot | null>;
-    createSnapshot(data: Record<string, unknown>): Promise<BoardSnapshot>;
+    createSnapshot(
+      data: Record<string, unknown>,
+      extra?: { sourceSnapshotId?: string; triggerEventId?: string },
+    ): Promise<BoardSnapshot>;
   };
 
   decisionLogs: {

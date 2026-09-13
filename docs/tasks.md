@@ -3,7 +3,7 @@
 **Current gate:** G0  
 **Kickoff:** 9 Sep 2026 (Day 1 unless the team records otherwise)  
 **Agents:** read [`AGENTS.md`](../AGENTS.md), then this file. Tick boxes you complete. Do not invent a parallel TODO.  
-**Humans:** names on seats 1–4 still need assigning.
+**Humans:** Eugene (1 platform), Damon (2 scheduler), Deen (3 agent), Khant (4 desk).
 
 Until G0 is all `[x]`, do not start OpenClaw, live maps, OR-Tools polish, Cognito, or a second web stack.
 
@@ -24,17 +24,17 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 
 - [x] Execution docs: plan, stack, ADRs, team briefs, workflow, use cases
 - [x] Schema + domain types for events, proposals, candidate plans, risk, snapshots
-- [x] `IDatabase` + memory + postgres adapters (memory still plants 16 old techs — replace with Eastwind)
+- [x] `IDatabase` + memory + postgres adapters
 - [x] Optimizer sidecar skeleton: `GET /health`, stub `POST /propose`, Compose service
-- [ ] **Human:** put four names on members 1–4
-- [ ] `src/shared/contracts/` — Zod for events, `propose()`, tools, board/proposal read models (2 + 3, consumed by 1)
-- [ ] `src/shared/config/` — plan weights, timeouts, reason-code enums (2)
-- [ ] Freeze `propose(event, schedule, profile)` types in `src/shared/` (2)
-- [ ] Eastwind fixture: 6 techs, 12 jobs, Raffles Place urgent, locked SLA, scarce cert (`seed/` + memory) (1)
-- [ ] Gateway smoke: strict JSON vs native tools; record result; native tools stay off if they fail (3)
-- [ ] Confirm optimizer `/health` locally via `npm run db:up` (1 + 2)
+- [x] `src/shared/contracts/` — Zod for events, `propose()`, tools
+- [x] `src/shared/config/` — plan weights, timeouts, reason-code enums
+- [x] Freeze `propose(event, schedule, profile)` types in `src/shared/`
+- [x] Eastwind fixture: 6 techs, 12 jobs, Raffles Place urgent, locked SLA, scarce cert (memory; SQL apply still open)
+- [x] **Human:** put four names on members 1–4 (Eugene, Damon, Deen, Khant)
+- [ ] Gateway smoke: strict JSON vs native tools; record result; native tools stay off if they fail (Deen)
+- [ ] Confirm optimizer `/health` locally via `npm run db:up` (Eugene + Damon)
 
-**G0 exit:** members 2–4 can code against frozen Zod and the memory adapter without waiting on Lightsail.
+**G0 exit:** Damon, Deen, and Khant can code against frozen Zod and the memory adapter without waiting on Lightsail. Gateway smoke still needed from Deen.
 
 ---
 
@@ -44,8 +44,8 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [ ] Travel matrix (cached); scheduling does not use straight-line (2)
 - [ ] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
 - [ ] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
-- [ ] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan`, `GET /api/proposals/{id}` (1)
-- [ ] Desk: timeline from fixtures + two-plan card (mock API until handlers exist) (4)
+- [x] APIs: `GET /api/schedule/current`, `POST /api/events` (plan / decision / commit still 501)
+- [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
 - [ ] First Lightsail deploy with `/health` (1)
 

@@ -2,7 +2,7 @@
 
 **Team:** AI've Got This
 **Event:** Show Me Your Agents, NUS-ISS
-**Status:** v1.1 execution contract. Scaffold is on `main`; application behaviour is still to land.
+**Status:** v1.1. G0 contracts and Eastwind Tuesday are in the repo. Insertion `propose()` is still a stub.
 
 An agent-assisted control tower for a Singapore HVAC SME. The day is already booked. When an urgent job arrives, a technician becomes unavailable, or a repair overruns, the system produces at least two validated recoveries, shows the trade-off, and will not commit a consequential change without the desk.
 
@@ -35,9 +35,10 @@ Do not add a second Vite SPA, Cognito, App Runner, Bedrock as our billed model, 
 
 ```bash
 npm ci
+cp .env.example .env   # memory Eastwind by default; gateway key later
+npm run dev            # http://localhost:3000/desk
+# optional:
 npm run db:up          # Postgres 16 + optimizer sidecar
-cp .env.example .env   # then set the gateway key if you have one
-npm run dev            # http://localhost:3000
 ```
 
 ```bash
@@ -48,7 +49,7 @@ npm run test:g         # no model
 
 `npm run test:a` and `npm run test:x` need the gateway; they run on a schedule in CI, not on every push.
 
-Demo reset, once the API exists: `POST /api/demo/reset`.
+Open http://localhost:3000/desk for the Eastwind Tuesday board. `POST /api/demo/reset` restores it. `GET /health` reports app + optimizer.
 
 ---
 
@@ -57,7 +58,7 @@ Demo reset, once the API exists: `POST /api/demo/reset`.
 ```text
 aive-got-this/
 ├── src/app/                 Next.js. Desk is (desk)/; API under api/
-├── src/shared/              Zod, types, config. Imports nothing
+├── src/shared/              Zod contracts, types, config, Eastwind fixture
 ├── src/db/                  postgres/ + memory/ (same interface)
 ├── src/matching/            Stage A gate, validator; insertion propose()
 ├── src/location/            postal + travel matrix
@@ -77,9 +78,9 @@ aive-got-this/
 
 Import rules:
 
-- `src/shared/` imports nothing.
-- `src/matching/` has no HTTP, no AWS SDK, no database client.
-- `src/agent/` never imports SQL. State changes go through tools that re-validate.
+- `src/shared/` may import `zod` in `contracts/` only. No HTTP, SQL, or React.
+- `src/matching/` has no HTTP, no DB client, no AWS SDK.
+- `src/agent/` never imports SQL.
 - The browser never writes the board. Only the commit path does, after validation and policy.
 
 ---
@@ -114,14 +115,14 @@ Do not open with WhatsApp intake. Do not fill the extra time with OpenClaw or a 
 
 ## Team
 
-Four streams. Names live on the issue board; folders are already split.
+Four streams.
 
-| Member | Stream |
-|---|---|
-| 1 | Platform and data (Compose, Lightsail, schema, commit/reset APIs) |
-| 2 | Scheduler (eligibility, travel, validator, OR-Tools sidecar, G-suite) |
-| 3 | Agent (LangGraph, risk policy, A/X suites) |
-| 4 | Desk (timeline, compare, approve, trace) |
+| Member | Name | Stream |
+|---|---|---|
+| 1 | Eugene | Platform and data (Compose, Lightsail, schema, commit/reset APIs) |
+| 2 | Damon | Scheduler (eligibility, travel, validator, OR-Tools sidecar, G-suite) |
+| 3 | Deen | Agent (LangGraph, risk policy, A/X suites) |
+| 4 | Khant | Desk (timeline, compare, approve, trace) |
 
 ---
 

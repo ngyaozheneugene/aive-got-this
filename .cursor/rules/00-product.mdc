@@ -10,7 +10,7 @@ Start at `AGENTS.md`, then `docs/tasks.md`. Obey **Current gate**. Tick boxes yo
 Product: control-tower recovery for Eastwind Aircon. Name is Dispatch Coordinator, not DispatchIQ. First demo is 30 minutes of the P0 loop, not extra features.
 
 - Model picks the next named tool. Code owns eligibility, scores, validation, risk, writes.
-- `src/shared/` imports nothing. `src/matching/` has no HTTP/DB/AWS. `src/agent/` never imports SQL.
+- `src/shared/` may import `zod` in `contracts/` only. `src/matching/` has no HTTP/DB/AWS. `src/agent/` never imports SQL.
 - Browser never writes the board. Commit needs validator + policy + matching snapshot version.
 - Do not build: WhatsApp intake spine, OpenClaw, Hermes, live GPS, Cognito, App Runner, RDS, Vite SPA, customer portal.
 - Leave `infra/apprunner`, `infra/cognito`, `infra/rds`, `src/platform/aws/` empty.

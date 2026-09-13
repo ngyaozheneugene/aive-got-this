@@ -221,13 +221,13 @@ def table(rows):
 
 
 MERMAID_STEPS = [
-    "An event or the 15-minute tick starts the run.",
-    "Load the job, the board snapshot and the history.",
-    "PLAN. Pick exactly one named playbook and log it.",
-    "ACT. Call tools. Each one re-validates against Postgres.",
-    "VERIFY. Read the board back. Invariants must still hold.",
-    "If the policy says needs-desk, call request_desk_approval, interrupt and wait.",
-    "The desk approves or rejects, the same thread_id resumes, and decision_log is written.",
+    "A disruption arrives against the current board snapshot.",
+    "Retrieve the board. Call propose() for sla_first and minimal_disruption.",
+    "The independent validator rejects any illegal candidate.",
+    "Risk policy chooses AUTO, APPROVAL, or BLOCK.",
+    "Medium risk interrupts at the desk. High risk has no commit path.",
+    "Commit writes a new board_snapshot. Metrics are recalculated from the board.",
+    "decision_log is the trace. The model never wrote the schedule.",
 ]
 
 
