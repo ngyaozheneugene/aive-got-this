@@ -1,10 +1,14 @@
 # Product data on this box. Next.js runs with `npm run dev` locally and in
 # Compose on Lightsail. After a schema change, recreate the volume:
 #   docker compose down -v && docker compose up -d postgres
+#
+# Local dev:  npm run db:up      (postgres + optimizer only; app via npm run dev)
+# On the box: docker compose up -d --build  (all three; no Node installed there)
 services:
   postgres:
     image: postgres:16-alpine
     container_name: aive-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: dispatch
       POSTGRES_PASSWORD: dispatch
@@ -26,6 +30,7 @@ services:
   optimizer:
     build: ./services/optimizer
     container_name: aive-optimizer
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
@@ -35,6 +40,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # Next.js. Not started by `npm run db:up` — local dev uses `npm run dev`.
+  app:
+    build: .
+    container_name: aive-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    # Secrets and settings come from .env on the box. Never baked into the image.
+    env_file:
+      - .env
+    environment:
+      # Inside the Compose network, `localhost` means *this container*.
+      # Services reach each other by service name, so these override .env.
+      DATABASE_URL: postgres://dispatch:dispatch@postgres:5432/dispatch
+      OPTIMIZER_URL: http://optimizer:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      optimizer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   pgdata:

@@ -32,7 +32,7 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] Eastwind fixture: 6 techs, 12 jobs, Raffles Place urgent, locked SLA, scarce cert (memory; SQL apply still open)
 - [x] **Human:** put four names on members 1–4 (Eugene, Damon, Deen, Khant)
 - [ ] Gateway smoke: strict JSON vs native tools; record result; native tools stay off if they fail (Deen)
-- [ ] Confirm optimizer `/health` locally via `npm run db:up` (Eugene + Damon)
+- [x] Confirm optimizer `/health` locally via `npm run db:up` (Eugene + Damon) — ortools 9.15.6755, both containers healthy
 
 **G0 exit:** Damon, Deen, and Khant can code against frozen Zod and the memory adapter without waiting on Lightsail. Gateway smoke still needed from Deen.
 

@@ -19,6 +19,8 @@
     "test:unit": "vitest run --dir src",
     "db:up": "docker compose up -d postgres optimizer",
     "db:down": "docker compose down",
+    "deploy:up": "docker compose up -d --build",
+    "deploy:logs": "docker compose logs -f app",
     "docx": "python build/build_docx.py"
   },
   "dependencies": {
