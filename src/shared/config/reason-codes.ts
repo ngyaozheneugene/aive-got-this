@@ -34,3 +34,19 @@ export const RISK_POLICY = {
   medium: 'approval',
   high: 'block',
 } as const;
+
+// Why a commit was refused. The desk renders these; the model never invents one.
+// Order here mirrors the order the guard checks them in.
+export const COMMIT_REJECTIONS = [
+  'proposal_not_found',
+  'plan_not_found',
+  'plan_not_in_proposal',
+  'already_committed',
+  'validation_failed',
+  'snapshot_mismatch',
+  'stale_snapshot',
+  'approval_required',
+  'commit_blocked',
+] as const;
+
+export type CommitRejection = (typeof COMMIT_REJECTIONS)[number];
