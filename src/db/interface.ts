@@ -128,6 +128,12 @@ export interface IDatabase {
     acceptOffer(assignmentId: string): Promise<Assignment>;
     declineOffer(assignmentId: string): Promise<Assignment>;
     expireOffer(assignmentId: string): Promise<Assignment>;
+    /**
+     * Take an assignment off the live board without deleting it. The commit path
+     * calls this before writing replacements, so a moved job stops counting
+     * against its old technician while the row survives for the audit trail.
+     */
+    supersede(assignmentId: string, status: 'reassigned' | 'cancelled'): Promise<Assignment>;
   };
 
   // Audit Events
@@ -156,6 +162,8 @@ export interface IDatabase {
 
   decisionLogs: {
     getById(id: string): Promise<DecisionLog | null>;
+    /** Ordered trail for one event. Backs the audit endpoint and the trace drawer. */
+    listByEvent(eventId: string): Promise<DecisionLog[]>;
     create(log: Omit<DecisionLog, 'id' | 'createdAt'>): Promise<DecisionLog>;
   };
 

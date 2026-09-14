@@ -365,6 +365,13 @@ export class PostgresDatabase {
       `;
       return rows[0];
     },
+    supersede: async (assignmentId: string, status: 'reassigned' | 'cancelled') => {
+      const rows = await this.sql<Assignment[]>`
+        UPDATE assignment SET status = ${status} WHERE id = ${assignmentId}
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
+      `;
+      return rows[0];
+    },
     expireOffer: async (assignmentId: string) => {
       const rows = await this.sql<Assignment[]>`
         UPDATE assignment SET status = 'expired' WHERE id = ${assignmentId}
@@ -452,16 +459,31 @@ export class PostgresDatabase {
     },
   };
 
+  // decision_log is append-only. Every column the schema defines is written and
+  // read back: event_id in particular, or listByEvent can never match anything.
   decisionLogs = {
     getById: async (id: string) => {
-      const rows = await this.sql<DecisionLog[]>`SELECT id, event_type as "eventType", playbook, tool_calls as "toolCalls", summary, approval_id as "approvalId", created_at as "createdAt" FROM decision_log WHERE id = ${id}`;
+      const rows = await this.sql<DecisionLog[]>`SELECT id, event_id as "eventId", event_type as "eventType", playbook, sequence, stage, tool_calls as "toolCalls", summary, reason_codes as "reasonCodes", duration_ms as "durationMs", result, approval_id as "approvalId", created_at as "createdAt" FROM decision_log WHERE id = ${id}`;
       return rows[0] || null;
+    },
+    listByEvent: async (eventId: string) => {
+      return await this.sql<DecisionLog[]>`
+        SELECT id, event_id as "eventId", event_type as "eventType", playbook, sequence, stage, tool_calls as "toolCalls", summary, reason_codes as "reasonCodes", duration_ms as "durationMs", result, approval_id as "approvalId", created_at as "createdAt"
+        FROM decision_log
+        WHERE event_id = ${eventId}
+        ORDER BY sequence ASC NULLS LAST, created_at ASC
+      `;
     },
     create: async (log: Omit<DecisionLog, 'id' | 'createdAt'>) => {
       const rows = await this.sql<DecisionLog[]>`
-        INSERT INTO decision_log (event_type, playbook, tool_calls, summary, approval_id)
-        VALUES (${log.eventType}, ${log.playbook}, ${JSON.stringify(log.toolCalls)}, ${log.summary}, ${log.approvalId || null})
-        RETURNING id, event_type as "eventType", playbook, tool_calls as "toolCalls", summary, approval_id as "approvalId", created_at as "createdAt"
+        INSERT INTO decision_log (event_id, event_type, playbook, sequence, stage, tool_calls, summary, reason_codes, duration_ms, result, approval_id)
+        VALUES (
+          ${log.eventId ?? null}, ${log.eventType}, ${log.playbook}, ${log.sequence ?? null},
+          ${log.stage ?? null}, ${JSON.stringify(log.toolCalls)}, ${log.summary},
+          ${JSON.stringify(log.reasonCodes ?? [])}, ${log.durationMs ?? null},
+          ${log.result ?? null}, ${log.approvalId ?? null}
+        )
+        RETURNING id, event_id as "eventId", event_type as "eventType", playbook, sequence, stage, tool_calls as "toolCalls", summary, reason_codes as "reasonCodes", duration_ms as "durationMs", result, approval_id as "approvalId", created_at as "createdAt"
       `;
       return rows[0];
     },
