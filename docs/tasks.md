@@ -47,7 +47,7 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events` (plan / decision / commit still 501)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
-- [ ] First Lightsail deploy with `/health` (1)
+- [x] First Lightsail deploy with `/health` (1) — http://54.179.142.4:8080 (Ubuntu 24.04, 4 GB, ap-southeast-1)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
 
