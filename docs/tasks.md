@@ -63,15 +63,25 @@ now be pointed at the live API instead of mocks.
 
 ## G2 — Controlled commit (Day 10)
 
-- [ ] `POST /api/proposals/{id}/decision` and `POST /api/proposals/{id}/commit` (1)
-- [ ] Stale `sourceSnapshotId` rejected (1) — UC-07
-- [ ] Medium risk cannot commit without an `approval` row (1 + 3) — UC-12
-- [ ] High risk / infeasible: no commit path (2 + 3) — UC-02, UC-06
+- [x] `POST /api/proposals/{id}/decision` and `POST /api/proposals/{id}/commit` (1)
+- [x] Stale `sourceSnapshotId` rejected (1) — UC-07 — two proposals race, loser refused, board unchanged
+- [x] Medium risk cannot commit without an `approval` row (1 + 3) — UC-12 — enforced and tested in `src/dispatch/commit-policy.ts`. Still needs member 3's classifier to set `risk` / `autonomyMode` on the proposal.
+- [x] High risk / infeasible: no commit path (2 + 3) — UC-02, UC-06 — blocked even with an approval on file; a plan whose `validations.ok` is false is refused. Needs member 2's validator to set that flag for real.
 - [ ] Desk: compare, approve/reject with reason, new snapshot on the board (4)
-- [ ] `POST /api/demo/reset` idempotent to Eastwind Tuesday (1) — UC-10
+- [x] `POST /api/demo/reset` idempotent to Eastwind Tuesday (1) — UC-10 — commit, then five resets, identical board each time
 - [ ] Risk policy data: AUTO / APPROVAL / BLOCK (3)
 
 **G2 exit:** urgent job through approval to a new versioned snapshot. No P1 technician page until this is green.
+
+**G2 status 14 Sep:** every stream 1 item is done and tested (40 unit tests).
+The write path is `src/dispatch/commit-policy.ts` (pure decision) and
+`src/dispatch/commit.ts` (the only caller of `createSnapshot` in the codebase).
+Request shapes and reason codes for the desk are in
+[`docs/team/member-1/README.md`](team/member-1/README.md#6-commit-api-for-consumers).
+
+Blocked on other streams: `POST /api/events/{id}/plan` is still 501 because it
+needs member 2's `propose()`. Until that lands the commit path is proven by unit
+tests and fixtures, not by a live click-through.
 
 ---
 
