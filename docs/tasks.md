@@ -50,12 +50,12 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events` (plan / decision / commit still 501)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
-- [x] First Lightsail deploy with `/health` (1) — http://54.179.142.4:8080 (Ubuntu 24.04, 4 GB, ap-southeast-1)
+- [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
 
 **G1 status 14 Sep:** stream 1 (platform) is through — the stack is deployed and public at
-http://54.179.142.4:8080/desk, serving the seeded board. Everything still open is stream 2
+https://54.179.142.4.sslip.io/desk, serving the seeded board. Everything still open is stream 2
 (Stage A, travel, insertion `propose()`, G-suite) and stream 3 (graph state). The desk can
 now be pointed at the live API instead of mocks.
 

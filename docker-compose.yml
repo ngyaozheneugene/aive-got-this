@@ -3,6 +3,9 @@
 #   docker compose down -v && docker compose up -d postgres
 #
 # Local dev:  npm run db:up      (postgres + optimizer only; app via npm run dev)
+#
+# Caddy fronts the app on 80/443. Set SITE_ADDRESS in .env: a hostname on the
+# box so Caddy gets a real certificate, ":80" locally for plain HTTP.
 # On the box: docker compose up -d --build  (all three; no Node installed there)
 services:
   postgres:
@@ -68,5 +71,28 @@ services:
       retries: 5
       start_period: 20s
 
+  # TLS terminator. The only service the public internet talks to.
+  caddy:
+    image: caddy:2-alpine
+    container_name: aive-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # ":80" keeps local runs on plain HTTP with no certificate request.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Losing this volume means re-requesting on every
+      # restart, which burns Let's Encrypt rate limits fast.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
