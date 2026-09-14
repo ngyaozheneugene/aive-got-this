@@ -1,7 +1,10 @@
 # Task board
 
-**Current gate:** G0  
-**Kickoff:** 9 Sep 2026 (Day 1 unless the team records otherwise)  
+**Current gate:** G1 (G0 has one item left: gateway smoke, member 3)  
+**Kickoff:** 9 Sep 2026 (Day 1)  
+**Today:** 14 Sep 2026 — Day 6. G1 was due Day 5, so the board is one day behind.  
+**Hard wall:** the AWS lease and the submission both land ~28 Sep 2026. Confirm the exact
+date in the lease portal — the Day 21 row below currently falls *after* it.  
 **Agents:** read [`AGENTS.md`](../AGENTS.md), then this file. Tick boxes you complete. Do not invent a parallel TODO.  
 **Humans:** Eugene (1 platform), Damon (2 scheduler), Deen (3 agent), Khant (4 desk).
 
@@ -9,14 +12,14 @@ Until G0 is all `[x]`, do not start OpenClaw, live maps, OR-Tools polish, Cognit
 
 Move **Current gate** forward only when that gate’s exit line is satisfied.
 
-| Gate | Day | Exit |
-|---|---|---|
-| G0 | 2 | Contracts, fixtures, local run, gateway smoke |
-| G1 | 5 | Urgent event → valid proposal visible on the desk (insertion) |
-| G2 | 10 | Recommend, risk, approval, commit, new snapshot |
-| G3 | 14 | Three events, sidecar on replans, guardrails, trace, core tests |
-| G4 | 18 | Acceptance, backup, rollback, five timed 30-minute rehearsals |
-| G5 | 21 | Submit links, code, evidence, media |
+| Gate | Day | Date | Exit |
+|---|---|---|---|
+| G0 | 2 | 10 Sep | Contracts, fixtures, local run, gateway smoke |
+| G1 | 5 | 13 Sep | Urgent event → valid proposal visible on the desk (insertion) |
+| G2 | 10 | 18 Sep | Recommend, risk, approval, commit, new snapshot |
+| G3 | 14 | 22 Sep | Three events, sidecar on replans, guardrails, trace, core tests |
+| G4 | 18 | 26 Sep | Acceptance, backup, rollback, five timed 30-minute rehearsals |
+| G5 | 21 | 29 Sep | Submit links, code, evidence, media — **after the lease ends; pull this earlier** |
 
 ---
 
@@ -50,6 +53,11 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] First Lightsail deploy with `/health` (1) — http://54.179.142.4:8080 (Ubuntu 24.04, 4 GB, ap-southeast-1)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
+
+**G1 status 14 Sep:** stream 1 (platform) is through — the stack is deployed and public at
+http://54.179.142.4:8080/desk, serving the seeded board. Everything still open is stream 2
+(Stage A, travel, insertion `propose()`, G-suite) and stream 3 (graph state). The desk can
+now be pointed at the live API instead of mocks.
 
 ---
 
