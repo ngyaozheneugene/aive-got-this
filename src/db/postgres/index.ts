@@ -365,6 +365,13 @@ export class PostgresDatabase {
       `;
       return rows[0];
     },
+    supersede: async (assignmentId: string, status: 'reassigned' | 'cancelled') => {
+      const rows = await this.sql<Assignment[]>`
+        UPDATE assignment SET status = ${status} WHERE id = ${assignmentId}
+        RETURNING id, job_id as "jobId", technician_id as "technicianId", status, snapshot_id as "snapshotId", offered_at as "offeredAt", expires_at as "expiresAt", accepted_at as "acceptedAt", score_breakdown as "metrics"
+      `;
+      return rows[0];
+    },
     expireOffer: async (assignmentId: string) => {
       const rows = await this.sql<Assignment[]>`
         UPDATE assignment SET status = 'expired' WHERE id = ${assignmentId}
@@ -452,16 +459,31 @@ export class PostgresDatabase {
     },
   };
 
+  // decision_log is append-only. Every column the schema defines is written and
+  // read back: event_id in particular, or listByEvent can never match anything.
   decisionLogs = {
     getById: async (id: string) => {
-      const rows = await this.sql<DecisionLog[]>`SELECT id, event_type as "eventType", playbook, tool_calls as "toolCalls", summary, approval_id as "approvalId", created_at as "createdAt" FROM decision_log WHERE id = ${id}`;
+      const rows = await this.sql<DecisionLog[]>`SELECT id, event_id as "eventId", event_type as "eventType", playbook, sequence, stage, tool_calls as "toolCalls", summary, reason_codes as "reasonCodes", duration_ms as "durationMs", result, approval_id as "approvalId", created_at as "createdAt" FROM decision_log WHERE id = ${id}`;
       return rows[0] || null;
+    },
+    listByEvent: async (eventId: string) => {
+      return await this.sql<DecisionLog[]>`
+        SELECT id, event_id as "eventId", event_type as "eventType", playbook, sequence, stage, tool_calls as "toolCalls", summary, reason_codes as "reasonCodes", duration_ms as "durationMs", result, approval_id as "approvalId", created_at as "createdAt"
+        FROM decision_log
+        WHERE event_id = ${eventId}
+        ORDER BY sequence ASC NULLS LAST, created_at ASC
+      `;
     },
     create: async (log: Omit<DecisionLog, 'id' | 'createdAt'>) => {
       const rows = await this.sql<DecisionLog[]>`
-        INSERT INTO decision_log (event_type, playbook, tool_calls, summary, approval_id)
-        VALUES (${log.eventType}, ${log.playbook}, ${JSON.stringify(log.toolCalls)}, ${log.summary}, ${log.approvalId || null})
-        RETURNING id, event_type as "eventType", playbook, tool_calls as "toolCalls", summary, approval_id as "approvalId", created_at as "createdAt"
+        INSERT INTO decision_log (event_id, event_type, playbook, sequence, stage, tool_calls, summary, reason_codes, duration_ms, result, approval_id)
+        VALUES (
+          ${log.eventId ?? null}, ${log.eventType}, ${log.playbook}, ${log.sequence ?? null},
+          ${log.stage ?? null}, ${JSON.stringify(log.toolCalls)}, ${log.summary},
+          ${JSON.stringify(log.reasonCodes ?? [])}, ${log.durationMs ?? null},
+          ${log.result ?? null}, ${log.approvalId ?? null}
+        )
+        RETURNING id, event_id as "eventId", event_type as "eventType", playbook, sequence, stage, tool_calls as "toolCalls", summary, reason_codes as "reasonCodes", duration_ms as "durationMs", result, approval_id as "approvalId", created_at as "createdAt"
       `;
       return rows[0];
     },
@@ -470,17 +492,25 @@ export class PostgresDatabase {
   // Approvals Implementation
   approvals = {
     getById: async (id: string) => {
-      const rows = await this.sql<Approval[]>`SELECT id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE id = ${id}`;
+      const rows = await this.sql<Approval[]>`SELECT id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE id = ${id}`;
+      return rows[0] || null;
+    },
+    getByProposal: async (proposalId: string) => {
+      const rows = await this.sql<Approval[]>`
+        SELECT id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+        FROM approval WHERE proposal_id = ${proposalId}
+        ORDER BY created_at DESC LIMIT 1
+      `;
       return rows[0] || null;
     },
     listPending: async () => {
-      return await this.sql<Approval[]>`SELECT id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE status = 'pending'`;
+      return await this.sql<Approval[]>`SELECT id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE status = 'pending'`;
     },
     create: async (approval: Omit<Approval, 'id' | 'createdAt'>) => {
       const rows = await this.sql<Approval[]>`
         INSERT INTO approval (proposal_id, thread_id, job_id, source_snapshot_id, trigger_reason, recommendation, who_would_be_late, policy_reasons, approved_plan_id)
         VALUES (${approval.proposalId || null}, ${approval.threadId}, ${approval.jobId || null}, ${approval.sourceSnapshotId || null}, ${approval.triggerReason}, ${JSON.stringify(approval.recommendation)}, ${approval.whoWouldBeLate ? JSON.stringify(approval.whoWouldBeLate) : null}, ${JSON.stringify(approval.policyReasons || [])}, ${approval.approvedPlanId || null})
-        RETURNING id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+        RETURNING id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
       `;
       return rows[0];
     },
@@ -488,7 +518,7 @@ export class PostgresDatabase {
       const rows = await this.sql<Approval[]>`
         UPDATE approval SET status = ${status}, actioned_by = ${actionedBy}, actioned_reason = ${reason || null}, actioned_at = NOW()
         WHERE id = ${id}
-        RETURNING id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+        RETURNING id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
       `;
       return rows[0];
     },

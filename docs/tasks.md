@@ -1,7 +1,10 @@
 # Task board
 
-**Current gate:** G0  
-**Kickoff:** 9 Sep 2026 (Day 1 unless the team records otherwise)  
+**Current gate:** G1 (G0 has one item left: gateway smoke, member 3)  
+**Kickoff:** 9 Sep 2026 (Day 1)  
+**Today:** 14 Sep 2026 — Day 6. G1 was due Day 5, so the board is one day behind.  
+**Hard wall:** the AWS lease and the submission both land ~28 Sep 2026. Confirm the exact
+date in the lease portal — the Day 21 row below currently falls *after* it.  
 **Agents:** read [`AGENTS.md`](../AGENTS.md), then this file. Tick boxes you complete. Do not invent a parallel TODO.  
 **Humans:** Eugene (1 platform), Damon (2 scheduler), Deen (3 agent), Khant (4 desk).
 
@@ -9,14 +12,14 @@ Until G0 is all `[x]`, do not start OpenClaw, live maps, OR-Tools polish, Cognit
 
 Move **Current gate** forward only when that gate’s exit line is satisfied.
 
-| Gate | Day | Exit |
-|---|---|---|
-| G0 | 2 | Contracts, fixtures, local run, gateway smoke |
-| G1 | 5 | Urgent event → valid proposal visible on the desk (insertion) |
-| G2 | 10 | Recommend, risk, approval, commit, new snapshot |
-| G3 | 14 | Three events, sidecar on replans, guardrails, trace, core tests |
-| G4 | 18 | Acceptance, backup, rollback, five timed 30-minute rehearsals |
-| G5 | 21 | Submit links, code, evidence, media |
+| Gate | Day | Date | Exit |
+|---|---|---|---|
+| G0 | 2 | 10 Sep | Contracts, fixtures, local run, gateway smoke |
+| G1 | 5 | 13 Sep | Urgent event → valid proposal visible on the desk (insertion) |
+| G2 | 10 | 18 Sep | Recommend, risk, approval, commit, new snapshot |
+| G3 | 14 | 22 Sep | Three events, sidecar on replans, guardrails, trace, core tests |
+| G4 | 18 | 26 Sep | Acceptance, backup, rollback, five timed 30-minute rehearsals |
+| G5 | 21 | 29 Sep | Submit links, code, evidence, media — **after the lease ends; pull this earlier** |
 
 ---
 
@@ -51,19 +54,34 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
 
+**G1 status 14 Sep:** stream 1 (platform) is through — the stack is deployed and public at
+http://54.179.142.4:8080/desk, serving the seeded board. Everything still open is stream 2
+(Stage A, travel, insertion `propose()`, G-suite) and stream 3 (graph state). The desk can
+now be pointed at the live API instead of mocks.
+
 ---
 
 ## G2 — Controlled commit (Day 10)
 
-- [ ] `POST /api/proposals/{id}/decision` and `POST /api/proposals/{id}/commit` (1)
-- [ ] Stale `sourceSnapshotId` rejected (1) — UC-07
-- [ ] Medium risk cannot commit without an `approval` row (1 + 3) — UC-12
-- [ ] High risk / infeasible: no commit path (2 + 3) — UC-02, UC-06
+- [x] `POST /api/proposals/{id}/decision` and `POST /api/proposals/{id}/commit` (1)
+- [x] Stale `sourceSnapshotId` rejected (1) — UC-07 — two proposals race, loser refused, board unchanged
+- [x] Medium risk cannot commit without an `approval` row (1 + 3) — UC-12 — enforced and tested in `src/dispatch/commit-policy.ts`. Still needs member 3's classifier to set `risk` / `autonomyMode` on the proposal.
+- [x] High risk / infeasible: no commit path (2 + 3) — UC-02, UC-06 — blocked even with an approval on file; a plan whose `validations.ok` is false is refused. Needs member 2's validator to set that flag for real.
 - [ ] Desk: compare, approve/reject with reason, new snapshot on the board (4)
-- [ ] `POST /api/demo/reset` idempotent to Eastwind Tuesday (1) — UC-10
+- [x] `POST /api/demo/reset` idempotent to Eastwind Tuesday (1) — UC-10 — commit, then five resets, identical board each time
 - [ ] Risk policy data: AUTO / APPROVAL / BLOCK (3)
 
 **G2 exit:** urgent job through approval to a new versioned snapshot. No P1 technician page until this is green.
+
+**G2 status 14 Sep:** every stream 1 item is done and tested (40 unit tests).
+The write path is `src/dispatch/commit-policy.ts` (pure decision) and
+`src/dispatch/commit.ts` (the only caller of `createSnapshot` in the codebase).
+Request shapes and reason codes for the desk are in
+[`docs/team/member-1/README.md`](team/member-1/README.md#6-commit-api-for-consumers).
+
+Blocked on other streams: `POST /api/events/{id}/plan` is still 501 because it
+needs member 2's `propose()`. Until that lands the commit path is proven by unit
+tests and fixtures, not by a live click-through.
 
 ---
 

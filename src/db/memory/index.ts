@@ -359,6 +359,13 @@ export class InMemoryDatabase implements IDatabase {
       this.assignmentsMap.set(assignmentId, updated);
       return updated;
     },
+    supersede: async (assignmentId: string, status: 'reassigned' | 'cancelled') => {
+      const assignment = this.assignmentsMap.get(assignmentId);
+      if (!assignment) throw new Error(`Assignment ${assignmentId} not found`);
+      const updated = { ...assignment, status };
+      this.assignmentsMap.set(assignmentId, updated);
+      return updated;
+    },
     expireOffer: async (assignmentId: string) => {
       const assignment = this.assignmentsMap.get(assignmentId);
       if (!assignment) throw new Error(`Assignment ${assignmentId} not found`);
@@ -428,6 +435,19 @@ export class InMemoryDatabase implements IDatabase {
 
   decisionLogs = {
     getById: async (id: string) => this.decisionLogsMap.get(id) ?? null,
+    // `sequence` is the explicit step order and wins; entries without one sort
+    // last, then by timestamp. Mirrors the Postgres adapter's
+    // `ORDER BY sequence ASC NULLS LAST, created_at ASC` exactly - the two
+    // adapters must return the same order or the trace drawer lies.
+    listByEvent: async (eventId: string) =>
+      Array.from(this.decisionLogsMap.values())
+        .filter((log) => log.eventId === eventId)
+        .sort((a, b) => {
+          const aSeq = a.sequence ?? Number.MAX_SAFE_INTEGER;
+          const bSeq = b.sequence ?? Number.MAX_SAFE_INTEGER;
+          if (aSeq !== bSeq) return aSeq - bSeq;
+          return a.createdAt.localeCompare(b.createdAt);
+        }),
     create: async (log: Omit<DecisionLog, 'id' | 'createdAt'>) => {
       const created: DecisionLog = { ...log, id: this.generateId('dlog'), createdAt: this.nowIso() };
       this.decisionLogsMap.set(created.id, created);
@@ -438,6 +458,14 @@ export class InMemoryDatabase implements IDatabase {
   approvals = {
     getById: async (id: string) => this.approvalsMap.get(id) ?? null,
     listPending: async () => Array.from(this.approvalsMap.values()).filter((a) => a.status === 'pending'),
+    // Each desk decision writes its own row, so the newest one is the live
+    // verdict. Map preserves insertion order, which is creation order here.
+    getByProposal: async (proposalId: string) => {
+      const matches = Array.from(this.approvalsMap.values()).filter(
+        (a) => a.proposalId === proposalId,
+      );
+      return matches[matches.length - 1] ?? null;
+    },
     create: async (approval: Omit<Approval, 'id' | 'createdAt'>) => {
       const created: Approval = { ...approval, id: this.generateId('appr'), createdAt: this.nowIso() };
       this.approvalsMap.set(created.id, created);

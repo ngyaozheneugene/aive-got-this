@@ -8,9 +8,13 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const event = await getDatabase().events.getById(id);
+  const db = getDatabase();
+
+  const event = await db.events.getById(id);
   if (!event) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  return NextResponse.json({ eventId: id, entries: [] });
+
+  const entries = await db.decisionLogs.listByEvent(id);
+  return NextResponse.json({ eventId: id, status: event.status, entries });
 }
