@@ -1,0 +1,19 @@
+# Reverse proxy for the Dispatch Coordinator box.
+#
+# SITE_ADDRESS decides what Caddy does about TLS, and nothing else needs to change:
+#   ":80"                    plain HTTP. The local default - no certificate, no ACME.
+#   "54.179.142.4.sslip.io"  a hostname, so Caddy fetches a Let's Encrypt
+#                            certificate on first request and renews it forever.
+#
+# sslip.io resolves any IP embedded in the hostname back to that IP, which is how
+# a box with no domain name can still hold a real certificate.
+
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# app is the Compose service name. Nothing outside this network reaches it.
+	reverse_proxy app:8080 {
+		health_uri /health
+		health_interval 30s
+	}
+}
