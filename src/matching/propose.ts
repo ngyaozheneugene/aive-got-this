@@ -1,15 +1,19 @@
 import { travelMinutes } from '../location/matrix';
 import { PLAN_WEIGHTS } from '../shared/config/weights';
 import { EASTWIND_DATE } from '../shared/config/demo';
+import { EASTWIND } from '../shared/fixtures/eastwind';
 import type {
   CandidatePlan,
   Job,
+  JobRequirement,
   PlannedSlot,
   PlanMetrics,
   PlanProfile,
   ProposeInput,
   ProposeOutput,
+  Shift,
   Technician,
+  TechnicianCert,
 } from '../shared/types/domain';
 import { stageA } from './gates/stage-a';
 import { validatePlan } from './validate';
@@ -36,13 +40,19 @@ export function propose(input: ProposeInput): ProposeOutput {
     };
   }
 
+  // Extract certs, shifts, and jobRequirements from schedule or default to EASTWIND fixture
+  const certs: TechnicianCert[] = (schedule as unknown as { certs?: TechnicianCert[] }).certs || EASTWIND.certs;
+  const shifts: Shift[] = (schedule as unknown as { shifts?: Shift[] }).shifts || EASTWIND.shifts;
+  const requirements: JobRequirement[] =
+    (schedule as unknown as { jobRequirements?: JobRequirement[] }).jobRequirements || EASTWIND.jobRequirements;
+
   // 1. Stage A Eligibility Gate Check
   const stageAResults = stageA(
     targetJob,
     schedule.technicians || [],
-    [],
-    [],
-    [],
+    certs,
+    shifts,
+    requirements,
   );
 
   const eligibleTechs = stageAResults

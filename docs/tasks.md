@@ -43,21 +43,18 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 
 ## G1 — Urgent job on the desk (Day 5)
 
-- [ ] Stage A eligibility: cert, tier, shift, window, parts/tools, locks; nearest van can be illegal (2)
-- [ ] Travel matrix (cached); scheduling does not use straight-line (2)
-- [ ] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
-- [ ] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
-- [x] APIs: `GET /api/schedule/current`, `POST /api/events` (plan / decision / commit still 501)
+- [x] Stage A eligibility: cert, tier, shift, window, parts/tools, locks; nearest van can be illegal (2)
+- [x] Travel matrix (cached); scheduling does not use straight-line (2)
+- [x] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
+- [x] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
+- [x] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan` (decision / commit published)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
 - [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
 
-**G1 status 14 Sep:** stream 1 (platform) is through — the stack is deployed and public at
-https://54.179.142.4.sslip.io/desk, serving the seeded board. Everything still open is stream 2
-(Stage A, travel, insertion `propose()`, G-suite) and stream 3 (graph state). The desk can
-now be pointed at the live API instead of mocks.
+**G1 status 15 Sep:** stream 1 (platform) and stream 2 (scheduler) are through — Stage A, travel matrix, insertion `propose()`, validator, and G-01/G-02/G-03 evals are all complete and tested. stream 3 (agent graph state) remains.
 
 ---
 
