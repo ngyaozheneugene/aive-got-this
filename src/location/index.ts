@@ -1,1 +1,1 @@
-export { travelMinutes } from './matrix';
+export { isPeakHour, travelMinutes } from './matrix';
