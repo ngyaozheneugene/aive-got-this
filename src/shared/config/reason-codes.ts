@@ -42,6 +42,7 @@ export const COMMIT_REJECTIONS = [
   'plan_not_found',
   'plan_not_in_proposal',
   'already_committed',
+  'proposal_rejected',
   'validation_failed',
   'snapshot_mismatch',
   'stale_snapshot',

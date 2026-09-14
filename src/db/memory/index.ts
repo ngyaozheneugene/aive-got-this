@@ -458,6 +458,14 @@ export class InMemoryDatabase implements IDatabase {
   approvals = {
     getById: async (id: string) => this.approvalsMap.get(id) ?? null,
     listPending: async () => Array.from(this.approvalsMap.values()).filter((a) => a.status === 'pending'),
+    // Each desk decision writes its own row, so the newest one is the live
+    // verdict. Map preserves insertion order, which is creation order here.
+    getByProposal: async (proposalId: string) => {
+      const matches = Array.from(this.approvalsMap.values()).filter(
+        (a) => a.proposalId === proposalId,
+      );
+      return matches[matches.length - 1] ?? null;
+    },
     create: async (approval: Omit<Approval, 'id' | 'createdAt'>) => {
       const created: Approval = { ...approval, id: this.generateId('appr'), createdAt: this.nowIso() };
       this.approvalsMap.set(created.id, created);

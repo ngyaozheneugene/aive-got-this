@@ -71,11 +71,12 @@ export function checkCommit(input: CommitCheckInput): CommitCheck {
   if (proposal.status === 'COMMITTED') {
     return reject('already_committed', 409, `Proposal ${proposal.id} is already committed.`);
   }
-  if (
-    proposal.status === 'SUPERSEDED' ||
-    proposal.status === 'EXPIRED' ||
-    proposal.status === 'REJECTED'
-  ) {
+  if (proposal.status === 'REJECTED') {
+    // A desk rejection is a decision, not staleness. Saying "stale" here would
+    // invite a retry, when what is needed is a new proposal.
+    return reject('proposal_rejected', 409, `Proposal ${proposal.id} was rejected by the desk.`);
+  }
+  if (proposal.status === 'SUPERSEDED' || proposal.status === 'EXPIRED') {
     return reject('stale_snapshot', 409, `Proposal ${proposal.id} is ${proposal.status}.`);
   }
 

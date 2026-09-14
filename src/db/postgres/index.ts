@@ -492,17 +492,25 @@ export class PostgresDatabase {
   // Approvals Implementation
   approvals = {
     getById: async (id: string) => {
-      const rows = await this.sql<Approval[]>`SELECT id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE id = ${id}`;
+      const rows = await this.sql<Approval[]>`SELECT id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE id = ${id}`;
+      return rows[0] || null;
+    },
+    getByProposal: async (proposalId: string) => {
+      const rows = await this.sql<Approval[]>`
+        SELECT id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+        FROM approval WHERE proposal_id = ${proposalId}
+        ORDER BY created_at DESC LIMIT 1
+      `;
       return rows[0] || null;
     },
     listPending: async () => {
-      return await this.sql<Approval[]>`SELECT id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE status = 'pending'`;
+      return await this.sql<Approval[]>`SELECT id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt" FROM approval WHERE status = 'pending'`;
     },
     create: async (approval: Omit<Approval, 'id' | 'createdAt'>) => {
       const rows = await this.sql<Approval[]>`
         INSERT INTO approval (proposal_id, thread_id, job_id, source_snapshot_id, trigger_reason, recommendation, who_would_be_late, policy_reasons, approved_plan_id)
         VALUES (${approval.proposalId || null}, ${approval.threadId}, ${approval.jobId || null}, ${approval.sourceSnapshotId || null}, ${approval.triggerReason}, ${JSON.stringify(approval.recommendation)}, ${approval.whoWouldBeLate ? JSON.stringify(approval.whoWouldBeLate) : null}, ${JSON.stringify(approval.policyReasons || [])}, ${approval.approvedPlanId || null})
-        RETURNING id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+        RETURNING id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
       `;
       return rows[0];
     },
@@ -510,7 +518,7 @@ export class PostgresDatabase {
       const rows = await this.sql<Approval[]>`
         UPDATE approval SET status = ${status}, actioned_by = ${actionedBy}, actioned_reason = ${reason || null}, actioned_at = NOW()
         WHERE id = ${id}
-        RETURNING id, thread_id as "threadId", job_id as "jobId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
+        RETURNING id, proposal_id as "proposalId", thread_id as "threadId", job_id as "jobId", source_snapshot_id as "sourceSnapshotId", trigger_reason as "triggerReason", recommendation, who_would_be_late as "whoWouldBeLate", policy_reasons as "policyReasons", approved_plan_id as "approvedPlanId", status, actioned_by as "actionedBy", actioned_reason as "actionedReason", created_at as "createdAt", actioned_at as "actionedAt"
       `;
       return rows[0];
     },

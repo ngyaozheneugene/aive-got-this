@@ -170,6 +170,8 @@ export interface IDatabase {
   // Desk Approvals
   approvals: {
     getById(id: string): Promise<Approval | null>;
+    /** Most recent decision row for a proposal. The commit guard reads this. */
+    getByProposal(proposalId: string): Promise<Approval | null>;
     listPending(): Promise<Approval[]>;
     create(approval: Omit<Approval, 'id' | 'createdAt'>): Promise<Approval>;
     action(id: string, status: 'approved' | 'rejected', actionedBy: string, reason?: string): Promise<Approval>;
