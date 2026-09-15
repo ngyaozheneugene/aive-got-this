@@ -7,7 +7,10 @@ Branch: `member-3/gateway-urgent-agent`. Checklist: [tasks.md](../../tasks.md).
 
 - `0aeb24a`: checkpoint of the existing native gateway, graph, tests and smoke evidence.
 - `backup/member-3-before-main-0aeb24a`: local backup branch naming that checkpoint.
-- `2effe25`: merged `origin/main` at `eeeefcbc572d7b5c046ed421519d1f3aa953d1cf`.
+- `2effe25`: initial merge of main at `eeeefcbc572d7b5c046ed421519d1f3aa953d1cf`.
+- `76399ea`: agent profile/board integration, regression coverage and legality gate.
+- `71bcdb5`: merged the newer main `a13a3f29f60887f391ee893b7fa1a4c88d212945`,
+  including the host-timezone fix and stream 1 handover published during this work.
 
 This main revision includes Damon's five scheduler commits and Eugene's
 `9e1a0c5` planning/write-path fixes. No merge conflicts occurred. No push or deploy
@@ -36,7 +39,8 @@ atomic reads/commit concurrency remain platform responsibilities.
 
 ## Verification and the critical distinction
 
-The default offline regression completed with **157 passed, 7 skipped, 1 TODO**.
+The final offline regression completed with **157 passed, 7 skipped, 1 TODO**
+in each of `TZ=UTC` and `TZ=Asia/Singapore`, after the second main merge.
 TypeScript checking and the production build passed. Fourteen added integration tests
 cover the profile adapter, shared board data, native-client-to-real-graph dispatch with
 the real main scheduler/validator, preserved backend evidence, and context changes.
@@ -46,16 +50,17 @@ The seven default skips are three opt-in live gateway tests and four opt-in real
 scheduler legality assertions. The remaining TODO is G2 recommendation acceptance.
 **Default regression success is NOT scheduler legality acceptance.**
 
-The explicit legality command was also run and **failed all four checks**:
+The explicit legality command was rerun after the second merge in UTC and
+**failed all four checks** (exit code 1; report preserved):
 
-| Check | Observed on main `eeeefcb` |
+| Check | Observed on latest merged main `a13a3f2` |
 |---|---|
 | Raffles customer window | Both plans use 11:00–12:30 instead of respecting 13:00–17:00; validator accepts. |
 | Independent certificate check | Changing the candidate assignee to unqualified Wei still passes validation. |
 | Required carried part | Stage A accepts Siti after removing the required inverter board from her parts. |
 | Missing shift | Stage A accepts a technician when no shift record is supplied. |
 
-Evidence: [scheduler-acceptance-1789456620771.json](scheduler-acceptance-1789456620771.json).
+Evidence: [scheduler-acceptance-1789457318062.json](scheduler-acceptance-1789457318062.json).
 These assertions deliberately fail until the upstream constraints are implemented;
 they are not `it.fails()` tests, and failures are never converted into passing evidence.
 The test uses only the memory database and writes a sanitized report beside this file.

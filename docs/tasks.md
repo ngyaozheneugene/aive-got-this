@@ -50,12 +50,12 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
   - Reopened 15 Sep by real integration acceptance: missing required parts and absent shift records are still accepted. Implementation exists on main; this is a correctness gap, not missing code.
 - [x] Travel matrix (cached); scheduling does not use straight-line (2)
 - [ ] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
-  - Reopened 15 Sep: Raffles plans at 11:00–12:30 violate the 13:00–17:00 customer window; independent validation also accepts Wei after an invalid-certificate assignee substitution. [Four-check acceptance evidence](team/member-3/scheduler-acceptance-1789456620771.json).
+  - Reopened 15 Sep: Raffles plans at 11:00–12:30 violate the 13:00–17:00 customer window; independent validation also accepts Wei after an invalid-certificate assignee substitution. [Four-check acceptance evidence](team/member-3/scheduler-acceptance-1789457318062.json).
 - [x] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan` (decision / commit published)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
-  - 15 Sep merged main `eeeefcb` into member 3 at `2effe25`. Profile-batch adapter + platform live-board reader integrated; native-client/actual-graph/actual-scheduler path passes with an HTTP double. Four real legality checks remain failing; platform endpoint still invokes propose directly. [Integration handoff](team/member-3/main-integration.md).
+  - 15 Sep merged latest main `a13a3f2` into member 3 at `71bcdb5` (after the initial `eeeefcb` merge). Profile-batch adapter + platform live-board reader integrated; 157 regression tests pass in both UTC and Asia/Singapore, typecheck and build pass; native-client/actual-graph/actual-scheduler path passes with an HTTP double. Four real legality checks remain failing; platform endpoint still invokes propose directly. [Integration handoff](team/member-3/main-integration.md).
 - [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
