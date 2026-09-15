@@ -31,9 +31,12 @@ describe('A-01 G1 urgent path (contract doubles, not scheduler acceptance)', () 
     expect(h.scheduler.propose.mock.calls[0]?.[0].profile).toBe('minimal_disruption');
   });
 
-  it('fails as a blocked dependency with the actual unfinished scheduler, not as infeasible', async () => {
+  it('fails as a blocked dependency with an explicitly unfinished scheduler, not as infeasible', async () => {
     const h = await setupAgent();
-    const result = await runUrgentJobAgent({ eventId: h.event.id, tools: createUrgentTools(h.db), model: h.model });
+    const result = await runUrgentJobAgent({ eventId: h.event.id, tools: createUrgentTools(h.db, {
+      propose: () => ({ plans: [], engine: 'insertion', timedOut: false, message: 'not_implemented' }),
+      validate: h.scheduler.validate,
+    }), model: h.model });
     expect(result.status).toBe('blocked_dependency');
     expect(result.errorCode).toBe('SCHEDULER_NOT_IMPLEMENTED');
     expect(result.plans).toEqual([]);
@@ -92,17 +95,23 @@ describe('A-01 G1 urgent path (contract doubles, not scheduler acceptance)', () 
     expect(h.scheduler.propose).not.toHaveBeenCalled();
   });
 
-  it('uses complete committed snapshot slots rather than stale active assignment rows', async () => {
+  it('uses platform live rows and excludes superseded assignments, not historical snapshot blobs', async () => {
     const h = await setupAgent();
-    const next = await h.db.boardSnapshots.createSnapshot({ date: h.snapshot.snapshotData.date,
-      assignments: [{ jobId: 'job_raffles', technicianId: 'tech_siti' }] });
-    const event = await h.db.events.create({ ...h.event, sourceSnapshotId: next.id });
-    const context = await h.tools.readContext(event.id);
-    expect(context.schedule.assignments).toHaveLength(1);
-    expect(context.schedule.assignments[0]?.technicianId).toBe('tech_siti');
-    expect(context.schedule.snapshotId).toBe(next.id);
+    const before = await h.tools.readContext(h.event.id);
+    const original = before.schedule.assignments[0]!;
+    await h.db.assignments.supersede(original.id, 'reassigned');
+    const replacement = await h.db.assignments.createCommitted({
+      jobId: original.jobId, technicianId: original.technicianId,
+      snapshotId: h.snapshot.id, windowStart: original.windowStart, windowEnd: original.windowEnd,
+    });
+    const context = await h.tools.readContext(h.event.id);
+    expect(context.schedule.assignments.map((slot) => slot.id)).not.toContain(original.id);
+    expect(context.schedule.assignments.map((slot) => slot.id)).toContain(replacement.id);
+    expect(context.schedule.assignments).toHaveLength(before.schedule.assignments.length);
+    expect(context.schedule.snapshotId).toBe(h.snapshot.id);
   });
 
-  it.todo('A-01 acceptance: real member-2 insertion + independent validator produce two legal Raffles plans');
+  // Real scheduling legality is asserted separately in real-scheduler.acceptance.test.ts.
+  // RUN_SCHEDULER_ACCEPTANCE=1 is required before closing G1; four upstream checks remain open.
   it.todo('A-01 G2: recommendation matches backend metrics (recommendation not implemented at G1)');
 });

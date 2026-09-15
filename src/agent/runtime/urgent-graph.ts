@@ -8,6 +8,7 @@ import { buildUrgentMessages } from '../prompts/urgent';
 import { parseToolCall, sameToolCall } from '../tools/protocol';
 import type { UrgentToolCall } from '../tools/protocol';
 import type { UrgentTools } from '../tools/urgent';
+import { planningContextFingerprint } from '../tools/context-fingerprint';
 import type { ToolModel } from './gateway';
 import { bounded } from './bounds';
 import { AgentError, errorCode } from './errors';
@@ -76,6 +77,8 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
       }
       if (state.progress.context && JSON.stringify(context.event.normalizedPayload) !==
           JSON.stringify(state.progress.context.event.normalizedPayload)) throw new AgentError('EVENT_CHANGED');
+      if (state.progress.context && planningContextFingerprint(context) !==
+          planningContextFingerprint(state.progress.context)) throw new AgentError('PLANNING_CONTEXT_CHANGED');
       const progress: UrgentProgress = { ...state.progress, context };
       let result: Record<string, unknown>;
 
@@ -121,6 +124,9 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
       if (!allowedUrgentCalls(progress).length) {
         const fresh = await bounded(() => input.tools.readContext(input.eventId, context.schedule.snapshotId), SOLVER_TIMEOUT_MS, signal);
         if (fresh.schedule.snapshotId !== context.schedule.snapshotId) throw new AgentError('STALE_SNAPSHOT');
+        if (planningContextFingerprint(fresh) !== planningContextFingerprint(context)) {
+          throw new AgentError('PLANNING_CONTEXT_CHANGED');
+        }
         status = validatedCandidates(progress).length ? 'candidates_ready' : 'no_candidates';
       }
       const trace: AgentTraceStep = { sequence: state.trace.length + 1, tool: request.tool,
@@ -130,7 +136,7 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
     } catch (error) {
       const code = errorCode(error, 'TOOL_FAILED');
       const status: UrgentStatus = code === 'SCHEDULER_NOT_IMPLEMENTED' ? 'blocked_dependency' :
-        code === 'STALE_SNAPSHOT' ? 'superseded' : 'failed';
+        ['STALE_SNAPSHOT', 'PLANNING_CONTEXT_CHANGED'].includes(code) ? 'superseded' : 'failed';
       const trace: AgentTraceStep = { sequence: state.trace.length + 1, tool: request?.tool ?? 'supervisor',
         args: request?.args ?? {}, result: { errorCode: code }, durationMs: Date.now() - started, outcome: 'error' };
       last = { ...state, status, errorCode: code, trace: [...state.trace, trace] };

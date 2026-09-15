@@ -9,10 +9,15 @@ The owner's `gateway-smoke-1789419656751.json` recorded strict JSON failing with
 `MALFORMED_TOOL_JSON` and a successful two-step native call/result round trip.
 That supports adding the native adapter; it does not prove the entire agent works.
 
-This follow-up was prepared as a local apply package after the remote code-write
-request was blocked. Applying the package changes source only. No fresh live-gateway
-success, full-repository test success, deployment, or completed gate is claimed by
-applying it. G0 remains open until the new native client/graph evidence is reviewed.
+The package was applied by Deen and verified on 15 September. Native protocol comparison
+`gateway-smoke-1789421995331.json` passed; both native graph scenarios passed with five
+model calls each (`native-agent-smoke-urgent_native-1789422045657.json` and
+`native-agent-smoke-injected_note_native-1789422071772.json`). G0 transport is complete.
+Those live runs used scheduler/validator doubles, not real scheduling acceptance.
+
+Main has now been merged and the agent adapter has been integrated offline with the
+actual scheduler. See [main-integration.md](main-integration.md) for the current evidence,
+reproduction command and four still-failing real-scheduler legality checks.
 
 ## Implementation
 
@@ -71,5 +76,5 @@ and **contract-double scheduler/validator**. They do not establish real Raffles 
 legality, latency, recommendation, persisted proposal/trace, desk UI, approval/commit,
 or deployment acceptance. Member 2's real scheduler and validator remain a blocker.
 
-Review new evidence before updating G0. Do not advance G1 or mark actual scheduling
-complete because the synthetic agent checks pass.
+G0 is checked off with the reviewed reports. Do not advance G1 or mark actual scheduling
+complete because the synthetic agent checks pass; the separate real-scheduler acceptance gate must pass.

@@ -1,14 +1,14 @@
 # G0 gateway smoke and G1 urgent agent
 
-> Native integration follow-up: see [native-integration.md](native-integration.md).
-> After applying that source change, the client defaults to native rather than strict JSON.
-> Live client/graph verification is still required; the original implementation evidence below is historical.
+> Historical initial-implementation notes, not the current status.
+> Native gateway and fixture-backed live graph checks have since passed. Main has been merged.
+> Use [main-integration.md](main-integration.md) for the current commands, evidence and open legality blockers; [native-integration.md](native-integration.md) describes the native transport.
 
 Owner: Deen (member 3). Implementation date: 15 September 2026.
 Branch: `member-3/gateway-urgent-agent`.
 The authoritative completion checklist remains [`docs/tasks.md`](../../tasks.md).
 
-## Current evidence and limits
+## Historical evidence and limits (before native verification and main merge)
 
 The offline regression suite passes: **88 passed, 1 live test skipped, 2 acceptance TODOs**.
 `npm run typecheck` and `npm run build` both pass. The original baseline was 43 passing tests.
