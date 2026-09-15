@@ -15,7 +15,7 @@ describe('G0 contracts on the Eastwind fixture', () => {
     expect(() => travelMinutes('cbd', 'mars', EASTWIND.travel)).toThrow(/TRAVEL_MATRIX_MISSING/);
   });
 
-  it('exports propose() with an empty insertion stub', () => {
+  it('exports propose() returning insertion candidate plans for G1', () => {
     const out = propose({
       event: {
         id: 'opev_test',
@@ -39,6 +39,6 @@ describe('G0 contracts on the Eastwind fixture', () => {
       profile: 'sla_first',
     });
     expect(out.engine).toBe('insertion');
-    expect(out.plans).toEqual([]);
+    expect(out.plans.length).toBeGreaterThan(0);
   });
 });
