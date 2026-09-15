@@ -95,14 +95,29 @@ export async function commitPlan(db: IDatabase, input: CommitInput): Promise<Com
     { sourceSnapshotId: proposal.sourceSnapshotId, triggerEventId: proposal.eventId },
   );
 
-  // Supersede before writing, or a moved job shows against both technicians.
+  // Write only what actually changes.
+  //
+  // propose() returns the whole day - the new slot plus every assignment that
+  // was already live. Writing all of them would churn a dozen rows for a
+  // one-job insertion and leave an audit trail claiming twelve jobs moved when
+  // one did. Slots that match the live row exactly are skipped, so `applied`
+  // and the decision log describe the real change whatever the engine hands us.
   const applied: PlannedSlot[] = [];
   for (const slot of plan.assignments) {
-    const existing = await db.assignments.getByJobId(slot.jobId);
-    for (const row of existing) {
-      if (row.status === 'accepted' || row.status === 'offered') {
-        await db.assignments.supersede(row.id, 'reassigned');
-      }
+    const live = (await db.assignments.getByJobId(slot.jobId)).filter(
+      (row) => row.status === 'accepted' || row.status === 'offered',
+    );
+
+    const unchanged =
+      live.length === 1 &&
+      live[0]!.technicianId === slot.technicianId &&
+      live[0]!.windowStart === slot.windowStart &&
+      live[0]!.windowEnd === slot.windowEnd;
+    if (unchanged) continue;
+
+    // Supersede before writing, or a moved job shows against both technicians.
+    for (const row of live) {
+      await db.assignments.supersede(row.id, 'reassigned');
     }
     await db.assignments.createCommitted({
       jobId: slot.jobId,
