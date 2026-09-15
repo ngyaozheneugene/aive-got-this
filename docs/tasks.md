@@ -35,6 +35,8 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] Eastwind fixture: 6 techs, 12 jobs, Raffles Place urgent, locked SLA, scarce cert (memory; SQL apply still open)
 - [x] **Human:** put four names on members 1–4 (Eugene, Damon, Deen, Khant)
 - [ ] Gateway smoke: strict JSON vs native tools; record result; native tools stay off if they fail (Deen)
+  - 15 Sep follow-up: owner smoke `gateway-smoke-1789419656751.json` recorded strict JSON failure and native round-trip success. Native client/graph integration added by the local follow-up package; fresh offline and live graph evidence still required before closing G0. See [native integration](team/member-3/native-integration.md).
+  - 15 Sep: TypeScript gateway client, 23 offline HTTP tests and opt-in two-step strict/native smoke implemented. Live evidence pending local credential setup; no gateway request made. See [member 3 runbook](team/member-3/gateway-and-agent.md).
 - [x] Confirm optimizer `/health` locally via `npm run db:up` (Eugene + Damon) — ortools 9.15.6755, both containers healthy
 
 **G0 exit:** Damon, Deen, and Khant can code against frozen Zod and the memory adapter without waiting on Lightsail. Gateway smoke still needed from Deen.
@@ -50,6 +52,7 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events` (plan / decision / commit still 501)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
+  - 15 Sep: bounded LangGraph + allowlisted tools implemented; 9 A-path and 13 X-path tests pass with contract doubles. Blocked on member 2 real insertion + independent validator and platform/desk integration; real scheduler stub returns `blocked_dependency`, not invented candidates. Full regression: 88 passed, 1 live smoke skipped, 2 acceptance TODOs.
 - [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
