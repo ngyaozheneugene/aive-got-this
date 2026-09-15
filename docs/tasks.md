@@ -73,8 +73,9 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 **G2 status 14 Sep:** every stream 1 item is done and tested (40 unit tests).
 The write path is `src/dispatch/commit-policy.ts` (pure decision) and
 `src/dispatch/commit.ts` (the only caller of `createSnapshot` in the codebase).
-Request shapes and reason codes for the desk are in
-[`docs/team/member-1/README.md`](team/member-1/README.md#6-commit-api-for-consumers).
+Endpoints, refusal codes, invariants, the faults found so far and the per-stream
+asks are consolidated in
+[`docs/team/member-1/handover.md`](team/member-1/handover.md).
 
 Blocked on other streams: `POST /api/events/{id}/plan` is still 501 because it
 needs member 2's `propose()`. Until that lands the commit path is proven by unit
