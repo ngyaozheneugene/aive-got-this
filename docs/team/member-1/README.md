@@ -6,6 +6,10 @@
 **Plan role:** D
 **Secondary reviewer:** member 4
 
+**Current state:** [`handover.md`](handover.md) is the consolidated status for the
+whole team - what is deployed, the contracts other streams call, the faults found
+so far, and what each stream needs to do. Start there.
+
 You own the box and the write path. Other people cannot commit a schedule, reset the demo, or deploy without you. You do not own eligibility, OR-Tools, or the desk UI. Event and commit path: [`docs/workflow.md`](../../workflow.md). Stale, reset, and fail-closed commit: [`docs/usecases.md`](../../usecases.md) UC-07, UC-10, UC-12.
 
 ---
