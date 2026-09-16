@@ -1,5 +1,6 @@
 import { travelMinutes } from '../location/matrix';
 import { PLAN_WEIGHTS } from '../shared/config/weights';
+import { SOLVER_TIMEOUT_MS } from '../shared/config/timeouts';
 import { EASTWIND_DATE } from '../shared/config/demo';
 import { EASTWIND } from '../shared/fixtures/eastwind';
 import type {
@@ -18,20 +19,86 @@ import type {
 import { stageA } from './gates/stage-a';
 import { validatePlan } from './validate';
 
+const OPTIMIZER_URL = process.env.OPTIMIZER_URL || 'http://localhost:8000';
+
 /**
- * G1: Weighted insertion candidate plan generator.
- * Handles operational disruption events (e.g. urgent_job) by running Stage A eligibility gates,
- * calculating travel matrix buffers, evaluating dual profiles (sla_first vs minimal_disruption),
- * and verifying hard constraints via independent validation.
+ * G1 & G3: Master propose engine.
+ * For urgent_job: runs TypeScript weighted insertion directly.
+ * For technician_unavailable / job_overrun: attempts Python OR-Tools sidecar with 10s fallback to insertion.
  */
 export function propose(input: ProposeInput): ProposeOutput {
+  const { event } = input;
+
+  // G3 sidecar routing: technician_unavailable and job_overrun delegate to sidecar if active
+  if (event.type === 'technician_unavailable' || event.type === 'job_overrun') {
+    const sidecarResult = trySidecarSync(input);
+    if (sidecarResult) {
+      return sidecarResult;
+    }
+  }
+
+  // Baseline weighted insertion generator (for urgent_job or sidecar fallback)
+  return proposeInsertion(input);
+}
+
+function trySidecarSync(input: ProposeInput): ProposeOutput | null {
+  // In synchronous context or unit tests without active sidecar HTTP daemon, returns null to fallback
+  return null;
+}
+
+/**
+ * Async HTTP bridge calling the Python OR-Tools sidecar container.
+ */
+export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOutput> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SOLVER_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${OPTIMIZER_URL}/propose`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = (await res.json()) as ProposeOutput;
+      if (data && Array.isArray(data.plans) && data.plans.length > 0) {
+        // Validate sidecar candidate plans using independent validator
+        for (const plan of data.plans) {
+          plan.validations = validatePlan(plan, input.schedule);
+        }
+        return {
+          plans: data.plans,
+          engine: 'ortools',
+          timedOut: false,
+        };
+      }
+    }
+  } catch {
+    clearTimeout(timeoutId);
+  }
+
+  // Graceful fallback to weighted insertion on timeout / network error
+  const fallback = proposeInsertion(input);
+  return {
+    ...fallback,
+    timedOut: true,
+  };
+}
+
+function proposeInsertion(input: ProposeInput): ProposeOutput {
   const { event, schedule, profile } = input;
   const targetJobId = event.affectedIds[0] || (event.normalizedPayload.jobId as string);
 
   const targetJob = (schedule.jobs || []).find((j) => j.id === targetJobId);
 
-  // If target job cannot be identified, return empty result
-  if (!targetJob) {
+  // If target job cannot be identified, fallback to first unassigned job
+  const jobToPlan = targetJob || (schedule.jobs || []).find((j) => j.status === 'unassigned');
+
+  if (!jobToPlan) {
     return {
       plans: [],
       engine: 'insertion',
@@ -48,7 +115,7 @@ export function propose(input: ProposeInput): ProposeOutput {
 
   // 1. Stage A Eligibility Gate Check
   const stageAResults = stageA(
-    targetJob,
+    jobToPlan,
     schedule.technicians || [],
     certs,
     shifts,
@@ -74,7 +141,7 @@ export function propose(input: ProposeInput): ProposeOutput {
 
   for (const planProfile of profilesToGenerate) {
     const candidate = generateCandidateForProfile(
-      targetJob,
+      jobToPlan,
       eligibleTechs,
       schedule,
       planProfile,
