@@ -1,0 +1,23 @@
+{
+  "checkedAt": "2026-09-14T21:00:56.748Z",
+  "node": "v26.4.0",
+  "gatewayOrigin": "https://api.softwaresystems.app",
+  "model": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "strictJson": {
+    "status": "failed",
+    "durationMs": 4004,
+    "steps": [],
+    "reason": "MALFORMED_TOOL_JSON"
+  },
+  "nativeTools": {
+    "status": "passed",
+    "durationMs": 18091,
+    "steps": [
+      "retrieve_board",
+      "propose"
+    ]
+  },
+  "productionProtocol": "strict_json",
+  "nativeToolsEnabled": false,
+  "evidenceScope": "Synthetic tool-result round trip only; not scheduling or full-agent acceptance."
+}

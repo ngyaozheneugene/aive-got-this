@@ -1,8 +1,8 @@
 # Task board
 
-**Current gate:** G1 (G0 has one item left: gateway smoke, member 3)  
+**Current gate:** G1 (G0 complete; real scheduler legality and agent/desk integration remain open)
 **Kickoff:** 9 Sep 2026 (Day 1)  
-**Today:** 14 Sep 2026 — Day 6. G1 was due Day 5, so the board is one day behind.  
+**Today:** 15 Sep 2026 — Day 7. G1 was due Day 5; integration acceptance is still open.
 **Hard wall:** the AWS lease and the submission both land ~28 Sep 2026. Confirm the exact
 date in the lease portal — the Day 21 row below currently falls *after* it.  
 **Agents:** read [`AGENTS.md`](../AGENTS.md), then this file. Tick boxes you complete. Do not invent a parallel TODO.  
@@ -34,27 +34,33 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] Freeze `propose(event, schedule, profile)` types in `src/shared/`
 - [x] Eastwind fixture: 6 techs, 12 jobs, Raffles Place urgent, locked SLA, scarce cert (memory; SQL apply still open)
 - [x] **Human:** put four names on members 1–4 (Eugene, Damon, Deen, Khant)
-- [ ] Gateway smoke: strict JSON vs native tools; record result; native tools stay off if they fail (Deen)
+- [x] Gateway smoke: strict JSON vs native tools; record result; native tools stay off if they fail (Deen)
+  - 15 Sep verified: [protocol comparison](team/member-3/gateway-smoke-1789421995331.json) passes native (strict JSON fails); default native client + actual graph passed [urgent](team/member-3/native-agent-smoke-urgent_native-1789422045657.json) and [injected-note](team/member-3/native-agent-smoke-injected_note_native-1789422071772.json) runs with scheduler/validator doubles. This closes G0 transport, not G1 legality.
+  - 15 Sep earlier follow-up (historical, resolved by evidence above): owner smoke `gateway-smoke-1789419656751.json` recorded strict JSON failure and native round-trip success. Native client/graph integration added by the local follow-up package; fresh offline and live graph evidence still required before closing G0. See [native integration](team/member-3/native-integration.md).
+  - 15 Sep initial implementation (historical): TypeScript gateway client, 23 offline HTTP tests and opt-in two-step strict/native smoke implemented. Live evidence pending local credential setup; no gateway request made. See [member 3 runbook](team/member-3/gateway-and-agent.md).
 - [x] Confirm optimizer `/health` locally via `npm run db:up` (Eugene + Damon) — ortools 9.15.6755, both containers healthy
 
-**G0 exit:** Damon, Deen, and Khant can code against frozen Zod and the memory adapter without waiting on Lightsail. Gateway smoke still needed from Deen.
+**G0 exit:** Damon, Deen, and Khant can code against frozen Zod and the memory adapter without waiting on Lightsail. Gateway smoke verified and recorded on 15 Sep; native is the tested local source default.
 
 ---
 
 ## G1 — Urgent job on the desk (Day 5)
 
-- [x] Stage A eligibility: cert, tier, shift, window, parts/tools, locks; nearest van can be illegal (2)
+- [ ] Stage A eligibility: cert, tier, shift, window, parts/tools, locks; nearest van can be illegal (2)
+  - Reopened 15 Sep by real integration acceptance: missing required parts and absent shift records are still accepted. Implementation exists on main; this is a correctness gap, not missing code.
 - [x] Travel matrix (cached); scheduling does not use straight-line (2)
-- [x] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
+- [ ] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
+  - Reopened 15 Sep: Raffles plans at 11:00–12:30 violate the 13:00–17:00 customer window; independent validation also accepts Wei after an invalid-certificate assignee substitution. [Four-check acceptance evidence](team/member-3/scheduler-acceptance-1789457318062.json).
 - [x] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan` (decision / commit published)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
+  - 15 Sep merged latest main `a13a3f2` into member 3 at `71bcdb5` (after the initial `eeeefcb` merge). Profile-batch adapter + platform live-board reader integrated; 157 regression tests pass in both UTC and Asia/Singapore, typecheck and build pass; native-client/actual-graph/actual-scheduler path passes with an HTTP double. Four real legality checks remain failing; platform endpoint still invokes propose directly. [Integration handoff](team/member-3/main-integration.md).
 - [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
 
 **G1 exit:** a first-time observer sees the Raffles Place disruption and two legal plans. Insertion only; sidecar may still be stub.
 
-**G1 status 15 Sep:** stream 1 (platform) and stream 2 (scheduler) are through — Stage A, travel matrix, insertion `propose()`, validator, and G-01/G-02/G-03 evals are all complete and tested. stream 3 (agent graph state) remains.
+**G1 status 15 Sep (integration review):** scheduler and platform implementations are on main, but their prior unit-suite passes do not establish legality. The real scheduler acceptance gate fails four checks above. Member 3 has resolved the profile-contract mismatch and reuses platform board data; legal plans, native-agent endpoint wiring, and two-plan desk display still need joint acceptance. Do not advance G1 based on candidate existence or ordinary regression success.
 
 ---
 
@@ -77,9 +83,10 @@ Endpoints, refusal codes, invariants, the faults found so far and the per-stream
 asks are consolidated in
 [`docs/team/member-1/handover.md`](team/member-1/handover.md).
 
-Blocked on other streams: `POST /api/events/{id}/plan` is still 501 because it
-needs member 2's `propose()`. Until that lands the commit path is proven by unit
-tests and fixtures, not by a live click-through.
+15 Sep update: the planning endpoint and persisted recommendation-ID fixes are on main
+(`9e1a0c5` / merge `eeeefcb`). It calls the scheduler directly, not the native graph.
+Real scheduling legality remains blocked by the G1 acceptance failures above; risk
+classification, agent endpoint integration, and live desk acceptance are still required.
 
 ---
 
