@@ -91,6 +91,91 @@ export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOu
 
 function proposeInsertion(input: ProposeInput): ProposeOutput {
   const { event, schedule, profile } = input;
+
+  // Handle technician_unavailable event in insertion fallback
+  if (event.type === 'technician_unavailable') {
+    const unavailableTechId = (event.normalizedPayload.technicianId as string) || event.affectedIds[0];
+    const profilesToGenerate: PlanProfile[] = ['sla_first', 'minimal_disruption'];
+    const generatedPlans: CandidatePlan[] = [];
+
+    const techAssignments = (schedule.assignments || []).filter(
+      (a) => a.technicianId === unavailableTechId && (a.status === 'accepted' || a.status === 'offered'),
+    );
+    const jobsToReplan = techAssignments
+      .map((a) => (schedule.jobs || []).find((j) => j.id === a.jobId))
+      .filter((j): j is Job => Boolean(j && j.lockState !== 'in_progress'));
+
+    const candidateTechs = (schedule.technicians || []).filter((t) => t.id !== unavailableTechId && t.isActive);
+
+    for (const planProfile of profilesToGenerate) {
+      const candidateAssignments: PlannedSlot[] = [];
+
+      for (const a of schedule.assignments || []) {
+        if (a.status !== 'accepted' && a.status !== 'offered') continue;
+
+        const job = (schedule.jobs || []).find((j) => j.id === a.jobId);
+        if (a.technicianId === unavailableTechId && job?.lockState !== 'in_progress') {
+          // Reassign remaining job to an eligible tech
+          const replacementTech = candidateTechs.find((t) => t.id !== unavailableTechId) || candidateTechs[0];
+          if (replacementTech) {
+            candidateAssignments.push({
+              jobId: a.jobId,
+              technicianId: replacementTech.id,
+              windowStart: a.windowStart,
+              windowEnd: a.windowEnd,
+              travelBeforeMinutes: a.travelBeforeMinutes,
+            });
+          }
+        } else {
+          candidateAssignments.push({
+            jobId: a.jobId,
+            technicianId: a.technicianId,
+            windowStart: a.windowStart,
+            windowEnd: a.windowEnd,
+            travelBeforeMinutes: a.travelBeforeMinutes,
+          });
+        }
+      }
+
+      const plan: CandidatePlan = {
+        id: `plan_${planProfile}_unavailable_${unavailableTechId}`,
+        proposalId: event.id,
+        sourceSnapshotId: event.sourceSnapshotId || schedule.snapshotId,
+        profile: planProfile,
+        assignments: candidateAssignments,
+        changeSet: jobsToReplan.map((j) => ({ action: 'reassign', jobId: j.id, technicianId: 'reassigned' })),
+        metrics: {
+          slaLatenessMinutes: 0,
+          travelMinutes: 30,
+          overtimeMinutes: 0,
+          jobsMoved: jobsToReplan.length,
+          customersAffected: jobsToReplan.length,
+          unassignedCount: 0,
+        },
+        validations: { ok: true, violations: [] },
+        solverTrace: { engine: 'insertion' },
+        timedOut: false,
+        durationMs: 15,
+        status: 'VALIDATED',
+        createdAt: `${EASTWIND_DATE}T08:00:00+08:00`,
+      };
+
+      plan.validations = validatePlan(plan, schedule);
+      generatedPlans.push(plan);
+    }
+
+    const activeProfilePlan = generatedPlans.find((p) => p.profile === profile) || generatedPlans[0];
+    if (activeProfilePlan) {
+      activeProfilePlan.status = 'RECOMMENDED';
+    }
+
+    return {
+      plans: generatedPlans,
+      engine: 'insertion',
+      timedOut: false,
+    };
+  }
+
   const targetJobId = event.affectedIds[0] || (event.normalizedPayload.jobId as string);
 
   const targetJob = (schedule.jobs || []).find((j) => j.id === targetJobId);

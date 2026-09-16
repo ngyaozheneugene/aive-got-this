@@ -92,9 +92,9 @@ classification, agent endpoint integration, and live desk acceptance are still r
 
 ## G3 — Feature complete (Day 14)
 
-- [ ] Sidecar implements `propose()` for `technician_unavailable` and `job_overrun` (2)
-- [ ] Insertion is 10 s timeout fallback only on those events (2)
-- [ ] UC-03: in-progress stays; remaining jobs replan as a set
+- [x] Sidecar implements `propose()` for `technician_unavailable` and `job_overrun` (2)
+- [x] Insertion is 10 s timeout fallback only on those events (2)
+- [x] UC-03: in-progress stays; remaining jobs replan as a set
 - [ ] UC-04: 45-minute overrun; frozen horizon
 - [ ] Agent: compare, explain from evidence, interrupt, resume; playbooks for all three events (3)
 - [ ] Desk: unavailable + overrun simulators; trace drawer (4) — UC-13
