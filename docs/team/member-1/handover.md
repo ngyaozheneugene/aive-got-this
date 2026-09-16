@@ -1,10 +1,10 @@
-# Stream 1 handover v1.0
+# Stream 1 handover v1.1
 
 **Author:** Eugene (member 1, platform and data)<br>
-**Date:** 15 Sep 2026 (Day 7)<br>
-**Status:** Current as of `main` at `9e1038b`. Supersedes nothing; read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
+**Date:** 16 Sep 2026 (Day 8)<br>
+**Status:** Current as of `main` at `2560304`, after member 3's agent merge. Section 5 is an open release blocker. Supersedes nothing; read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
 
-Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 lists what each of the other three streams needs to know or do.
+Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 is the open release blocker. Section 6 lists what each of the other three streams needs to know or do.
 
 ---
 
@@ -170,13 +170,90 @@ This kept `main` red for two and a half hours, but the CI failure was the lesser
 
 ---
 
-## 5. What each stream needs to know
+## 5. Open release blocker: an illegal plan can reach the board
+
+An assignment that Stage A excludes on three separate grounds passes the
+independent validator, passes the commit guard, and lands on the board as a new
+snapshot. Reproduced on `main` at `2560304`:
+
+```text
+Stage A on Wei : eligible=false  reasons=["tier_too_low","missing_cert","cert_expired"]
+validatePlan() : ok=true  violations=[]
+commitPlan()   : ok=true
+board          : v2  job_raffles -> Wei
+```
+
+Consequently the release criterion "zero known hard-constraint commits" is
+currently false, and it is falsifiable in a single request. It is also the first
+thing a judge is likely to probe: what stops the system assigning someone
+unqualified? As things stand, nothing does, once a candidate plan exists.
+
+### 5.1 This is not a defect in the commit guard
+
+`checkCommit` behaves exactly as the architecture specifies. It refuses to
+commit when `plan.validations.ok` is false and it never re-derives feasibility
+itself, because `src/matching/` owns eligibility and validation. The guard is
+honouring a contract that is not being met at the other end.
+
+Adding eligibility checks to the commit path would break that ownership split
+and leave two implementations of the same rules to keep in step. The fix belongs
+upstream.
+
+### 5.2 The size of the gap
+
+`src/shared/config/reason-codes.ts` freezes eleven violation codes.
+`src/matching/validate.ts` emits three of them:
+
+| Implemented | Missing |
+|---|---|
+| Duplicate job assignment | `MISSING_CERT` |
+| Technician time overlap | `CERT_EXPIRED` |
+| In-progress job moved | `OUTSIDE_SHIFT` |
+| | `WINDOW_INFEASIBLE` |
+| | `TRAVEL_INFEASIBLE` |
+| | `LOCKED_MOVED` |
+| | `MISSING_PARTS` |
+| | `EXCESSIVE_OVERTIME` |
+
+> **Warning:** the three that are implemented emit ad-hoc strings rather than the
+> frozen codes: `DUPLICATE_JOB_ASSIGNMENT` where the contract says
+> `DUPLICATE_ASSIGNMENT`, and `IN_PROGRESS_JOB_MOVED` where it says
+> `IN_PROGRESS_MOVED`. Member 4 renders these, so this is a contract break as
+> well as a coverage gap.
+
+### 5.3 How to reproduce it
+
+Member 3's legality gate covers this and three related failures against the real
+scheduler and validator, with no gateway quota consumed:
+
+```sh
+RUN_SCHEDULER_ACCEPTANCE=1 npx vitest run evals/a-suite/real-scheduler.acceptance.test.ts
+```
+
+All four checks fail on current `main`, verified independently by stream 1 in
+`TZ=UTC`. The four are the customer window, the independent certificate check,
+required carried parts, and a missing shift record.
+
+> **Why this survived every test suite:** each stream's tests pass. The scheduler
+> was tested with hand-built schedules, the commit path with hand-built plans,
+> and the agent against doubles. Legality only fails when the real components are
+> joined, which is the same pattern that produced the five faults in §4.
+
+---
+
+## 6. What each stream needs to know
 
 > **Note:** an `@handle` in a repository file renders as a link but sends no notification. Share this section directly if you need someone to act on it.
 
-### 5.1 Member 2, scheduler (@Requlish)
+### 6.1 Member 2, scheduler (@Requlish)
 
-**Open, and it blocks G1.** Both profiles currently pick the same technician, so the two candidate plans are identical. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
+**Release blocker, and it is yours.** §5 records that an assignment Stage A
+excludes for three reasons still passes `validatePlan()` and commits. The
+validator implements three of the eleven frozen violation codes. Run the gate in
+§5.3; all four checks fail. Nothing downstream can compensate, because the
+commit guard is designed to defer to your verdict rather than second-guess it.
+
+**Also open, and it blocks G1.** Both profiles currently pick the same technician, so the two candidate plans are identical. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
 
 - Travel is computed to a hardcoded `'cbd'` destination rather than the job's actual cluster, so travel is constant across technicians and stops discriminating between them.
 - Start times use a placeholder estimate, `9 + assignmentCount * 2` hours, rather than real insertion into gaps.
@@ -187,7 +264,7 @@ This kept `main` red for two and a half hours, but the CI failure was the lesser
 
 **On ownership.** `src/app/api/events/[id]/plan/route.ts` is stream 1's folder. Unblocking yourself there was reasonable, but it meant nobody with the write path's context reviewed it, and three of the five faults in §4 were in that file. Ping stream 1 next time and it will be quicker.
 
-### 5.2 Member 3, agent (@Deen11)
+### 6.2 Member 3, agent (@Deen11)
 
 **`risk` and `autonomyMode` are hardcoded** to `medium` and `approval` in the plan route, as the strictest sensible default until your classifier lands. `checkCommit` reads both and takes the stricter of `RISK_POLICY[risk]` and the stored `autonomyMode`, defaulting to `block` on anything unrecognised. A disagreement between them can only ever make committing harder, never easier.
 
@@ -197,7 +274,7 @@ This kept `main` red for two and a half hours, but the CI failure was the lesser
 
 **Still outstanding from G0:** the gateway smoke test, strict JSON versus native tools. It is the last unticked G0 item. `LLM_GATEWAY_URL` and `LLM_MODEL` in `.env.example` now carry the organiser's exact values.
 
-### 5.3 Member 4, desk (@KhantPS)
+### 6.3 Member 4, desk (@KhantPS)
 
 **The API is live and real.** Point the desk at it instead of mocks. The endpoint list is §3.1 and the refusal codes are §3.2.
 
@@ -217,9 +294,9 @@ commit again            -> 409 already_committed
 
 ---
 
-## 6. Verified, and known gaps
+## 7. Verified, and known gaps
 
-### 6.1 Verified on the deployed box
+### 7.1 Verified on the deployed box
 
 The full loop was run against `https://54.179.142.4.sslip.io` on 15 Sep:
 
@@ -238,7 +315,7 @@ The full loop was run against `https://54.179.142.4.sslip.io` on 15 Sep:
 
 That satisfies the G2 exit line on the deployed surface. Test counts: 63 unit, 9 G-suite, typecheck clean, verified under both `TZ=UTC` and `TZ=Asia/Singapore`.
 
-### 6.2 Known gaps
+### 7.2 Known gaps
 
 These are recorded rather than hidden. None blocks the demo on the in-memory adapter.
 
@@ -246,10 +323,20 @@ These are recorded rather than hidden. None blocks the demo on the in-memory ada
 - **`commitPlan` is not wrapped in a transaction.** Unreachable in memory, real on SQL.
 - **Postgres has a schema but no seed.** `seed/` holds only a `.gitkeep` and `PostgresDatabase.seed()` is empty, so flipping `USE_MEMORY_DB=false` yields a blank board.
 - **Port 8080 is still open on the box** as a fallback if Caddy misbehaves. Close that firewall rule once you are confident in TLS.
+- **The shared docs still describe strict JSON as the tool protocol.** Member 3's
+  G0 smoke on 15 Sep found the opposite: strict JSON fails with
+  `MALFORMED_TOOL_JSON` and native tools pass, so native is now the source
+  default. `AGENTS.md` made that switch conditional on exactly this evidence, so
+  the change is authorised, but `tech-stack.md`, `implementation-plan.md` and
+  `AGENTS.md` still say otherwise and need a joint edit.
 - **The G4 rollback drill has not been run.** The procedure is designed: restore a snapshot to a new instance, then move the static IP to it. Moving the IP is the step people forget, and without it the restored box gets a different address, so the certificate hostname no longer matches and the URL stays broken.
 
 ---
 
 ## Revision history
 
+- **v1.1** 16 Sep 2026 - Added §5, the open release blocker: an illegal plan
+  reaches the board because the validator implements three of eleven violation
+  codes. Renumbered the two sections that followed. Recorded the native tool
+  protocol switch and the shared-doc drift it leaves behind.
 - **v1.0** 15 Sep 2026 - First consolidated handover. Covers Days 1 to 7: containerisation, first Lightsail deploy, the G2 commit path, Caddy and TLS, and the five seam faults found by running the joined-up loop.
