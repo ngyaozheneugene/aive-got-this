@@ -2,7 +2,7 @@
 
 **Current gate:** G1 (G0 complete; real scheduler legality and agent/desk integration remain open)
 **Kickoff:** 9 Sep 2026 (Day 1)  
-**Today:** 15 Sep 2026 — Day 7. G1 was due Day 5; integration acceptance is still open.
+**Today:** 17 Sep 2026 — Day 9. G1 integration acceptance is still open.
 **Hard wall:** the AWS lease and the submission both land ~28 Sep 2026. Confirm the exact
 date in the lease portal — the Day 21 row below currently falls *after* it.  
 **Agents:** read [`AGENTS.md`](../AGENTS.md), then this file. Tick boxes you complete. Do not invent a parallel TODO.  
@@ -55,6 +55,7 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan` (decision / commit published)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
 - [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
+  - 17 Sep: agent-to-plan-endpoint integration implemented on `member-3/g1-planning-integration`; 34 new endpoint tests, 197 passing regression tests, and a compiled loopback HTTP smoke. Platform-owned route/persistence changes require Eugene review, including atomic publication/readiness guards. Real gateway endpoint acceptance and four failing scheduler legality checks still block G1. [Endpoint contract and team requests](team/member-3/planning-endpoint-integration.md).
   - 15 Sep merged latest main `a13a3f2` into member 3 at `71bcdb5` (after the initial `eeeefcb` merge). Profile-batch adapter + platform live-board reader integrated; 157 regression tests pass in both UTC and Asia/Singapore, typecheck and build pass; native-client/actual-graph/actual-scheduler path passes with an HTTP double. Four real legality checks remain failing; platform endpoint still invokes propose directly. [Integration handoff](team/member-3/main-integration.md).
 - [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
 

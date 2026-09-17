@@ -1,0 +1,64 @@
+{
+  "checkedAt": "2026-09-17T03:08:09.817Z",
+  "sourceHead": "7d0016236f18d1dd13df3558f823fcfe127cb6af",
+  "upstreamMain": "7d0016236f18d1dd13df3558f823fcfe127cb6af",
+  "status": "failed",
+  "expectedChecks": 4,
+  "checks": [
+    {
+      "name": "customer_window",
+      "passed": false,
+      "evidence": {
+        "customerStart": "2026-09-15T13:00:00+08:00",
+        "customerEnd": "2026-09-15T17:00:00+08:00",
+        "slots": [
+          {
+            "profile": "sla_first",
+            "start": "2026-09-15T11:00:00+08:00",
+            "end": "2026-09-15T12:30:00+08:00",
+            "insideWindow": false,
+            "validatorAccepted": true
+          },
+          {
+            "profile": "minimal_disruption",
+            "start": "2026-09-15T11:00:00+08:00",
+            "end": "2026-09-15T12:30:00+08:00",
+            "insideWindow": false,
+            "validatorAccepted": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "independent_certificate_check",
+      "passed": false,
+      "evidence": {
+        "certified": false,
+        "validatorAccepted": true,
+        "violations": []
+      }
+    },
+    {
+      "name": "required_parts",
+      "passed": false,
+      "evidence": {
+        "partsRequired": [
+          "inverter_board"
+        ],
+        "partsCarried": [],
+        "eligible": true,
+        "exclusionReasons": []
+      }
+    },
+    {
+      "name": "missing_shift",
+      "passed": false,
+      "evidence": {
+        "recordedShifts": 0,
+        "eligible": true,
+        "exclusionReasons": []
+      }
+    }
+  ],
+  "evidenceScope": "Real main scheduler, Stage A and validator; memory fixture only. No model, external requests or persisted board changes."
+}
