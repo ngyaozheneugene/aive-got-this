@@ -24,6 +24,8 @@ type State = typeof GraphState.State;
 export interface UrgentAgentResult {
   eventId: string;
   sourceSnapshotId?: string;
+  /** Server-only generation context; persistence rechecks it before publishing. */
+  sourceContextFingerprint?: string;
   status: UrgentStatus;
   plans: CandidatePlan[];
   comparisonReady: boolean;
@@ -161,6 +163,7 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
   const plans = last.status === 'candidates_ready' ? validatedCandidates(last.progress) : [];
   return {
     eventId: input.eventId, sourceSnapshotId: last.progress.context?.schedule.snapshotId,
+    sourceContextFingerprint: last.progress.context ? planningContextFingerprint(last.progress.context) : undefined,
     status: last.status, plans, comparisonReady: new Set(plans.map((plan) => plan.profile)).size === 2,
     trace: last.trace, errorCode: last.errorCode, modelCalls,
   };

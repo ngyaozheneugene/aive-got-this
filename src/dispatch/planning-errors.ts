@@ -1,0 +1,46 @@
+import { AgentError } from '../agent/runtime/errors';
+import type { OperationalEventStatus } from '../shared/types/domain';
+
+export class PlanningError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly httpStatus: number,
+    public readonly detail: string,
+    public readonly eventStatus: OperationalEventStatus = 'FAILED',
+  ) { super(code); }
+}
+
+/** Public errors never contain provider responses, credentials or arbitrary exceptions. */
+export function planningError(error: unknown): PlanningError {
+  if (error instanceof PlanningError) return error;
+  if (!(error instanceof AgentError)) {
+    return new PlanningError('planning_failed', 500, 'Planning could not be completed. No schedule was committed.');
+  }
+  const code = error.code;
+  if (['STALE_SNAPSHOT', 'PLANNING_CONTEXT_CHANGED', 'EVENT_CHANGED'].includes(code)) {
+    return new PlanningError('stale_planning_context', 409,
+      'The board or event changed during planning. Raise a new event against the current board.', 'SUPERSEDED');
+  }
+  if (code === 'AGENT_ABORTED') {
+    return new PlanningError('planning_cancelled', 408, 'Planning was cancelled. No schedule was committed.');
+  }
+  if (['GATEWAY_TIMEOUT', 'TOOL_TIMEOUT'].includes(code)) {
+    return new PlanningError('planning_timeout', 504, 'A planning dependency exceeded its time limit.');
+  }
+  if (code.startsWith('GATEWAY_')) {
+    return new PlanningError('gateway_unavailable', 503, 'The model gateway could not complete planning.');
+  }
+  if (code === 'SCHEDULER_NOT_IMPLEMENTED') {
+    return new PlanningError('scheduler_unavailable', 503, 'The scheduler is not implemented for this flow.');
+  }
+  if (['EVENT_NOT_FOUND', 'EVENT_JOB_NOT_FOUND_ON_BOARD'].includes(code)) {
+    return new PlanningError('invalid_event_context', 422, 'The event must reference a job on the current board.', 'INVALID');
+  }
+  if (['INVALID_EVENT', 'INVALID_EVENT_PAYLOAD', 'EVENT_AFFECTED_IDS_MISMATCH'].includes(code)) {
+    return new PlanningError('invalid_event_context', 422, 'The stored event has an invalid or inconsistent payload.', 'INVALID');
+  }
+  if (code === 'EVENT_NOT_PLANNABLE') {
+    return new PlanningError('event_not_plannable', 409, 'This event is no longer available for planning.');
+  }
+  return new PlanningError('agent_failed', 502, 'The agent or a planning tool returned an invalid result.');
+}

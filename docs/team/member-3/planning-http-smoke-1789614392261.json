@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-09-17T03:06:32.261Z",
+  "baseHead": "7d0016236f18d1dd13df3558f823fcfe127cb6af",
+  "workingTreeChanges": true,
+  "status": "passed",
+  "durationMs": 809,
+  "httpGatewayRequests": 6,
+  "checks": [
+    "compiled_endpoint_runs_native_graph",
+    "cross_route_persistence_and_stored_ids",
+    "persisted_graph_audit",
+    "board_unchanged",
+    "duplicate_does_not_rerun_model",
+    "gateway_failure_not_success",
+    "failure_keeps_board_unchanged"
+  ],
+  "evidenceScope": "Built Next.js app over loopback HTTP, actual gateway client/graph/scheduler/validator, isolated memory database. Model/gateway is a local double. NOT real gateway, scheduler-legality, deployment or SQL-transaction acceptance."
+}
