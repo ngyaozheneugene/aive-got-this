@@ -1,51 +1,78 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { DeskBoard, PlanProfile } from '../../../shared/types/domain';
+import { DeskApiError, deskApi, type PlanResult } from '../../_components/desk-api';
+import { BoardView } from '../../_components/BoardView';
+import { Simulator } from '../../_components/Simulator';
+import { ProposalPanel } from '../../_components/ProposalPanel';
+import { ghostBtn, label } from '../../_components/ui';
 
-type Board = {
-  date: string;
-  snapshot: { id: string; version: number };
-  technicians: Array<{
-    technician: { id: string; name: string; currentCluster?: string };
-    loadMinutes: number;
-    assignedJobIds: string[];
-  }>;
-  jobs: Array<{
-    job: { id: string; status: string; lockState?: string; priority: string };
-    customer: { name: string };
-    site: { addressLine1: string; estateCluster: string };
-    technician?: { name: string };
-  }>;
-};
+const RAFFLES_JOB_ID = 'job_raffles';
 
 export default function DeskPage() {
-  const [board, setBoard] = useState<Board | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [board, setBoard] = useState<DeskBoard | null>(null);
+  const [proposal, setProposal] = useState<PlanResult | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
-    const res = await fetch('/api/schedule/current', { cache: 'no-store' });
-    if (!res.ok) {
-      setError(`schedule ${res.status}`);
-      return;
+    setLoadError(null);
+    try {
+      setBoard(await deskApi.getBoard());
+    } catch (e) {
+      setLoadError(e instanceof DeskApiError ? e.message : 'Could not load the board.');
     }
-    setBoard((await res.json()) as Board);
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function reset() {
-    await fetch('/api/demo/reset', { method: 'POST' });
-    await load();
-  }
+  const simulate = useCallback(
+    async (profile: PlanProfile) => {
+      if (!board) return;
+      setBusy(true);
+      setSimError(null);
+      setProposal(null);
+      try {
+        const event = await deskApi.createUrgentEvent(RAFFLES_JOB_ID, board.snapshot.id);
+        setProposal(await deskApi.plan(event.id, profile));
+      } catch (e) {
+        setSimError(
+          e instanceof DeskApiError
+            ? `${e.code}${e.detail ? ` — ${e.detail}` : ''}`
+            : 'Planning failed.',
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [board],
+  );
 
-  if (error) {
+  const reset = useCallback(async () => {
+    setBusy(true);
+    setProposal(null);
+    setSimError(null);
+    try {
+      await deskApi.reset();
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }, [load]);
+
+  const onCommitted = useCallback(() => {
+    void load();
+  }, [load]);
+
+  if (loadError) {
     return (
-      <main>
-        <p>{error}</p>
-        <button type="button" onClick={() => void load()}>
+      <main style={shell}>
+        <p style={{ color: '#8c2f21' }}>{loadError}</p>
+        <button type="button" onClick={() => void load()} style={ghostBtn}>
           Retry
         </button>
       </main>
@@ -53,43 +80,42 @@ export default function DeskPage() {
   }
 
   if (!board) {
-    return <main>Loading Eastwind Tuesday…</main>;
+    return <main style={shell}>Loading Eastwind Tuesday…</main>;
   }
 
   return (
-    <main style={{ fontFamily: 'system-ui', padding: 24, maxWidth: 960 }}>
-      <p style={{ letterSpacing: '0.08em', textTransform: 'uppercase', fontSize: 12 }}>
-        Dispatch Coordinator · Eastwind Aircon
-      </p>
-      <h1>Coordinator desk</h1>
-      <p>
-        Snapshot v{board.snapshot.version} · {board.date} · {board.technicians.length} technicians ·{' '}
-        {board.jobs.length} jobs
-      </p>
-      <p>
-        <button type="button" onClick={() => void reset()}>
-          Reset Tuesday
-        </button>
-      </p>
-      <h2>Technicians</h2>
-      <ul>
-        {board.technicians.map((row) => (
-          <li key={row.technician.id}>
-            {row.technician.name} ({row.technician.currentCluster}) · {row.loadMinutes} min ·{' '}
-            {row.assignedJobIds.length} jobs
-          </li>
-        ))}
-      </ul>
-      <h2>Jobs</h2>
-      <ul>
-        {board.jobs.map((row) => (
-          <li key={row.job.id}>
-            <strong>{row.job.id}</strong> {row.customer.name} · {row.site.addressLine1} · {row.job.status}
-            {row.job.lockState && row.job.lockState !== 'none' ? ` · ${row.job.lockState}` : ''} ·{' '}
-            {row.technician?.name ?? 'unassigned'}
-          </li>
-        ))}
-      </ul>
+    <main style={shell}>
+      <header style={{ marginBottom: 20 }}>
+        <span style={label}>Dispatch Coordinator · Eastwind Aircon</span>
+        <h1 style={{ margin: '4px 0 0' }}>Coordinator desk</h1>
+      </header>
+
+      <div style={{ display: 'grid', gap: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={() => void reset()} disabled={busy} style={ghostBtn}>
+            Reset Tuesday
+          </button>
+        </div>
+
+        <Simulator busy={busy} disabled={Boolean(proposal)} onSimulate={(p) => void simulate(p)} />
+
+        {simError ? (
+          <p style={{ margin: 0, color: '#8c2f21', fontSize: 13 }}>
+            <strong>Planning refused:</strong> {simError}
+          </p>
+        ) : null}
+
+        {proposal ? <ProposalPanel result={proposal} onCommitted={onCommitted} /> : null}
+
+        <BoardView board={board} />
+      </div>
     </main>
   );
 }
+
+const shell = {
+  fontFamily: 'system-ui, sans-serif',
+  padding: 24,
+  maxWidth: 960,
+  margin: '0 auto',
+} as const;
