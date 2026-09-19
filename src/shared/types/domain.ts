@@ -425,6 +425,15 @@ export interface BoardSchedule {
   jobs: Job[];
   assignments: Assignment[];
   travel: TravelMatrix[];
+  // The legality side-tables. Optional only because the G0 shape predates them
+  // and several test fixtures still omit them; `buildBoardSchedule` always
+  // supplies all three. A caller that omits them makes `validatePlan` fall back
+  // to the Eastwind fixture, which certifies a plan against demo certificates.
+  // Declared here so that omission is visible at the call site instead of being
+  // reached through a cast. See dispatch/board-schedule.ts.
+  certs?: TechnicianCert[];
+  shifts?: Shift[];
+  jobRequirements?: JobRequirement[];
 }
 
 export interface ProposeInput {

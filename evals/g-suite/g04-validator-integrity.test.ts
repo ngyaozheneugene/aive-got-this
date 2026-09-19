@@ -88,6 +88,6 @@ describe('G-04: Independent validator integrity checks', () => {
 
     const validation = validatePlan(invalidPlan, schedule);
     expect(validation.ok).toBe(false);
-    expect(validation.violations).toContain('IN_PROGRESS_JOB_MOVED:job_hafiz_1');
+    expect(validation.violations).toContain('IN_PROGRESS_MOVED:job_hafiz_1');
   });
 });
