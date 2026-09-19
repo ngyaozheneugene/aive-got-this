@@ -7,6 +7,18 @@ export class PlanningError extends Error {
     public readonly httpStatus: number,
     public readonly detail: string,
     public readonly eventStatus: OperationalEventStatus = 'FAILED',
+    /**
+     * The request failed for a reason outside the event: the gateway was down,
+     * a dependency ran out of time, the caller hung up. Nothing about the event
+     * or the board has been shown to be wrong, so burning the event would make
+     * an outage permanent - the coordinator would have to re-raise it by hand
+     * to try again, mid-demo, for a failure that has already cleared.
+     *
+     * The caller restores the event to the status it held before planning
+     * claimed it, and only when no proposal row was written. A run that got far
+     * enough to persist something stays terminal and waits for review.
+     */
+    public readonly retryable: boolean = false,
   ) { super(code); }
 }
 
@@ -22,16 +34,16 @@ export function planningError(error: unknown): PlanningError {
       'The board or event changed during planning. Raise a new event against the current board.', 'SUPERSEDED');
   }
   if (code === 'AGENT_ABORTED') {
-    return new PlanningError('planning_cancelled', 408, 'Planning was cancelled. No schedule was committed.');
+    return new PlanningError('planning_cancelled', 408, 'Planning was cancelled. No schedule was committed.', 'FAILED', true);
   }
   if (['GATEWAY_TIMEOUT', 'TOOL_TIMEOUT'].includes(code)) {
-    return new PlanningError('planning_timeout', 504, 'A planning dependency exceeded its time limit.');
+    return new PlanningError('planning_timeout', 504, 'A planning dependency exceeded its time limit.', 'FAILED', true);
   }
   if (code.startsWith('GATEWAY_')) {
-    return new PlanningError('gateway_unavailable', 503, 'The model gateway could not complete planning.');
+    return new PlanningError('gateway_unavailable', 503, 'The model gateway could not complete planning.', 'FAILED', true);
   }
   if (code === 'SCHEDULER_NOT_IMPLEMENTED') {
-    return new PlanningError('scheduler_unavailable', 503, 'The scheduler is not implemented for this flow.');
+    return new PlanningError('scheduler_unavailable', 503, 'The scheduler is not implemented for this flow.', 'FAILED', true);
   }
   if (['EVENT_NOT_FOUND', 'EVENT_JOB_NOT_FOUND_ON_BOARD'].includes(code)) {
     return new PlanningError('invalid_event_context', 422, 'The event must reference a job on the current board.', 'INVALID');

@@ -60,7 +60,10 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     const response = await h.run();
     expect(response.status).toBe(504);
     expect((await response.json()).error).toBe('scheduler_timeout');
-    expect((await h.db.events.getById(h.event.id))?.status).toBe('FAILED');
+    // A timeout is not proven infeasibility, so it must not be recorded as a
+    // terminal verdict on the event either. Nothing was written; it can be run
+    // again.
+    expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
   });
   it('sanitizes a rejected gateway response; does not fall back or claim model success', async () => {
@@ -72,7 +75,10 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     expect(h.fetcher).toHaveBeenCalledTimes(1);
     expect(h.scheduler.propose).not.toHaveBeenCalled();
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
-    expect((await h.db.events.getById(h.event.id))?.status).toBe('FAILED');
+    // The gateway refused us, which says nothing about the event, and nothing
+    // was written. The event goes back to the status it arrived with so the
+    // request can be retried once the credential or the outage is fixed.
+    expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
     expect(await h.db.boardSnapshots.getLatest()).toEqual(h.snapshot);
   });
   it('handles missing server configuration without exposing it or creating a proposal', async () => {
@@ -178,7 +184,9 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     const response = await h.run({}, h.event.id, controller.signal);
     expect(response.status).toBe(408);
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
-    expect((await h.db.events.getById(h.event.id))?.status).toBe('FAILED');
+    // The caller hung up. Nothing was written and nothing is wrong with the
+    // event, so it stays plannable rather than being consumed by a cancel.
+    expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
   });
   it('marks an incomplete proposal rejected when publishing the event status fails', async () => {
     const h = await setupPlanningEndpoint();
