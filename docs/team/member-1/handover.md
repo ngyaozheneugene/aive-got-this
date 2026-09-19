@@ -1,10 +1,10 @@
-# Stream 1 handover v1.1
+# Stream 1 handover v1.2
 
 **Author:** Eugene (member 1, platform and data)<br>
-**Date:** 16 Sep 2026 (Day 8)<br>
-**Status:** Current as of `main` at `2560304`, after member 3's agent merge. Section 5 is an open release blocker. Supersedes nothing; read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
+**Date:** 20 Sep 2026 (Day 12)<br>
+**Status:** Current as of `main` at `7089fe5`, plus member 3's risk classifier (`4bf023b`) staged on `eugene` and not yet merged. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
 
-Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 is the open release blocker. Section 6 lists what each of the other three streams needs to know or do.
+Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 records the blocker that is now closed and the three faults found while closing it. Section 6 lists what each of the other three streams needs to know or do.
 
 ---
 
@@ -170,74 +170,151 @@ This kept `main` red for two and a half hours, but the CI failure was the lesser
 
 ---
 
-## 5. Open release blocker: an illegal plan can reach the board
+## 5. The release blocker is closed, and what closing it turned up
 
-An assignment that Stage A excludes on three separate grounds passes the
-independent validator, passes the commit guard, and lands on the board as a new
-snapshot. Reproduced on `main` at `2560304`:
+v1.1 recorded an assignment that Stage A excluded on three separate grounds,
+which nonetheless passed the independent validator, passed the commit guard, and
+landed on the board. Member 2 closed it in `1023f25`. Verified independently by
+stream 1 against the same fixture, same technician, same job:
 
 ```text
-Stage A on Wei : eligible=false  reasons=["tier_too_low","missing_cert","cert_expired"]
-validatePlan() : ok=true  violations=[]
-commitPlan()   : ok=true
-board          : v2  job_raffles -> Wei
+                 v1.1 (main 2560304)        now (main 7089fe5)
+Stage A on Wei   eligible=false             eligible=false
+validatePlan()   ok=true   violations=[]    ok=false  MISSING_CERT, CERT_EXPIRED
+commitPlan()     ok=true                    refused, validation_failed
+board            v2  job_raffles -> Wei     unchanged
 ```
 
-Consequently the release criterion "zero known hard-constraint commits" is
-currently false, and it is falsifiable in a single request. It is also the first
-thing a judge is likely to probe: what stops the system assigning someone
-unqualified? As things stand, nothing does, once a candidate plan exists.
-
-### 5.1 This is not a defect in the commit guard
-
-`checkCommit` behaves exactly as the architecture specifies. It refuses to
-commit when `plan.validations.ok` is false and it never re-derives feasibility
-itself, because `src/matching/` owns eligibility and validation. The guard is
-honouring a contract that is not being met at the other end.
-
-Adding eligibility checks to the commit path would break that ownership split
-and leave two implementations of the same rules to keep in step. The fix belongs
-upstream.
-
-### 5.2 The size of the gap
-
-`src/shared/config/reason-codes.ts` freezes eleven violation codes.
-`src/matching/validate.ts` emits three of them:
-
-| Implemented | Missing |
-|---|---|
-| Duplicate job assignment | `MISSING_CERT` |
-| Technician time overlap | `CERT_EXPIRED` |
-| In-progress job moved | `OUTSIDE_SHIFT` |
-| | `WINDOW_INFEASIBLE` |
-| | `TRAVEL_INFEASIBLE` |
-| | `LOCKED_MOVED` |
-| | `MISSING_PARTS` |
-| | `EXCESSIVE_OVERTIME` |
-
-> **Warning:** the three that are implemented emit ad-hoc strings rather than the
-> frozen codes: `DUPLICATE_JOB_ASSIGNMENT` where the contract says
-> `DUPLICATE_ASSIGNMENT`, and `IN_PROGRESS_JOB_MOVED` where it says
-> `IN_PROGRESS_MOVED`. Member 4 renders these, so this is a contract break as
-> well as a coverage gap.
-
-### 5.3 How to reproduce it
-
-Member 3's legality gate covers this and three related failures against the real
-scheduler and validator, with no gateway quota consumed:
+The legality gate that had four failing checks now passes all four:
 
 ```sh
 RUN_SCHEDULER_ACCEPTANCE=1 npx vitest run evals/a-suite/real-scheduler.acceptance.test.ts
 ```
 
-All four checks fail on current `main`, verified independently by stream 1 in
-`TZ=UTC`. The four are the customer window, the independent certificate check,
-required carried parts, and a missing shift record.
+The commit guard itself did not change, and did not need to. It refused the plan
+the moment the validator gave it grounds to.
 
-> **Why this survived every test suite:** each stream's tests pass. The scheduler
-> was tested with hand-built schedules, the commit path with hand-built plans,
-> and the agent against doubles. Legality only fails when the real components are
-> joined, which is the same pattern that produced the five faults in §4.
+> **Note:** the gate writes a timestamped evidence file into
+> `docs/team/member-3/` on every run. It is untracked, so it waits to be swept
+> into someone's next `git add -A`. Delete it after running, or add the pattern
+> to `.gitignore`.
+
+### 5.1 Fault: the violation vocabulary had drifted in three directions
+
+Three streams read the same violation codes and none of them owned the list, so
+each drifted to its own spelling while every suite stayed green:
+
+| Contract froze | Validator emitted | Classifier matched |
+|---|---|---|
+| `CERT_EXPIRED` | `EXPIRED_CERT` | `CERT_EXPIRED` |
+| `DUPLICATE_ASSIGNMENT` | `DUPLICATE_JOB_ASSIGNMENT` | not matched |
+| `IN_PROGRESS_MOVED` | `IN_PROGRESS_JOB_MOVED` | not matched |
+| `WINDOW_INFEASIBLE` | `WINDOW_VIOLATION` | not matched |
+| no such code | `INVALID_CERT` | not matched |
+
+The consequence was quiet rather than dramatic. An expired certificate never
+raised its own risk reason in `classifyProposalRisk`, because the code it looked
+for was never the code the validator produced. The proposal was still blocked, by
+the blunter `validation_failed` rule, so nothing looked broken while the audit
+trail named the wrong cause. That is precisely the kind of thing a judge asks
+about, and precisely the kind of thing a passing suite will not tell you.
+
+**Fixed.** `src/matching/validate.ts` now emits the frozen codes through a typed
+helper, so a code that is not in `VALIDATION_VIOLATIONS` is a compile error
+rather than a string that reaches the desk. `INVALID_CERT`, which had no frozen
+equivalent, became `MISSING_CERT` with the cause kept in the detail suffix: a
+certificate issued after the schedule date means the technician does not hold a
+valid one on the day. `src/agent/policy/risk.ts` needed no change, which is the
+clearest evidence that the contract, not the classifier, was at fault.
+
+`src/shared/config/violation-vocabulary.test.ts` now compares the three
+spellings to each other rather than to a hand-written expectation, so the next
+drift fails a test instead of shipping.
+
+### 5.2 Fault: an outage consumed the event permanently
+
+The planning endpoint claims an event by moving it to `PLANNING`, and refuses to
+plan anything that is not `RECEIVED` or `VALIDATED`. So whatever status a failure
+leaves behind decides whether the coordinator can press the button again.
+
+Reproduced against the real handler with the gateway returning 503 throughout:
+
+```text
+POST /api/events/{id}/plan   -> 503 gateway_unavailable   event: FAILED
+gateway recovers
+POST /api/events/{id}/plan   -> 409 event_not_plannable   event: FAILED
+```
+
+Nine seconds of someone else's downtime cost the event permanently. Mid-demo the
+only recovery is to raise the whole event again from the simulator.
+
+**Fixed.** `PlanningError` now carries a `retryable` flag. A failure that is
+about a dependency rather than the event, and that wrote no proposal row, hands
+the event back at exactly the status it arrived with:
+
+| Failure | Event after | Retryable |
+|---|---|---|
+| `gateway_unavailable`, `planning_timeout`, `scheduler_timeout`, `planning_cancelled`, `scheduler_unavailable` | restored | yes |
+| `agent_failed`, `invalid_event_context`, `stale_planning_context`, `no_candidate_plans` | terminal | no |
+
+A run that got far enough to persist a proposal stays terminal whatever the
+cause, so partial writes still wait for review rather than being replanned over.
+`evals/x-suite/planning-retry.test.ts` pins both halves: an outage is survivable,
+and a model that asks to commit is not.
+
+> **Warning:** this changed three assertions in member 3's
+> `evals/x-suite/planning-endpoint.test.ts`, from `FAILED` to `RECEIVED`. Each
+> test's real intent is untouched: no proposal, no board change, no credential
+> leakage, same HTTP status. Only the event status differs. Flagged for member 3
+> in section 6.2 because it is a change to his contract, not a bug fix in his
+> code.
+
+### 5.3 Fault: the validator silently falls back to demo certificates
+
+`validatePlan` reached for `certs` and `jobRequirements` through a cast and fell
+back to the Eastwind fixture when they were absent. A validator that quietly
+certifies a plan against demo certificates is worse than no validator, because
+it reports `ok: true`.
+
+Production never reaches it. `buildBoardSchedule` supplies all three collections
+and is the only path in, and the frozen `boardScheduleSchema` is not applied
+anywhere that would strip them. But the fallback is load-bearing in the suite:
+making it throw fails sixteen tests across nine files, which means most of the
+test suite validates against fixture certificates rather than the schedule under
+test.
+
+**Partly fixed.** `BoardSchedule` now declares `certs`, `shifts` and
+`jobRequirements` as optional members, so the casts are gone and an omission is
+visible to the type checker at the call site instead of being reached through
+`as unknown as`. The fixture fallback stays, because removing it is member 2's
+call and would rewrite nine test files during the last week.
+
+### 5.4 Frozen codes no rule emits yet
+
+Five of the eleven frozen violation codes still have no rule behind them. A plan
+that breaks one of these validates clean:
+
+| Code | Meaning |
+|---|---|
+| `OUTSIDE_SHIFT` | Slot falls outside the technician's shift |
+| `TRAVEL_INFEASIBLE` | Not enough travel time between consecutive slots |
+| `LOCKED_MOVED` | A locked job was reassigned |
+| `MISSING_PARTS` | Technician does not carry a required part |
+| `EXCESSIVE_OVERTIME` | Overtime beyond the configured ceiling |
+
+`MISSING_PARTS` and `OUTSIDE_SHIFT` are checked by Stage A, so an unqualified
+technician is filtered out before planning. They are not checked independently
+afterwards, which is the gap that produced the original blocker.
+`EXCESSIVE_OVERTIME` is matched by `classifyProposalRisk` and emitted by nothing,
+so that branch is currently unreachable.
+
+The list is pinned in `violation-vocabulary.test.ts`. Implementing one and
+forgetting to update the list fails that test.
+
+> **Why these survived every test suite:** each stream's tests pass. The
+> scheduler was tested with hand-built schedules, the commit path with hand-built
+> plans, and the agent against doubles. Contract drift only shows when the
+> spellings are compared to each other, which is what the new test does.
 
 ---
 
@@ -247,18 +324,36 @@ required carried parts, and a missing shift record.
 
 ### 6.1 Member 2, scheduler (@Requlish)
 
-**Release blocker, and it is yours.** §5 records that an assignment Stage A
-excludes for three reasons still passes `validatePlan()` and commits. The
-validator implements three of the eleven frozen violation codes. Run the gate in
-§5.3; all four checks fail. Nothing downstream can compensate, because the
-commit guard is designed to defer to your verdict rather than second-guess it.
+**The blocker is closed, and it was yours. Thank you.** `1023f25` gave the
+validator its own certificate and customer-window checks, and Stage A its
+parts, tools and missing-shift exclusions. Stream 1 re-ran the probe from v1.1
+and the legality gate: an unqualified technician is now refused before the
+commit guard is even consulted. See §5.
+
+**Two things stream 1 changed in `src/matching/`, for your review.** Both are
+small and both are covered by tests:
+
+- `validate.ts` now emits the frozen codes from
+  `src/shared/config/reason-codes.ts` rather than its own spellings, through a
+  typed helper that makes an unknown code a compile error. Your behaviour is
+  unchanged; only the strings differ. §5.1 has the before and after.
+- `BoardSchedule` now declares `certs`, `shifts` and `jobRequirements`, so the
+  `as unknown as` casts in `validate.ts` are gone. Additive, nothing breaks.
+
+**Still open, and it is the last legality gap.** Five frozen violation codes
+have no rule behind them: `OUTSIDE_SHIFT`, `TRAVEL_INFEASIBLE`, `LOCKED_MOVED`,
+`MISSING_PARTS`, `EXCESSIVE_OVERTIME`. §5.4 lists them. Two are checked by
+Stage A but not independently afterwards, which is the same shape as the bug you
+just fixed: the filter knows, the validator does not. `EXCESSIVE_OVERTIME` is
+matched by member 3's risk classifier and emitted by nobody, so that branch
+cannot currently fire.
 
 **Also open, and it blocks G1.** Both profiles currently pick the same technician, so the two candidate plans are identical. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
 
 - Travel is computed to a hardcoded `'cbd'` destination rather than the job's actual cluster, so travel is constant across technicians and stops discriminating between them.
 - Start times use a placeholder estimate, `9 + assignmentCount * 2` hours, rather than real insertion into gaps.
 
-**Contract change worth making.** `propose()` reaches for `certs`, `shifts`, and `jobRequirements` with a cast and silently falls back to the Eastwind fixture when they are absent, which would plan against fixture certificates instead of real ones. `buildBoardSchedule` now supplies all three, so the fallback is unreachable, but folding them into the published `BoardSchedule` contract would remove the casts entirely.
+**The fixture fallback is still load-bearing, and only you can retire it.** `validatePlan` falls back to the Eastwind fixture when a schedule omits `certs` or `jobRequirements`, which means it can report `ok: true` against demo certificates. Production never reaches it, because `buildBoardSchedule` always supplies them. But making the fallback throw fails sixteen tests across nine files, so most of the suite is validating against fixture data rather than the schedule under test. `BoardSchedule` now declares the three collections, so the fix is mechanical: give those fixtures their certs and delete the `??`.
 
 **For information.** `propose()` returns the whole day, so a one-job insertion carries twelve unchanged slots. The commit path skips no-op slots, so this is harmless for the board and the audit trail. It does mean a trace drawer rendering `plan.assignments` will show twelve rows for a one-job change; rendering `changeSet` avoids that.
 
@@ -266,17 +361,29 @@ commit guard is designed to defer to your verdict rather than second-guess it.
 
 ### 6.2 Member 3, agent (@Deen11)
 
-**`risk` and `autonomyMode` are hardcoded** to `medium` and `approval` in the plan route, as the strictest sensible default until your classifier lands. `checkCommit` reads both and takes the stricter of `RISK_POLICY[risk]` and the stored `autonomyMode`, defaulting to `block` on anything unrecognised. A disagreement between them can only ever make committing harder, never easier.
+**The classifier is accepted and the hardcoded default is gone.** `classifyProposalRisk` derives risk from stored plan evidence rather than asking the model, which is what makes `checkCommit` mean anything: the guard takes the stricter of `RISK_POLICY[risk]` and the stored `autonomyMode`, so if `risk` were a model's guess the whole fail-closed design would rest on one. It is not. Nothing in `src/dispatch/` needed to change to accept it.
+
+**Your cert branch was unreachable, and the contract was at fault, not your code.** `classifyProposalRisk` matched `CERT_EXPIRED`; the validator emitted `EXPIRED_CERT`. An expired certificate therefore never raised `missing_or_expired_cert`, only the blunter `validation_failed`. Same risk level, wrong audit reason. Fixed in the validator, so `risk.ts` is untouched. Details in §5.1.
+
+**Three assertions changed in `evals/x-suite/planning-endpoint.test.ts`, and that needs your agreement.** A sustained gateway outage left the event `FAILED`, and since the endpoint only plans `RECEIVED` or `VALIDATED` events, the event could never be retried once the gateway recovered. Stream 1 added a `retryable` flag to `PlanningError`: a dependency failure that wrote no proposal row now restores the event to the status it arrived with, while anything about the event itself, and any partial write, stays terminal. §5.2 has the table and the reproduction. Your tests' real intent is untouched, only the event status assertion moved from `FAILED` to `RECEIVED`.
+
+**Your commit is not on `main` yet.** `4bf023b` is on `eugene` and `member-3/risk-classifier`. Eugene is holding it for a single PR once the branch is complete.
 
 **The commit logic is callable directly.** `commitPlan(db, input)` and `recordDecision(db, input)` in `src/dispatch/` take a database and a plain object. Wrap those as tools rather than calling the HTTP routes from inside the graph.
 
 **`decision_log` is what the trace drawer reads.** Write entries with an `eventId` and a `sequence`; `listByEvent` orders by `sequence` first, then `created_at`.
 
-**Still outstanding from G0:** the gateway smoke test, strict JSON versus native tools. It is the last unticked G0 item. `LLM_GATEWAY_URL` and `LLM_MODEL` in `.env.example` now carry the organiser's exact values.
+**No deployment change is needed for your work.** `readGatewayConfig` reads `LLM_GATEWAY_URL`, `LLM_GATEWAY_API_KEY` and `LLM_MODEL`, which are exactly the names already in `.env` and on the box. Your runbook's warning not to rename the model variable and Eugene's Day 1 decision to keep the organiser's spelling agree.
+
+**One operational consequence worth naming.** Planning now makes roughly five live gateway calls per request, where it used to be local arithmetic. The demo depends on `api.softwaresystems.app` being reachable from the box. The retry fix in §5.2 means an outage is survivable rather than fatal, but it is still a dependency the 30-minute rundown did not have last week.
 
 ### 6.3 Member 4, desk (@KhantPS)
 
-**The API is live and real.** Point the desk at it instead of mocks. The endpoint list is §3.1 and the refusal codes are §3.2.
+**The desk landed and the ownership line is right.** `desk-api.ts` calls stream 1's handlers and re-derives nothing, and `DeskApiError` carries both the code and the detail through to the screen, so the refusal codes in §3.2 are visible to a human instead of being flattened into a generic failure. That is the behaviour the safety story depends on.
+
+**Risk is now real, so the desk can show it.** `proposal.risk` and `proposal.autonomyMode` are computed from plan evidence rather than hardcoded to `medium` / `approval`. A `low` / `auto` proposal and a `high` / `block` one are now genuinely different objects, and §5.4 explains which reasons produce which.
+
+**New refusal codes from the planning endpoint** that the desk should expect: `gateway_unavailable` (503), `planning_timeout` (504), `scheduler_timeout` (504), `planning_in_progress` (409), `stale_planning_context` (409), `event_not_plannable` (409), `proposal_exists` (409), `unsupported_event_type` (422), `invalid_event_context` (422). The first three are retryable: the same request will work once the dependency recovers, so a retry button is worth offering on exactly those.
 
 **Render the code, show the detail.** Every refusal returns both. Do not re-derive any of it in the browser; the model and the desk never compute a metric or a verdict.
 
@@ -313,7 +420,23 @@ The full loop was run against `https://54.179.142.4.sslip.io` on 15 Sep:
 | Audit | `urgent_job` -> `desk_decision` -> `commit`, in order |
 | Reset three times after a real commit | v1, unassigned, identical each time |
 
-That satisfies the G2 exit line on the deployed surface. Test counts: 63 unit, 9 G-suite, typecheck clean, verified under both `TZ=UTC` and `TZ=Asia/Singapore`.
+That satisfies the G2 exit line on the deployed surface. Test counts at the time: 63 unit, 9 G-suite, typecheck clean, verified under both `TZ=UTC` and `TZ=Asia/Singapore`.
+
+Re-verified locally on 20 Sep against `main` at `7089fe5` plus `4bf023b`:
+
+| Check | Result |
+|---|---|
+| Full suite | 215 passing, 7 skipped, 3 files gated behind live-gateway flags |
+| `tsc --noEmit` | Clean |
+| `npm run build` | Clean, 13 routes |
+| `RUN_SCHEDULER_ACCEPTANCE=1` legality gate | 4 of 4 passing, was 0 of 4 |
+| v1.1 blocker probe, replayed | Refused, `MISSING_CERT` and `CERT_EXPIRED` |
+| Sustained gateway outage, then recovery | 503, event restored, retry plans normally |
+| Deployed box `/health` | `ok`, gateway configured, TLS valid |
+
+> **Warning:** the box is materially behind `main`. It predates the agent-driven
+> planning endpoint, the desk compare and commit loop, and the CP-SAT sidecar.
+> This is the first redeploy that changes what a visitor actually sees.
 
 ### 7.2 Known gaps
 
@@ -329,12 +452,26 @@ These are recorded rather than hidden. None blocks the demo on the in-memory ada
   default. `AGENTS.md` made that switch conditional on exactly this evidence, so
   the change is authorised, but `tech-stack.md`, `implementation-plan.md` and
   `AGENTS.md` still say otherwise and need a joint edit.
+- **`main` accepts direct pushes.** Two of the last four merges to `main` went in without a pull request, so without review or a CI gate. It happened to be fine both times. One command fixes it, and it needs the team's agreement because it changes how everyone pushes:
+
+  ```bash
+  gh api -X PUT repos/:owner/:repo/branches/main/protection --input protection.json
+  ```
+
+- **The legality gate writes an untracked evidence file** into `docs/team/member-3/` on every run, which has twice been swept into an unrelated commit by `git add -A`. Add the pattern to `.gitignore` or delete the file after running.
 - **The G4 rollback drill has not been run.** The procedure is designed: restore a snapshot to a new instance, then move the static IP to it. Moving the IP is the step people forget, and without it the restored box gets a different address, so the certificate hostname no longer matches and the URL stays broken.
 
 ---
 
 ## Revision history
 
+- **v1.2** 20 Sep 2026 - The release blocker in v1.1 is closed by member 2's
+  `1023f25`, verified independently. Rewrote §5 to record the closure and the
+  three faults found while confirming it: the violation vocabulary had drifted
+  into three spellings, a gateway outage consumed the event permanently, and the
+  validator falls back to demo certificates. First two fixed with tests, third
+  made visible to the type checker. Refreshed the per-stream asks for member 2's
+  scheduler fixes, member 3's risk classifier, and member 4's desk.
 - **v1.1** 16 Sep 2026 - Added §5, the open release blocker: an illegal plan
   reaches the board because the validator implements three of eleven violation
   codes. Renumbered the two sections that followed. Recorded the native tool
