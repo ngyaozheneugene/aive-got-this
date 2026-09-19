@@ -1,0 +1,80 @@
+{
+  "checkedAt": "2026-09-19T09:11:46.054Z",
+  "sourceHead": "member-3/risk-classifier",
+  "gatewayOrigin": "https://api.softwaresystems.app",
+  "status": "passed",
+  "durationMs": 39983,
+  "boardStatus": 200,
+  "eventStatus": 201,
+  "eventId": "opev_mu863y6a_1",
+  "planHttp": 201,
+  "planError": null,
+  "planDetail": null,
+  "proposalId": "prop_mu864kh0_8",
+  "risk": "medium",
+  "autonomyMode": "approval",
+  "recommendedPlanId": "plan_mu864kh0_9",
+  "comparisonReady": true,
+  "selectionBasis": "requested_profile",
+  "engine": "insertion",
+  "timedOut": false,
+  "agent": {
+    "runId": "47b6205a-19a5-4a23-88bc-edc6dbff0f1d",
+    "protocol": "native",
+    "modelCalls": 5,
+    "status": "candidates_ready"
+  },
+  "planCount": 2,
+  "profiles": [
+    "sla_first",
+    "minimal_disruption"
+  ],
+  "validations": [
+    {
+      "id": "plan_mu864kh0_9",
+      "profile": "sla_first",
+      "ok": true,
+      "violations": []
+    },
+    {
+      "id": "plan_mu864kh0_a",
+      "profile": "minimal_disruption",
+      "ok": true,
+      "violations": []
+    }
+  ],
+  "windows": [
+    {
+      "profile": "sla_first",
+      "start": "2026-09-15T13:00:00+08:00",
+      "end": "2026-09-15T14:30:00+08:00",
+      "technicianId": "tech_jonah"
+    },
+    {
+      "profile": "minimal_disruption",
+      "start": "2026-09-15T13:00:00+08:00",
+      "end": "2026-09-15T14:30:00+08:00",
+      "technicianId": "tech_jonah"
+    }
+  ],
+  "stages": [
+    "retrieve_board",
+    "propose",
+    "propose",
+    "validate",
+    "validate",
+    "classify_risk",
+    "persist_proposal"
+  ],
+  "classification": {
+    "runId": "47b6205a-19a5-4a23-88bc-edc6dbff0f1d",
+    "risk": "medium",
+    "autonomyMode": "approval",
+    "reasons": [
+      "new_assignment"
+    ]
+  },
+  "storedMatches": true,
+  "boardUnchanged": true,
+  "evidenceScope": "Local Next.js + real organiser gateway + real scheduler/validator + memory DB. Planning only; no desk commit."
+}

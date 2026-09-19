@@ -54,7 +54,8 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 - [x] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan` (decision / commit published)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)
-- [ ] Agent: graph state; urgent path as far as “candidates exist” (3)
+- [x] Agent: graph state; urgent path as far as “candidates exist” (3)
+  - 19 Sep live: real gateway + real scheduler via local `POST /api/events/{id}/plan` returned HTTP 201, native protocol, 5 model calls, two validated Raffles plans in the 13:00–17:00 window, `classify_risk` → medium/approval (`new_assignment`), board unchanged. [Live plan evidence](team/member-3/live-plan-endpoint-1789809106057.json). Retry of [urgent native graph](team/member-3/native-agent-smoke-urgent_native-1789809006405.json) passed after an earlier `MULTIPLE_NATIVE_TOOL_CALLS` fail-close. Injected-note live graph also passed. Both candidate slots currently use Jonah (same window); comparison is legal, not yet a meaningful trade-off. Eugene publication/readiness review and a coordinator click-through on `/desk` remain for G1 exit.
   - 17 Sep: agent-to-plan-endpoint integration implemented on `member-3/g1-planning-integration`; 34 new endpoint tests, 197 passing regression tests, and a compiled loopback HTTP smoke. Platform-owned route/persistence changes require Eugene review, including atomic publication/readiness guards. Real gateway endpoint acceptance and four failing scheduler legality checks still block G1. [Endpoint contract and team requests](team/member-3/planning-endpoint-integration.md).
   - 15 Sep merged latest main `a13a3f2` into member 3 at `71bcdb5` (after the initial `eeeefcb` merge). Profile-batch adapter + platform live-board reader integrated; 157 regression tests pass in both UTC and Asia/Singapore, typecheck and build pass; native-client/actual-graph/actual-scheduler path passes with an HTTP double. Four real legality checks remain failing; platform endpoint still invokes propose directly. [Integration handoff](team/member-3/main-integration.md).
 - [x] First Lightsail deploy with `/health` (1) — https://54.179.142.4.sslip.io (Ubuntu 24.04, 4 GB, ap-southeast-1, Caddy + Let's Encrypt)
@@ -69,11 +70,12 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 
 - [x] `POST /api/proposals/{id}/decision` and `POST /api/proposals/{id}/commit` (1)
 - [x] Stale `sourceSnapshotId` rejected (1) — UC-07 — two proposals race, loser refused, board unchanged
-- [x] Medium risk cannot commit without an `approval` row (1 + 3) — UC-12 — enforced and tested in `src/dispatch/commit-policy.ts`. Still needs member 3's classifier to set `risk` / `autonomyMode` on the proposal.
+- [x] Medium risk cannot commit without an `approval` row (1 + 3) — UC-12 — enforced and tested in `src/dispatch/commit-policy.ts`. Member 3 now sets `risk` / `autonomyMode` via `classifyProposalRisk()` when planning persists.
 - [x] High risk / infeasible: no commit path (2 + 3) — UC-02, UC-06 — blocked even with an approval on file; a plan whose `validations.ok` is false is refused. Needs member 2's validator to set that flag for real.
 - [ ] Desk: compare, approve/reject with reason, new snapshot on the board (4)
 - [x] `POST /api/demo/reset` idempotent to Eastwind Tuesday (1) — UC-10 — commit, then five resets, identical board each time
-- [ ] Risk policy data: AUTO / APPROVAL / BLOCK (3)
+- [x] Risk policy data: AUTO / APPROVAL / BLOCK (3)
+  - 19 Sep: `classifyProposalRisk()` in `src/agent/policy/risk.ts` writes `risk` / `autonomyMode` from stored plan evidence (not a prompt). Empty/invalid/cert/excessive-OT → `block`; new assignment / reassignment / window move / overtime → `approval`; unchanged board → `auto`. Planning persists that classification and audits `classify_risk`.
 
 **G2 exit:** urgent job through approval to a new versioned snapshot. No P1 technician page until this is green.
 
@@ -86,8 +88,8 @@ asks are consolidated in
 
 19 Sep update: PR #8 is merged on main (`419a0a6`), so the planning endpoint now invokes
 the native agent graph and persists its accepted candidates with stored recommendation IDs.
-G1 still requires Eugene's publication/readiness review, Damon's scheduler-legality fixes,
-and live real-gateway-to-desk acceptance. Risk classification remains a G2 member-3 task.
+G1 still requires Eugene's publication/readiness review and a coordinator click-through on `/desk`.
+Live gateway planning on 19 Sep produced two legal Raffles candidates (see G1 agent evidence). Both slots currently assign Jonah. Risk classification is implemented in `src/agent/policy/risk.ts`.
 
 ---
 

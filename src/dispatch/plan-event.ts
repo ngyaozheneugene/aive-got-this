@@ -9,6 +9,7 @@ import { createUrgentTools } from '../agent/tools/urgent';
 import type { SchedulerPort } from '../agent/tools/urgent';
 import { planningContextFingerprint } from '../agent/tools/context-fingerprint';
 import { AgentError } from '../agent/runtime/errors';
+import { classifyProposalRisk } from '../agent/policy/risk';
 import { candidatePlanSchema } from '../shared/contracts/propose';
 import type { CandidatePlan, PlanProfile, Proposal, SolverEngine } from '../shared/types/domain';
 import { PlanningError, planningError } from './planning-errors';
@@ -119,9 +120,25 @@ export async function planUrgentEvent(
     const selected = preferred ?? plans[0]!;
     const selectionBasis = preferred ? 'requested_profile' as const : 'available_validated_plan' as const;
 
-    // Retain the platform's conservative G1 default. This is NOT risk classification.
+    const context = await tools.readContext(event.id, result.sourceSnapshotId);
+    if (planningContextFingerprint(context) !== result.sourceContextFingerprint) {
+      throw new AgentError('PLANNING_CONTEXT_CHANGED');
+    }
+    const classification = classifyProposalRisk({
+      plans, liveAssignments: context.schedule.assignments,
+    });
+    await db.decisionLogs.create({
+      eventId: event.id, eventType: event.type, playbook: 'urgent_job', sequence: ++sequence,
+      stage: 'classify_risk',
+      toolCalls: [{ tool: 'classify_risk', args: { eventId: event.id, planIds: plans.map((plan) => plan.id) },
+        result: { runId, risk: classification.risk, autonomyMode: classification.autonomyMode,
+          reasons: classification.reasons } }],
+      summary: `Risk ${classification.risk} (${classification.autonomyMode}) from stored plan evidence, not a model score.`,
+      reasonCodes: classification.reasons, result: classification.autonomyMode,
+    });
+
     const proposal = await db.proposals.create({ eventId: event.id, sourceSnapshotId: result.sourceSnapshotId,
-      risk: 'medium', autonomyMode: 'approval', status: 'GENERATING' });
+      risk: classification.risk, autonomyMode: classification.autonomyMode, status: 'GENERATING' });
     proposalId = proposal.id;
     const savedPlans: CandidatePlan[] = [];
     const storedIds: Record<string, string> = Object.create(null);
