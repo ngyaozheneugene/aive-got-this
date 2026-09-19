@@ -185,9 +185,17 @@ describe('event -> propose -> decide -> commit, on the real fixture', () => {
     for (const a of live) perJob.set(a.jobId, (perJob.get(a.jobId) ?? 0) + 1);
     expect([...perJob.values()].filter((n) => n > 1)).toHaveLength(0);
 
-    // 8. the trail reads in order.
+    // 8. the trail reads in order, and is numbered.
     const trail = await db.decisionLogs.listByEvent(event.id);
     expect(trail.map((e) => e.eventType)).toEqual(['desk_decision', 'commit']);
+
+    // Every entry carries a sequence, and they ascend. Unnumbered entries sort
+    // last, so a trail can read correctly by accident while the numbering is
+    // missing; that is what the deployed box was doing before nextSequence.
+    const sequences = trail.map((e) => e.sequence);
+    expect(sequences).not.toContain(undefined);
+    expect(sequences).toEqual([...sequences].sort((x, y) => (x ?? 0) - (y ?? 0)));
+    expect(new Set(sequences).size).toBe(sequences.length);
   });
 
   it('does not depend on today being the fixture date', async () => {

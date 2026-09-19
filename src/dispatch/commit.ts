@@ -5,6 +5,7 @@
 // (I/O, no decisions). Neither re-derives what the other owns.
 
 import { checkCommit } from './commit-policy';
+import { nextSequence } from './audit-sequence';
 import { getCurrentBoard } from './current-board';
 import type { IDatabase } from '../db/interface';
 import type {
@@ -137,6 +138,7 @@ export async function commitPlan(db: IDatabase, input: CommitInput): Promise<Com
   await db.decisionLogs.create({
     eventId: proposal.eventId,
     eventType: 'commit',
+    sequence: await nextSequence(db, proposal.eventId),
     playbook: 'commit',
     stage: 'commit',
     toolCalls: [],

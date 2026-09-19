@@ -6,6 +6,7 @@
 // `getByProposal` returning the newest row is the live verdict.
 
 import type { IDatabase } from '../db/interface';
+import { nextSequence } from './audit-sequence';
 import type { Approval, Proposal } from '../shared/types/domain';
 
 export interface DecisionInput {
@@ -96,6 +97,7 @@ export async function recordDecision(
   await db.decisionLogs.create({
     eventId: proposal.eventId,
     eventType: 'desk_decision',
+    sequence: await nextSequence(db, proposal.eventId),
     playbook: 'approval',
     stage: 'decision',
     toolCalls: [],
