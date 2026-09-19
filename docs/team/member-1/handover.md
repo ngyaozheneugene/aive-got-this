@@ -1,4 +1,4 @@
-# Stream 1 handover v1.4
+# Stream 1 handover v1.5
 
 **Author:** Eugene (member 1, platform and data)<br>
 **Date:** 20 Sep 2026 (Day 12)<br>
@@ -548,12 +548,77 @@ These are recorded rather than hidden. None blocks the demo on the in-memory ada
   ```
 
 - **The legality gate writes an untracked evidence file** into `docs/team/member-3/` on every run, which has twice been swept into an unrelated commit by `git add -A`. Add the pattern to `.gitignore` or delete the file after running.
-- **The G4 rollback drill has not been run.** The procedure is designed: restore a snapshot to a new instance, then move the static IP to it. Moving the IP is the step people forget, and without it the restored box gets a different address, so the certificate hostname no longer matches and the URL stays broken.
+- **The rollback drill passed with one gap**, and the gap is imposed by the account rather than by us. See section 7.3.
+
+### 7.3 Rollback drill, and what it revealed about the account
+
+Run on 20 Sep against a snapshot taken after the `b8bae2d` deploy.
+
+**What the restored instance did on its own**, with no commands typed after boot:
+
+```text
+aive-app         Up 7 seconds (health: starting)
+aive-caddy       Up 7 seconds
+aive-optimizer   Up 7 seconds (health: starting)
+aive-postgres    Up 7 seconds (healthy)
+systemctl is-enabled docker -> enabled
+.env  608 bytes
+```
+
+That answers the question the drill exists for. A restored box comes back by
+itself: Docker starts at boot, `restart: unless-stopped` brings all four
+containers up, the Postgres volume is intact, and the gateway credentials come
+back with it. A restore that booted without `.env` would be a restore in name
+only.
+
+**Not proven, and recorded rather than rounded up:** no HTTP 200 was observed
+from the restored box, because the instance was shut down mid-command, and the
+static IP was never moved, so the certificate hostname binding is reasoned about
+rather than demonstrated. The reasoning is that Caddy's certificate lives in the
+`caddy_data` named volume, which is on the instance disk and therefore inside
+the snapshot, and the `caddy` container came up.
+
+**The account reaps any second Lightsail instance.** Four attempts were
+destroyed within minutes of booting. The fourth was caught in the act:
+
+```text
+Broadcast message from root@ip-172-26-12-219 (Sat 2026-09-19 18:32:45 UTC):
+The system will power off now!
+```
+
+Two details make this worth knowing rather than just annoying:
+
+- That instance was named `Ubuntu-1`, the Lightsail default, not one of the
+  `dispatch-restore-test-*` names. The cleanup is **not name-based**, so no
+  naming convention avoids it.
+- The console is a federated session on an organiser sandbox
+  (`ISSISB_IsbUsersPS/<team code>`), not a personal account. CloudShell is
+  denied by the permission set, so the Lightsail API cannot be queried directly
+  and CloudTrail is likely unavailable too.
+
+The working theory is a one-instance allowance with a scheduled janitor. If that
+is right the production box is the incumbent and is not at risk, which matches
+five days of uninterrupted uptime. **Worth confirming with the organisers**, and
+worth confirming in the form of "is the instance serving our submission
+exempt", because the whole demo is one box.
+
+> **Note:** nothing was orphaned and nothing is billing. The reaper deletes what
+> it shuts down; Lightsail simply keeps the names reserved afterwards, which is
+> why a used name cannot be reused even though the instance is gone.
+
+> **Warning:** this makes the backup recording of the urgent-job spine more
+> important, not less. When the lease ends the instance, the URL and the
+> certificate all go together, and this account has now demonstrated it will
+> delete compute on its own schedule.
 
 ---
 
 ## Revision history
 
+- **v1.5** 20 Sep 2026 - Ran the G4 rollback drill. A restored instance brings
+  the whole stack back unattended. Recorded the one unproven step and the reason
+  it cannot be proven here: the sandbox account destroys any second Lightsail
+  instance within minutes, irrespective of its name.
 - **v1.4** 20 Sep 2026 - Fixed the identical-candidates blocker in member 2's
   insertion engine: travel measured to the job's cluster rather than always the
   CBD, metrics computed rather than hardcoded zeros, and each profile leading
