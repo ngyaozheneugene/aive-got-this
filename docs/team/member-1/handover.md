@@ -1,8 +1,8 @@
-# Stream 1 handover v1.3
+# Stream 1 handover v1.4
 
 **Author:** Eugene (member 1, platform and data)<br>
 **Date:** 20 Sep 2026 (Day 12)<br>
-**Status:** Current as of `main` at `b23e7a6`, which is deployed and verified end to end on the box. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
+**Status:** Current as of `main` at `b8bae2d`, which is deployed and verified end to end on the box. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
 
 Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 records the blocker that is now closed and the three faults found while closing it. Section 6 lists what each of the other three streams needs to know or do.
 
@@ -386,14 +386,26 @@ just fixed: the filter knows, the validator does not. `EXCESSIVE_OVERTIME` is
 matched by member 3's risk classifier and emitted by nobody, so that branch
 cannot currently fire.
 
-**Also open, and it blocks G1. Now reproduced on the deployed box.** The 20 Sep run returned two candidates that are identical in all twelve slots:
+**The identical-candidates blocker is fixed, in your engine, and it needs your review.** The 20 Sep run on the box returned two candidates identical in all twelve slots. They now separate:
 
 ```text
-sla_first           job_raffles -> tech_jonah 13:00-14:30   (+11 unchanged slots)
-minimal_disruption  job_raffles -> tech_jonah 13:00-14:30   (+11 identical slots)
+sla_first           job_raffles -> tech_siti   travel 22   load pressure 76
+minimal_disruption  job_raffles -> tech_jonah  travel 30   load pressure 50
 ```
 
-`comparisonReady` reports `true`, because two profiles came back, but there is nothing to compare. Both profiles currently pick the same technician, so the two candidate plans are identical. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
+The diagnosis is worth reading before the fix, because the obvious fix would not have worked. For a pure insertion into a free window, `slaLateness`, `overtime` and `jobsMoved` are all genuinely zero for every candidate. That leaves travel and imbalance, and `PLAN_WEIGHTS` gives those two **identical values in both profiles**. A weighted sum therefore makes the profiles arithmetically the same, so both plans land on the same technician no matter how good the metrics are. Computing real metrics alone would have moved both plans to Siti and changed nothing else.
+
+Three things changed in `src/matching/propose.ts`:
+
+- **Travel is measured to the job's own cluster.** It was hardcoded to `'cbd'`, which is correct for Raffles Place and wrong for the other eleven jobs on the board. `BoardSchedule` now carries `sites`, which is where `estateCluster` lives, and `buildBoardSchedule` supplies them.
+- **Metrics are computed instead of hardcoded.** `slaLatenessMinutes`, `overtimeMinutes`, `jobsMoved` and `unassignedCount` were literal zeros and `customersAffected` a literal `1`, so the desk compared two candidates on constants. Whichever technician was chosen, the metrics table read the same.
+- **Each profile leads with its own objective**, falling back to the weighted blend only to break ties. `sla_first` minimises lateness then travel, which reads as soonest on site. `minimal_disruption` minimises jobs moved then load pressure, which reads as least knock-on. Load pressure is the share of the technician's `maxMinutesDay` the job consumes, penalised when `acceptsOt` is false, because a technician who is two thirds full and will not work late is where a late job becomes tomorrow's problem.
+
+`solverTrace` now carries the objective, the load pressure and every technician considered with their numbers, so member 4's trace drawer can show why rather than asserting it.
+
+> **Note:** the third change is a design decision in your territory. The reading of each profile name is defensible but it is a reading, and you may prefer another. The first two are straightforward defects. All three are covered by four new tests in `evals/g-suite/g02-profiles.test.ts`.
+
+**Your G-02 eval passed throughout.** It counts plans and checks a status, so it was green while both candidates were the same plan twice. It now asserts they differ, that the profiles separate on their own objective, that metrics are not placeholders, and that travel tracks the job cluster. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
 
 - Travel is computed to a hardcoded `'cbd'` destination rather than the job's actual cluster, so travel is constant across technicians and stops discriminating between them.
 - Start times use a placeholder estimate, `9 + assignmentCount * 2` hours, rather than real insertion into gaps.
@@ -479,6 +491,16 @@ Re-verified locally on 20 Sep against `main` at `7089fe5` plus `4bf023b`:
 | Sustained gateway outage, then recovery | 503, event restored, retry plans normally |
 | Deployed box `/health` | `ok`, gateway configured, TLS valid |
 
+Re-verified on 20 Sep after the scheduler change, against `main` at `b8bae2d`:
+
+| Check | Result |
+|---|---|
+| Full suite | 219 passing, 7 skipped |
+| `tsc --noEmit`, `npm run build` | Clean |
+| Legality gate | 4 of 4 |
+| Two candidates on the Eastwind board | Siti and Jonah, both validating clean |
+| Deployed box, audit numbering | `1..7` agent, `8` decision, `9` commit |
+
 The box was redeployed to `b23e7a6` on 20 Sep and the whole loop re-run against
 it, now agent-driven rather than calling the scheduler directly:
 
@@ -532,6 +554,12 @@ These are recorded rather than hidden. None blocks the demo on the in-memory ada
 
 ## Revision history
 
+- **v1.4** 20 Sep 2026 - Fixed the identical-candidates blocker in member 2's
+  insertion engine: travel measured to the job's cluster rather than always the
+  CBD, metrics computed rather than hardcoded zeros, and each profile leading
+  with its own objective because the shared weights make a weighted sum
+  identical across profiles for a pure insertion. Extended G-02, which counted
+  plans without ever checking they differed.
 - **v1.3** 20 Sep 2026 - Deployed `b23e7a6` and re-ran the whole loop against the
   box, now agent-driven. Rewrote the deploy procedure after
   `docker compose up -d --build` rebuilt both images and silently left both
