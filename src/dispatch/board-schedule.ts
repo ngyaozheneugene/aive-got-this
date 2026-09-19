@@ -17,6 +17,7 @@ import type {
   BoardSchedule,
   JobRequirement,
   Shift,
+  Site,
   TechnicianCert,
 } from '../shared/types/domain';
 
@@ -31,6 +32,13 @@ export type PlanningSchedule = BoardSchedule & {
   certs: TechnicianCert[];
   shifts: Shift[];
   jobRequirements: JobRequirement[];
+  /**
+   * Sites carry `estateCluster`, which is how a job turns into a point on the
+   * travel matrix. Without them propose() had no way to ask "how far is this
+   * job?" and hardcoded every destination to the CBD, which is correct for
+   * Raffles Place and wrong for the other eleven jobs on the board.
+   */
+  sites: Site[];
 };
 
 export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedule> {
@@ -59,9 +67,12 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
   }
 
   const jobRequirements: JobRequirement[] = [];
+  const sites: Site[] = [];
   for (const job of jobs) {
     const requirement = await db.jobRequirements.getByJobId(job.id);
     if (requirement) jobRequirements.push(requirement);
+    const site = await db.sites.getById(job.siteId);
+    if (site && !sites.some((s) => s.id === site.id)) sites.push(site);
   }
 
   return {
@@ -75,5 +86,6 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
     certs,
     shifts,
     jobRequirements,
+    sites,
   };
 }

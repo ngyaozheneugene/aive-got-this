@@ -434,6 +434,7 @@ export interface BoardSchedule {
   certs?: TechnicianCert[];
   shifts?: Shift[];
   jobRequirements?: JobRequirement[];
+  sites?: Site[];
 }
 
 export interface ProposeInput {
