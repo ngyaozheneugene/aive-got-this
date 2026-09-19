@@ -9,8 +9,11 @@ import { createUrgentTools } from '../agent/tools/urgent';
 import type { SchedulerPort } from '../agent/tools/urgent';
 import { planningContextFingerprint } from '../agent/tools/context-fingerprint';
 import { AgentError } from '../agent/runtime/errors';
+import { classifyProposalRisk } from '../agent/policy/risk';
 import { candidatePlanSchema } from '../shared/contracts/propose';
-import type { CandidatePlan, PlanProfile, Proposal, SolverEngine } from '../shared/types/domain';
+import type {
+  CandidatePlan, OperationalEventStatus, PlanProfile, Proposal, SolverEngine,
+} from '../shared/types/domain';
 import { PlanningError, planningError } from './planning-errors';
 
 export interface PlanEventInput { eventId: string; profile: PlanProfile; signal?: AbortSignal }
@@ -40,6 +43,9 @@ export async function planUrgentEvent(
   active.add(input.eventId);
   let claimed = false;
   let proposalId: string | undefined;
+  // The status planning took the event from, so an infrastructure failure that
+  // wrote nothing can hand it back instead of consuming it.
+  let priorStatus: OperationalEventStatus | undefined;
   const tools = createUrgentTools(db, dependencies.scheduler);
   const runId = randomUUID();
   const checkCancelled = () => { if (input.signal?.aborted) throw new AgentError('AGENT_ABORTED'); };
@@ -61,6 +67,7 @@ export async function planUrgentEvent(
     // Validate the stored event and snapshot before using gateway quota.
     await tools.readContext(event.id);
     checkCancelled();
+    priorStatus = event.status;
     await db.events.updateStatus(event.id, 'PLANNING');
     claimed = true;
     const model = (dependencies.createModel ?? (() => createGatewayClient(readGatewayConfig()).model))();
@@ -85,7 +92,13 @@ export async function planUrgentEvent(
     const timedOut = result.trace.some((step) => step.tool === 'propose' && step.result.timedOut === true) ||
       result.plans.some((plan) => plan.timedOut);
     if (result.status === 'no_candidates') {
-      if (timedOut) throw new PlanningError('scheduler_timeout', 504, 'The scheduler timed out without an accepted candidate.');
+      if (timedOut) {
+        // Explicitly not proven infeasible: the scheduler ran out of time, which
+        // is the same class of failure as the gateway being slow. Nothing was
+        // written, so the event stays plannable and the run can be repeated.
+        throw new PlanningError('scheduler_timeout', 504,
+          'The scheduler timed out without an accepted candidate.', 'FAILED', true);
+      }
       throw new PlanningError('no_candidate_plans', 409, 'No candidate passed the configured validation checks.', 'INFEASIBLE');
     }
     if (result.status !== 'candidates_ready' || result.plans.length === 0 ||
@@ -119,9 +132,25 @@ export async function planUrgentEvent(
     const selected = preferred ?? plans[0]!;
     const selectionBasis = preferred ? 'requested_profile' as const : 'available_validated_plan' as const;
 
-    // Retain the platform's conservative G1 default. This is NOT risk classification.
+    const context = await tools.readContext(event.id, result.sourceSnapshotId);
+    if (planningContextFingerprint(context) !== result.sourceContextFingerprint) {
+      throw new AgentError('PLANNING_CONTEXT_CHANGED');
+    }
+    const classification = classifyProposalRisk({
+      plans, liveAssignments: context.schedule.assignments,
+    });
+    await db.decisionLogs.create({
+      eventId: event.id, eventType: event.type, playbook: 'urgent_job', sequence: ++sequence,
+      stage: 'classify_risk',
+      toolCalls: [{ tool: 'classify_risk', args: { eventId: event.id, planIds: plans.map((plan) => plan.id) },
+        result: { runId, risk: classification.risk, autonomyMode: classification.autonomyMode,
+          reasons: classification.reasons } }],
+      summary: `Risk ${classification.risk} (${classification.autonomyMode}) from stored plan evidence, not a model score.`,
+      reasonCodes: classification.reasons, result: classification.autonomyMode,
+    });
+
     const proposal = await db.proposals.create({ eventId: event.id, sourceSnapshotId: result.sourceSnapshotId,
-      risk: 'medium', autonomyMode: 'approval', status: 'GENERATING' });
+      risk: classification.risk, autonomyMode: classification.autonomyMode, status: 'GENERATING' });
     proposalId = proposal.id;
     const savedPlans: CandidatePlan[] = [];
     const storedIds: Record<string, string> = Object.create(null);
@@ -162,7 +191,12 @@ export async function planUrgentEvent(
         await db.proposals.updateStatus(partial.id, failure.eventStatus === 'SUPERSEDED' ? 'SUPERSEDED' : 'REJECTED');
       }
       if (claimed && (await db.events.getById(input.eventId))?.status === 'PLANNING') {
-        await db.events.updateStatus(input.eventId, failure.eventStatus);
+        // A gateway outage or a timeout says nothing about the event, and if no
+        // proposal row was written there is nothing to review. Give the event
+        // back so the same request can simply be retried once the dependency
+        // recovers. Anything else, or any partial write, stays terminal.
+        const restore = failure.retryable && !proposalId && priorStatus;
+        await db.events.updateStatus(input.eventId, restore ? priorStatus! : failure.eventStatus);
       }
     } catch {
       return { ok: false, code: 'planning_cleanup_failed', httpStatus: 500,

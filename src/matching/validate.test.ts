@@ -95,7 +95,7 @@ describe('Hard-Constraint Plan Validator', () => {
 
     const result = validatePlan(movedInboundPlan, mockSchedule);
     expect(result.ok).toBe(false);
-    expect(result.violations[0]).toBe('IN_PROGRESS_JOB_MOVED:job_hafiz_1');
+    expect(result.violations[0]).toBe('IN_PROGRESS_MOVED:job_hafiz_1');
   });
 
   it('should fail validation when duplicate assignments exist for the same job', () => {
@@ -119,6 +119,6 @@ describe('Hard-Constraint Plan Validator', () => {
 
     const result = validatePlan(duplicatePlan, mockSchedule);
     expect(result.ok).toBe(false);
-    expect(result.violations[0]).toBe('DUPLICATE_JOB_ASSIGNMENT:job_1');
+    expect(result.violations[0]).toBe('DUPLICATE_ASSIGNMENT:job_1');
   });
 });

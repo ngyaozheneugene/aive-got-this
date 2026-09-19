@@ -5,7 +5,25 @@ import type {
   PlanValidation,
   TechnicianCert,
 } from '../shared/types/domain';
+import { VALIDATION_VIOLATIONS } from '../shared/config/reason-codes';
 import { EASTWIND } from '../shared/fixtures/eastwind';
+
+/**
+ * The frozen violation vocabulary. Every code this file emits is checked against
+ * it at compile time.
+ *
+ * This is load-bearing rather than cosmetic: the desk renders these codes, and
+ * `classifyProposalRisk` matches on them to decide AUTO / APPROVAL / BLOCK. When
+ * the validator emitted `EXPIRED_CERT` while the contract and the classifier
+ * both said `CERT_EXPIRED`, an expired certificate never raised its own risk
+ * reason. It was still blocked, by the blunter `validation_failed` rule, so
+ * nothing looked broken while the audit trail quietly named the wrong cause.
+ */
+type ViolationCode = (typeof VALIDATION_VIOLATIONS)[number];
+
+function violation(code: ViolationCode, detail?: string): string {
+  return detail ? `${code}:${detail}` : code;
+}
 
 /**
  * G1: Independent hard-constraint validator for candidate dispatch plans.
@@ -17,18 +35,18 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
 
   const slots = plan.assignments || [];
 
-  // Extract certs & jobRequirements from schedule or fallback to EASTWIND fixture
-  const certs: TechnicianCert[] =
-    (schedule as unknown as { certs?: TechnicianCert[] }).certs || EASTWIND.certs;
-  const requirements: JobRequirement[] =
-    (schedule as unknown as { jobRequirements?: JobRequirement[] }).jobRequirements ||
-    EASTWIND.jobRequirements;
+  // The schedule now declares these, so the cast is gone and an omission is
+  // visible to the type checker. The fixture fallback stays because nine test
+  // files still build schedules without them; production never reaches it,
+  // because `buildBoardSchedule` supplies all three and is the only path in.
+  const certs: TechnicianCert[] = schedule.certs ?? EASTWIND.certs;
+  const requirements: JobRequirement[] = schedule.jobRequirements ?? EASTWIND.jobRequirements;
 
   // 1. Check for duplicate job assignments across slots
   const assignedJobIds = new Set<string>();
   for (const slot of slots) {
     if (assignedJobIds.has(slot.jobId)) {
-      violations.push(`DUPLICATE_JOB_ASSIGNMENT:${slot.jobId}`);
+      violations.push(violation('DUPLICATE_ASSIGNMENT', slot.jobId));
     }
     assignedJobIds.add(slot.jobId);
   }
@@ -62,7 +80,7 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
           const endB = new Date(slotB.windowEnd).getTime();
 
           if (startA < endB && startB < endA) {
-            violations.push(`OVERLAP:tech=${techId}:jobs=${slotA.jobId},${slotB.jobId}`);
+            violations.push(violation('OVERLAP', `tech=${techId}:jobs=${slotA.jobId},${slotB.jobId}`));
           }
         }
       }
@@ -79,7 +97,7 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
       if (origAssignment) {
         const planSlot = slots.find((s) => s.jobId === job.id);
         if (planSlot && planSlot.technicianId !== origAssignment.technicianId) {
-          violations.push(`IN_PROGRESS_JOB_MOVED:${job.id}`);
+          violations.push(violation('IN_PROGRESS_MOVED', job.id));
         }
       }
     }
@@ -102,11 +120,17 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
         const matchingCert = techCerts.find((c) => c.certType === certType);
 
         if (!matchingCert) {
-          violations.push(`MISSING_CERT:tech=${slot.technicianId}:cert=${certType}`);
+          violations.push(violation('MISSING_CERT', `tech=${slot.technicianId}:cert=${certType}`));
         } else if (matchingCert.expiresAt && matchingCert.expiresAt < schedule.date) {
-          violations.push(`EXPIRED_CERT:tech=${slot.technicianId}:cert=${certType}`);
+          violations.push(violation('CERT_EXPIRED', `tech=${slot.technicianId}:cert=${certType}`));
         } else if (matchingCert.issuedAt > schedule.date) {
-          violations.push(`INVALID_CERT:tech=${slot.technicianId}:cert=${certType}`);
+          violations.push(
+            // Issued after the schedule date: the technician does not hold a valid
+            // certificate on the day, which is what MISSING_CERT means. The frozen
+            // vocabulary has no separate not-yet-issued code; the cause is kept
+            // in the detail so the desk can still explain it.
+            violation('MISSING_CERT', `tech=${slot.technicianId}:cert=${certType}:not_yet_issued`),
+          );
         }
       }
     }
@@ -122,7 +146,7 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
 
       // Start time must never precede customer window start; end time must not exceed windowEnd unless in_progress
       if (slotStartMs < jobStartMs || (!isInProgress && slotEndMs > jobEndMs)) {
-        violations.push(`WINDOW_VIOLATION:job=${job.id}`);
+        violations.push(violation('WINDOW_INFEASIBLE', `job=${job.id}`));
       }
     }
   }

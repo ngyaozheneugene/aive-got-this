@@ -1,5 +1,6 @@
 export { TOOL_NAMES } from './tools/names';
-export { modeForRisk } from './policy/risk';
+export { classifyProposalRisk, modeForRisk } from './policy/risk';
+export type { RiskClassification, RiskInput, RiskReason } from './policy/risk';
 export { createGatewayClient, readGatewayConfig, DEFAULT_GATEWAY_PROTOCOL } from './runtime/gateway';
 export type { ToolModel, GatewayConfig, GatewayOptions, GatewayProtocol } from './runtime/gateway';
 export { createUrgentTools } from './tools/urgent';

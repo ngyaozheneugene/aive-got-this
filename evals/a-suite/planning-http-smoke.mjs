@@ -71,7 +71,7 @@ try {
   assert(stored.body.plans.some((plan) => plan.id === stored.body.proposal.recommendedPlanId && plan.profile === 'minimal_disruption'));
   checks.push('cross_route_persistence_and_stored_ids');
   const audit = await request(`/api/events/${event.body.id}/audit`);
-  assert.deepEqual(audit.body.entries.map((row) => row.stage), ['retrieve_board', 'propose', 'propose', 'validate', 'validate', 'persist_proposal']);
+  assert.deepEqual(audit.body.entries.map((row) => row.stage), ['retrieve_board', 'propose', 'propose', 'validate', 'validate', 'classify_risk', 'persist_proposal']);
   checks.push('persisted_graph_audit');
   assert.deepEqual((await request('/api/schedule/current')).body, before);
   checks.push('board_unchanged');
