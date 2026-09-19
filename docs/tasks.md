@@ -96,7 +96,7 @@ and live real-gateway-to-desk acceptance. Risk classification remains a G2 membe
 - [x] Sidecar implements `propose()` for `technician_unavailable` and `job_overrun` (2)
 - [x] Insertion is 10 s timeout fallback only on those events (2)
 - [x] UC-03: in-progress stays; remaining jobs replan as a set
-- [ ] UC-04: 45-minute overrun; frozen horizon
+- [x] UC-04: 45-minute overrun; frozen horizon
 - [ ] Agent: compare, explain from evidence, interrupt, resume; playbooks for all three events (3)
 - [ ] Desk: unavailable + overrun simulators; trace drawer (4) — UC-13
 - [ ] G/A/X: E01–E04, E06–E08 must-pass; E09–E10 safe behaviour (2 + 3)

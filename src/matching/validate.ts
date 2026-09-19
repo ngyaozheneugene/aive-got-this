@@ -118,7 +118,10 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
       const jobStartMs = Date.parse(job.windowStart);
       const jobEndMs = Date.parse(job.windowEnd);
 
-      if (slotStartMs < jobStartMs || slotEndMs > jobEndMs) {
+      const isInProgress = job.lockState === 'in_progress' || job.status === 'on_site';
+
+      // Start time must never precede customer window start; end time must not exceed windowEnd unless in_progress
+      if (slotStartMs < jobStartMs || (!isInProgress && slotEndMs > jobEndMs)) {
         violations.push(`WINDOW_VIOLATION:job=${job.id}`);
       }
     }
