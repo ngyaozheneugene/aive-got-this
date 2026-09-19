@@ -46,11 +46,11 @@ Move **Current gate** forward only when that gate’s exit line is satisfied.
 
 ## G1 — Urgent job on the desk (Day 5)
 
-- [ ] Stage A eligibility: cert, tier, shift, window, parts/tools, locks; nearest van can be illegal (2)
-  - Reopened 15 Sep by real integration acceptance: missing required parts and absent shift records are still accepted. Implementation exists on main; this is a correctness gap, not missing code.
+- [x] Stage A eligibility: cert, tier, shift, window, parts/tools, locks; nearest van can be illegal (2)
+  - 19 Sep verified: Stage A excludes missing parts and absent shift records; all 4 legality checks pass.
 - [x] Travel matrix (cached); scheduling does not use straight-line (2)
-- [ ] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
-  - Reopened 15 Sep: Raffles plans at 11:00–12:30 violate the 13:00–17:00 customer window; independent validation also accepts Wei after an invalid-certificate assignee substitution. [Four-check acceptance evidence](team/member-3/scheduler-acceptance-1789457318062.json).
+- [x] Insertion `propose()` + independent validator; two valid Raffles Place plans in ≤10 s (2)
+  - 19 Sep verified: Customer windows (13:00–17:00) respected and independent validator rejects unqualified injected assignees. `RUN_SCHEDULER_ACCEPTANCE=1` passes.
 - [x] G-01 / G-02 / G-03 sketched in `evals/g-suite/` (2)
 - [x] APIs: `GET /api/schedule/current`, `POST /api/events`, `POST /api/events/{id}/plan` (decision / commit published)
 - [x] Desk: Eastwind list at `/desk` (timeline + two-plan card still G1)

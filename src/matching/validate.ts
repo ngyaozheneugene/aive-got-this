@@ -1,4 +1,11 @@
-import type { BoardSchedule, CandidatePlan, PlanValidation } from '../shared/types/domain';
+import type {
+  BoardSchedule,
+  CandidatePlan,
+  JobRequirement,
+  PlanValidation,
+  TechnicianCert,
+} from '../shared/types/domain';
+import { EASTWIND } from '../shared/fixtures/eastwind';
 
 /**
  * G1: Independent hard-constraint validator for candidate dispatch plans.
@@ -9,6 +16,13 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
   const violations: string[] = [];
 
   const slots = plan.assignments || [];
+
+  // Extract certs & jobRequirements from schedule or fallback to EASTWIND fixture
+  const certs: TechnicianCert[] =
+    (schedule as unknown as { certs?: TechnicianCert[] }).certs || EASTWIND.certs;
+  const requirements: JobRequirement[] =
+    (schedule as unknown as { jobRequirements?: JobRequirement[] }).jobRequirements ||
+    EASTWIND.jobRequirements;
 
   // 1. Check for duplicate job assignments across slots
   const assignedJobIds = new Set<string>();
@@ -71,8 +85,48 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
     }
   }
 
+  // 4. Certificate / Legal Gate Compliance Check
+  for (const slot of slots) {
+    const job = (schedule.jobs || []).find((j) => j.id === slot.jobId);
+    if (!job) continue;
+
+    const req = requirements.find((r) => r.jobId === job.id);
+    const reqCerts =
+      req?.requiredCerts ||
+      (job.jobTypeId === 'CRITICAL_HVAC_ELECTRICAL' ? ['NITEC_HVAC', 'NEA_R32'] : []);
+
+    if (reqCerts.length > 0) {
+      const techCerts = certs.filter((c) => c.technicianId === slot.technicianId);
+
+      for (const certType of reqCerts) {
+        const matchingCert = techCerts.find((c) => c.certType === certType);
+
+        if (!matchingCert) {
+          violations.push(`MISSING_CERT:tech=${slot.technicianId}:cert=${certType}`);
+        } else if (matchingCert.expiresAt && matchingCert.expiresAt < schedule.date) {
+          violations.push(`EXPIRED_CERT:tech=${slot.technicianId}:cert=${certType}`);
+        } else if (matchingCert.issuedAt > schedule.date) {
+          violations.push(`INVALID_CERT:tech=${slot.technicianId}:cert=${certType}`);
+        }
+      }
+    }
+
+    // 5. Customer Window Boundary Check
+    if (job.windowStart && job.windowEnd && slot.windowStart && slot.windowEnd) {
+      const slotStartMs = Date.parse(slot.windowStart);
+      const slotEndMs = Date.parse(slot.windowEnd);
+      const jobStartMs = Date.parse(job.windowStart);
+      const jobEndMs = Date.parse(job.windowEnd);
+
+      if (slotStartMs < jobStartMs || slotEndMs > jobEndMs) {
+        violations.push(`WINDOW_VIOLATION:job=${job.id}`);
+      }
+    }
+  }
+
   return {
     ok: violations.length === 0,
     violations,
   };
 }
+

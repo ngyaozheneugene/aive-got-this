@@ -46,6 +46,18 @@ function trySidecarSync(input: ProposeInput): ProposeOutput | null {
   return null;
 }
 
+function toSgIso(ms: number): string {
+  const sgMs = ms + 8 * 60 * 60 * 1000;
+  const sgDate = new Date(sgMs);
+  const yyyy = sgDate.getUTCFullYear();
+  const mm = String(sgDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(sgDate.getUTCDate()).padStart(2, '0');
+  const hh = String(sgDate.getUTCHours()).padStart(2, '0');
+  const min = String(sgDate.getUTCMinutes()).padStart(2, '0');
+  const ss = String(sgDate.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}+08:00`;
+}
+
 /**
  * Async HTTP bridge calling the Python OR-Tools sidecar container.
  */
@@ -276,15 +288,25 @@ function generateCandidateForProfile(
     // Calculate travel time from tech's current cluster or home region to job site
     const travelTime = travelMinutes(tech.currentCluster || 'cbd', 'cbd', schedule.travel || []);
 
-    // Estimate start time after latest assignment or default to 09:00
-    let startHour = 9;
-    if (techAssignments.length > 0) {
-      startHour = Math.min(17, 9 + techAssignments.length * 2);
-    }
+    // Compute slot window within customer's requested window
+    let windowStart = targetJob.windowStart;
+    let windowEnd = targetJob.windowEnd;
 
-    const windowStart = `${EASTWIND_DATE}T${String(startHour).padStart(2, '0')}:00:00+08:00`;
-    const endHour = Math.min(18, startHour + 1);
-    const windowEnd = `${EASTWIND_DATE}T${String(endHour).padStart(2, '0')}:30:00+08:00`;
+    if (targetJob.windowStart) {
+      const startMs = Date.parse(targetJob.windowStart);
+      const durationMs = (targetJob.durationMinutes || 90) * 60 * 1000;
+      const endMs = startMs + durationMs;
+      windowStart = targetJob.windowStart;
+      windowEnd = toSgIso(endMs);
+    } else {
+      let startHour = 9;
+      if (techAssignments.length > 0) {
+        startHour = Math.min(17, 9 + techAssignments.length * 2);
+      }
+      windowStart = `${EASTWIND_DATE}T${String(startHour).padStart(2, '0')}:00:00+08:00`;
+      const endHour = Math.min(18, startHour + 1);
+      windowEnd = `${EASTWIND_DATE}T${String(endHour).padStart(2, '0')}:30:00+08:00`;
+    }
 
     const slot: PlannedSlot = {
       jobId: targetJob.id,

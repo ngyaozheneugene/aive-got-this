@@ -41,6 +41,8 @@ export function stageA(
       } else if (techShift.status !== 'clocked_in' && techShift.status !== 'scheduled') {
         exclusionReasons.push('not_clocked_in');
       }
+    } else {
+      exclusionReasons.push('not_clocked_in');
     }
 
     // 3. Skill tier requirement check
@@ -67,6 +69,26 @@ export function stageA(
             exclusionReasons.push('cert_expired');
           }
         }
+      }
+    }
+
+    // 5. Inventory parts requirement check
+    const requiredParts = job.partsRequired || [];
+    if (requiredParts.length > 0) {
+      const techParts = technician.parts || [];
+      const hasAllParts = requiredParts.every((p) => techParts.includes(p));
+      if (!hasAllParts) {
+        exclusionReasons.push('missing_parts');
+      }
+    }
+
+    // 6. Tools requirement check
+    const requiredTools = job.toolsRequired || [];
+    if (requiredTools.length > 0) {
+      const techTools = technician.tools || [];
+      const hasAllTools = requiredTools.every((t) => techTools.includes(t));
+      if (!hasAllTools) {
+        exclusionReasons.push('missing_tools');
       }
     }
 
