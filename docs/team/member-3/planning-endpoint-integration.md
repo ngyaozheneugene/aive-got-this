@@ -106,17 +106,17 @@ The last command is expected to FAIL until the four upstream constraints are fix
 
 ## Requests to send (not sent automatically)
 
-**Eugene:** Please review the route and new dispatch planning service on this branch. Confirm the HTTP
-contract, stored-ID selection and audit format, and help close atomic publication/readiness guards for
-GENERATING, rejected and superseded proposals before live use. Can the offline A/X endpoint tests run
-on PR CI, and can we confirm the server's planning timeout? No eligibility rules or commit code were duplicated.
+These messages refer to `member-3/g1-planning-integration` (implementation commit `db4406d`).
+The implementation is present; the requests are for review, remaining fixes and acceptance, not a rebuild.
 
-**Damon:** The four legality checks still fail on 7d00162. Please fix the window, independent cert,
-carried-part and missing-shift cases and send the branch/PR plus a passing RUN_SCHEDULER_ACCEPTANCE run.
-Also confirm two meaningful alternatives where a trade-off exists, and flag any change to the profile
-return contract; the agent currently validates a batch and selects the requested profile without re-ranking.
+**Eugene — platform review and safe publication**
 
-**Khant:** Please push/share your desk branch or PR and review the response/error contract above. Use
-stored IDs and backend metrics; show one-profile results honestly when comparisonReady=false, handle
-loading/failure/superseded states, and do not describe requested-profile selection as AI ranking.
-After the platform and scheduler fixes, let's verify the complete real-gateway-to-desk flow together.
+> The urgent planning endpoint now invokes the native agent and persists accepted candidates, stored IDs and its tool trace. Please review `src/app/api/events/[id]/plan/route.ts`, `src/dispatch/plan-event.ts` and `src/dispatch/planning-errors.ts` on `member-3/g1-planning-integration`. Before live use, can you close the decision/commit readiness guards so GENERATING, rejected or superseded proposals cannot be approved or committed, and confirm an atomic publication/event-claim approach? Please also confirm the planning timeout and enable the offline A/X endpoint suites in PR CI. No eligibility rules or schedule-commit implementation were duplicated. Please send the review or follow-up PR so we can test the combined path.
+
+**Damon — scheduler legality acceptance**
+
+> The new sidecar work is pulled, but all four G1 legality checks still fail on `main@7d00162`: customer window, independent certificate validation, required carried parts and absent shift. Please run `RUN_SCHEDULER_ACCEPTANCE=1 npx vitest run evals/a-suite/real-scheduler.acceptance.test.ts`, fix these in Stage A/scheduling/validation, and share the branch or PR with passing evidence. Please also verify meaningful legal alternatives when a trade-off exists and tell me about any proposed profile-return or planning-data contract changes. The agent currently validates both returned profiles and selects the requested one without changing scores or assignments. These fixes are still needed despite the new G3 code.
+
+**Khant — desk branch and API integration**
+
+> Please share or push your desk branch/PR and review the HTTP contract in `docs/team/member-3/planning-endpoint-integration.md`. Use stored proposal/plan IDs and backend metrics, support loading/failure/superseded states, and display one-plan results honestly when `comparisonReady=false`. Selection is requested-profile based, not AI ranking. Please keep unavailable/overrun out of the urgent-only endpoint until their playbooks are integrated. After Eugene's readiness review and Damon's legality fixes, let's verify the real-gateway-to-desk urgent flow together.

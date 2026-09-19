@@ -8,6 +8,11 @@ This file is the session entrypoint. Cursor rules in `.cursor/rules/` repeat the
 
 ## Every session
 
+Before starting new work, read `docs/tasks.md` and the active integration
+handoffs linked from it. Check the requests assigned to your stream
+against the current code. Reproduce reported failures before declaring
+them resolved, and record the tested revision and evidence.
+
 1. Read [`docs/tasks.md`](docs/tasks.md). Obey **Current gate**. Do not start the next gate’s work except as listed there.
 2. Identify the stream from the files you will touch. Read that brief in [`docs/team/`](docs/team/README.md).
 3. If you change the recovery loop, also read [`docs/workflow.md`](docs/workflow.md) and the matching story in [`docs/usecases.md`](docs/usecases.md).

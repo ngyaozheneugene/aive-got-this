@@ -84,10 +84,10 @@ Endpoints, refusal codes, invariants, the faults found so far and the per-stream
 asks are consolidated in
 [`docs/team/member-1/handover.md`](team/member-1/handover.md).
 
-15 Sep update: the planning endpoint and persisted recommendation-ID fixes are on main
-(`9e1a0c5` / merge `eeeefcb`). It calls the scheduler directly, not the native graph.
-Real scheduling legality remains blocked by the G1 acceptance failures above; risk
-classification, agent endpoint integration, and live desk acceptance are still required.
+19 Sep update: PR #8 is merged on main (`419a0a6`), so the planning endpoint now invokes
+the native agent graph and persists its accepted candidates with stored recommendation IDs.
+G1 still requires Eugene's publication/readiness review, Damon's scheduler-legality fixes,
+and live real-gateway-to-desk acceptance. Risk classification remains a G2 member-3 task.
 
 ---
 
