@@ -1,8 +1,8 @@
-# Stream 1 handover v1.2
+# Stream 1 handover v1.3
 
 **Author:** Eugene (member 1, platform and data)<br>
 **Date:** 20 Sep 2026 (Day 12)<br>
-**Status:** Current as of `main` at `7089fe5`, plus member 3's risk classifier (`4bf023b`) staged on `eugene` and not yet merged. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
+**Status:** Current as of `main` at `b23e7a6`, which is deployed and verified end to end on the box. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
 
 Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 records the blocker that is now closed and the three faults found while closing it. Section 6 lists what each of the other three streams needs to know or do.
 
@@ -21,11 +21,49 @@ The product is deployed, public, and serving the seeded Eastwind Tuesday board o
 | Database | In-memory adapter (`USE_MEMORY_DB=true`). Postgres runs but is unseeded |
 | Gateway | Configured server-side; `LLM_MODEL=global.anthropic.claude-sonnet-4-5-20250929-v1:0` |
 
-The box tracks `main`. To redeploy after a merge:
+The box tracks `main`. To redeploy after a merge, in three steps:
 
 ```bash
-cd ~/aive-got-this && git checkout main && git pull && docker compose up -d --build
+cd ~/aive-got-this && git checkout main && git pull
 ```
+
+```bash
+docker compose build app && docker compose build optimizer
+```
+
+```bash
+docker compose up -d --force-recreate app optimizer
+```
+
+> **Warning:** `docker compose up -d --build` is not reliable here, and the
+> failure is silent. On 20 Sep it rebuilt both images correctly and left both
+> containers running the previous ones, reporting success. The site was
+> unchanged for four days' worth of merges and nothing in the deploy output said
+> so.
+>
+> The cause is worth knowing. A container is an instance created from an image;
+> rebuilding an image does nothing to a container that already exists. Compose
+> normally notices and recreates, but the new build takes the `:latest` tag from
+> the old image, which then becomes dangling. The running containers referenced
+> that now-untagged digest, compose compared them against it, found them
+> consistent, and correctly answered a question nobody meant to ask.
+> `docker compose ps` shows the symptom: a bare `sha256:...` in the `IMAGE`
+> column instead of a name.
+>
+> `--force-recreate` removes the guesswork. Naming `app` and `optimizer`
+> explicitly leaves `caddy` and `postgres` alone, so the certificate and the
+> volumes survive.
+
+After deploying, check the running build rather than the page, because a browser
+will happily show you a cached one:
+
+```bash
+curl -s https://54.179.142.4.sslip.io/api/events/x/plan -X POST \
+  -H 'Content-Type: application/json' -d '{"profile":"invented"}'
+```
+
+`invalid_plan_request` is the current build. `invalid_profile` is the pre-agent
+one.
 
 > **Note:** the AWS lease and the submission deadline both land around 28 Sep 2026, which falls before the plan's Day 21 row. When the lease ends, the instance, the URL, and the certificate go with it. The G4 backup recording is the only artefact that outlives it.
 
@@ -348,7 +386,14 @@ just fixed: the filter knows, the validator does not. `EXCESSIVE_OVERTIME` is
 matched by member 3's risk classifier and emitted by nobody, so that branch
 cannot currently fire.
 
-**Also open, and it blocks G1.** Both profiles currently pick the same technician, so the two candidate plans are identical. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
+**Also open, and it blocks G1. Now reproduced on the deployed box.** The 20 Sep run returned two candidates that are identical in all twelve slots:
+
+```text
+sla_first           job_raffles -> tech_jonah 13:00-14:30   (+11 unchanged slots)
+minimal_disruption  job_raffles -> tech_jonah 13:00-14:30   (+11 identical slots)
+```
+
+`comparisonReady` reports `true`, because two profiles came back, but there is nothing to compare. Both profiles currently pick the same technician, so the two candidate plans are identical. The G1 exit line calls for "two meaningfully different valid candidates", and the 30-minute rundown has a beat comparing SLA-first against minimal-disruption. As things stand, the desk would show the same plan twice. Two likely causes in `src/matching/propose.ts`:
 
 - Travel is computed to a hardcoded `'cbd'` destination rather than the job's actual cluster, so travel is constant across technicians and stops discriminating between them.
 - Start times use a placeholder estimate, `9 + assignmentCount * 2` hours, rather than real insertion into gaps.
@@ -434,9 +479,30 @@ Re-verified locally on 20 Sep against `main` at `7089fe5` plus `4bf023b`:
 | Sustained gateway outage, then recovery | 503, event restored, retry plans normally |
 | Deployed box `/health` | `ok`, gateway configured, TLS valid |
 
-> **Warning:** the box is materially behind `main`. It predates the agent-driven
-> planning endpoint, the desk compare and commit loop, and the CP-SAT sidecar.
-> This is the first redeploy that changes what a visitor actually sees.
+The box was redeployed to `b23e7a6` on 20 Sep and the whole loop re-run against
+it, now agent-driven rather than calling the scheduler directly:
+
+| Step | Result |
+|---|---|
+| Reset to Eastwind Tuesday | v1, `snap_eastwind_v1` |
+| Create urgent event | 201, `VALIDATED` |
+| Plan | 201 in 14 s, native protocol, 5 model calls, 2 validated candidates |
+| Risk | `medium` / `approval`, classified from plan evidence |
+| Commit before approval | 403 `approval_required` |
+| Commit naming the wrong baseline | 400 `snapshot_mismatch` |
+| Bare privileged body `{"force":true}` | 400 `invalid_commit` |
+| Full body plus `force` and `skipApproval` | Extra fields stripped by the schema, still 403 `approval_required` |
+| Approve with no `planId` | 200, `approvedPlanId` resolved from the recommendation |
+| Commit | 200, snapshot v2, `applied=1` of 12 slots offered |
+| Commit again | 409 `already_committed` |
+| Board | v2, `job_raffles` to Jonah 13:00 to 14:30, no job on two technicians |
+| Audit | 7 agent steps, then the decision, then the commit |
+
+> **Note:** the privileged-field result is a better demo beat than the documented
+> one. A judge who adds `"force": true` to an otherwise valid commit gets the
+> field silently discarded at the contract boundary and the commit refused on its
+> merits, rather than a validation error. Nothing privileged reaches the guard,
+> because the guard is never given the chance to read it.
 
 ### 7.2 Known gaps
 
@@ -444,6 +510,7 @@ These are recorded rather than hidden. None blocks the demo on the in-memory ada
 
 - **`PostgresDatabase` is not type-checked against `IDatabase`.** A cast in `src/db/index.ts` hides roughly 15 type errors. Two silent bugs were found by accident that this would have caught by design: the Postgres `decision_log` and `approval` queries each wrote columns they never read back, so `listByEvent` could never have matched a row and every medium-risk commit would have been refused forever.
 - **`commitPlan` is not wrapped in a transaction.** Unreachable in memory, real on SQL.
+- **The box needs one more deploy** to pick up the audit sequence fix below. Nothing else is outstanding on it.
 - **Postgres has a schema but no seed.** `seed/` holds only a `.gitkeep` and `PostgresDatabase.seed()` is empty, so flipping `USE_MEMORY_DB=false` yields a blank board.
 - **Port 8080 is still open on the box** as a fallback if Caddy misbehaves. Close that firewall rule once you are confident in TLS.
 - **The shared docs still describe strict JSON as the tool protocol.** Member 3's
@@ -465,6 +532,12 @@ These are recorded rather than hidden. None blocks the demo on the in-memory ada
 
 ## Revision history
 
+- **v1.3** 20 Sep 2026 - Deployed `b23e7a6` and re-ran the whole loop against the
+  box, now agent-driven. Rewrote the deploy procedure after
+  `docker compose up -d --build` rebuilt both images and silently left both
+  containers on the previous ones. Recorded that the two candidate plans are
+  identical on the real board, and that stream 1's audit entries were unnumbered
+  while member 3's were not.
 - **v1.2** 20 Sep 2026 - The release blocker in v1.1 is closed by member 2's
   `1023f25`, verified independently. Rewrote §5 to record the closure and the
   three faults found while confirming it: the violation vocabulary had drifted
