@@ -107,6 +107,12 @@ export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOu
 function proposeInsertion(input: ProposeInput): ProposeOutput {
   const { event, schedule, profile } = input;
 
+  // Extract certs, shifts, and jobRequirements from schedule or default to EASTWIND fixture
+  const certs: TechnicianCert[] = (schedule as unknown as { certs?: TechnicianCert[] }).certs || EASTWIND.certs;
+  const shifts: Shift[] = (schedule as unknown as { shifts?: Shift[] }).shifts || EASTWIND.shifts;
+  const requirements: JobRequirement[] =
+    (schedule as unknown as { jobRequirements?: JobRequirement[] }).jobRequirements || EASTWIND.jobRequirements;
+
   // Handle technician_unavailable event in insertion fallback
   if (event.type === 'technician_unavailable') {
     const unavailableTechId = (event.normalizedPayload.technicianId as string) || event.affectedIds[0];
@@ -130,8 +136,47 @@ function proposeInsertion(input: ProposeInput): ProposeOutput {
 
         const job = (schedule.jobs || []).find((j) => j.id === a.jobId);
         if (a.technicianId === unavailableTechId && job?.lockState !== 'in_progress') {
-          // Reassign remaining job to an eligible tech
-          const replacementTech = candidateTechs.find((t) => t.id !== unavailableTechId) || candidateTechs[0];
+          if (!job) continue;
+          // Filter candidate techs via Stage A
+          const stageAResults = stageA(job, candidateTechs, certs, shifts, requirements);
+          const eligibleTechs = stageAResults.filter((r) => r.isEligible).map((r) => r.technician);
+
+          const sites = schedule.sites ?? EASTWIND.sites;
+          const travelMatrix = schedule.travel ?? EASTWIND.travel;
+
+          const feasibleTechs = eligibleTechs.filter((t) => {
+            const tSlots = (schedule.assignments || []).filter(
+              (slot) => slot.technicianId === t.id && (slot.status === 'accepted' || slot.status === 'offered'),
+            );
+            if (tSlots.length === 0) return true;
+
+            const lastSlot = tSlots[tSlots.length - 1];
+            if (!lastSlot || !lastSlot.windowEnd || !a.windowStart) return true;
+
+            const endLast = Date.parse(lastSlot.windowEnd);
+            const startJob = Date.parse(a.windowStart);
+            const gapMins = (startJob - endLast) / 60000;
+
+            const lastJob = (schedule.jobs || []).find((j) => j.id === lastSlot.jobId);
+            const siteA = sites.find((s) => s.id === lastJob?.siteId);
+            const siteB = sites.find((s) => s.id === job?.siteId);
+
+            const clusterA = siteA?.estateCluster || t.currentCluster || 'cbd';
+            const clusterB = siteB?.estateCluster || 'cbd';
+
+            try {
+              const reqMins = travelMinutes(clusterA, clusterB, travelMatrix);
+              return gapMins >= reqMins;
+            } catch {
+              return true;
+            }
+          });
+
+          const replacementTech =
+            planProfile === 'sla_first'
+              ? feasibleTechs[0] || eligibleTechs[0] || candidateTechs[0]
+              : feasibleTechs[feasibleTechs.length - 1] || eligibleTechs[0] || candidateTechs[0];
+
           if (replacementTech) {
             candidateAssignments.push({
               jobId: a.jobId,
@@ -304,13 +349,6 @@ function proposeInsertion(input: ProposeInput): ProposeOutput {
       message: 'target_job_not_found',
     };
   }
-
-  // Extract certs, shifts, and jobRequirements from schedule or default to EASTWIND fixture
-  // BoardSchedule declares these now, so the casts are gone. buildBoardSchedule
-  // supplies all of them; the fixture fallback only serves older test doubles.
-  const certs: TechnicianCert[] = schedule.certs ?? EASTWIND.certs;
-  const shifts: Shift[] = schedule.shifts ?? EASTWIND.shifts;
-  const requirements: JobRequirement[] = schedule.jobRequirements ?? EASTWIND.jobRequirements;
 
   // 1. Stage A Eligibility Gate Check
   const stageAResults = stageA(
