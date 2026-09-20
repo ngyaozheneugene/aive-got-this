@@ -76,20 +76,36 @@ describe('validator violation codes against the frozen vocabulary', () => {
     // One plan per rule the validator implements, so a rename anywhere in
     // validate.ts fails here rather than silently reaching the desk.
     const plans = [
-      // Wei holds neither required certificate for Raffles Place.
+      // Wei holds neither required certificate for Raffles Place. (MISSING_CERT, CERT_EXPIRED)
       planOf([slot('job_raffles', 'tech_wei', '13:00:00', '14:30:00')]),
-      // Same job twice.
+      // Same job twice. (DUPLICATE_ASSIGNMENT)
       planOf([
         slot('job_raffles', 'tech_jonah', '13:00:00', '14:30:00'),
         slot('job_raffles', 'tech_jonah', '15:00:00', '16:30:00'),
       ]),
-      // One technician, two jobs, same hour.
+      // One technician, two jobs, same hour. (OVERLAP)
       planOf([
         slot('job_raffles', 'tech_jonah', '13:00:00', '14:30:00'),
         slot('job_jonah_1', 'tech_jonah', '13:30:00', '14:00:00'),
       ]),
-      // Outside the customer window.
+      // Outside the customer window. (WINDOW_INFEASIBLE)
       planOf([slot('job_raffles', 'tech_jonah', '07:00:00', '08:00:00')]),
+      // Outside shift clock-in time. (OUTSIDE_SHIFT)
+      planOf([slot('job_siti_1', 'tech_siti', '06:00:00', '07:00:00')]),
+      // Travel infeasible between consecutive jobs in different clusters. (TRAVEL_INFEASIBLE)
+      planOf([
+        slot('job_siti_1', 'tech_siti', '08:30:00', '09:30:00'), // East
+        slot('job_raffles', 'tech_siti', '09:30:00', '11:00:00'), // CBD (requires 22 mins travel)
+      ]),
+      // Promised job reassigned to another technician. (LOCKED_MOVED)
+      planOf([slot('job_mei_sla', 'tech_siti', '14:00:00', '15:30:00')]),
+      // Missing required parts. (MISSING_PARTS)
+      planOf([slot('job_raffles', 'tech_kumar', '13:00:00', '14:30:00')]),
+      // Excessive overtime for technician who does not accept OT. (EXCESSIVE_OVERTIME)
+      planOf([
+        slot('job_siti_1', 'tech_siti', '08:00:00', '17:00:00'),
+        slot('job_siti_2', 'tech_siti', '17:00:00', '19:00:00'),
+      ]),
     ];
 
     const seen = new Set<string>();
@@ -139,19 +155,11 @@ describe('risk classifier codes against the frozen vocabulary', () => {
 });
 
 describe('frozen codes no rule emits yet', () => {
-  // Not a wish list. Each entry is a hard constraint the contract promises and
-  // no rule produces, so a plan that breaks it validates clean. Delete an entry
-  // when its rule lands; this test then fails until the list matches reality.
-  const UNIMPLEMENTED = [
-    'OUTSIDE_SHIFT',
-    'TRAVEL_INFEASIBLE',
-    'LOCKED_MOVED',
-    'MISSING_PARTS',
-    'EXCESSIVE_OVERTIME',
-  ] as const;
+  // All 11 frozen validation violation rules are now fully implemented in validatePlan().
+  const UNIMPLEMENTED = [] as const;
 
   it('names every gap and nothing outside the contract', () => {
     expect(UNIMPLEMENTED.filter((code) => !frozen.has(code))).toEqual([]);
-    expect(UNIMPLEMENTED.length).toBe(5);
+    expect(UNIMPLEMENTED.length).toBe(0);
   });
 });
