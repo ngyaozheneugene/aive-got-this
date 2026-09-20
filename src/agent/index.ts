@@ -5,5 +5,7 @@ export { createGatewayClient, readGatewayConfig, DEFAULT_GATEWAY_PROTOCOL } from
 export type { ToolModel, GatewayConfig, GatewayOptions, GatewayProtocol } from './runtime/gateway';
 export { createUrgentTools } from './tools/urgent';
 export type { SchedulerPort } from './tools/urgent';
-export { runUrgentJobAgent } from './runtime/urgent-graph';
+export { runUrgentJobAgent, runStructuredRecovery, shouldUseStructuredFallback } from './runtime/urgent-graph';
 export type { UrgentAgentInput, UrgentAgentResult } from './runtime/urgent-graph';
+export { compareCandidatePlans } from './policy/compare';
+export type { PlanComparison } from './policy/compare';

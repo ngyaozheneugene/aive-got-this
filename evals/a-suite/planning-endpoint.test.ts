@@ -40,17 +40,18 @@ describe('A-01 HTTP -> native client -> actual graph -> persisted proposal (offl
     const audit = await readAudit(new Request('http://localhost'), { params: Promise.resolve({ id: event.id }) });
     const trail = (await audit.json()).entries;
     expect(trail.map((entry: { stage: string }) => entry.stage)).toEqual([
-      'retrieve_board', 'propose', 'propose', 'validate', 'validate', 'classify_risk', 'persist_proposal',
+      'retrieve_board', 'propose', 'propose', 'validate', 'validate', 'classify_risk', 'compare_plans', 'persist_proposal',
     ]);
-    expect(trail.map((entry: { sequence: number }) => entry.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(trail.map((entry: { sequence: number }) => entry.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(trail[5].toolCalls[0].result).toMatchObject({
       risk: 'medium', autonomyMode: 'approval', reasons: ['new_assignment', 'jobs_moved'],
     });
-    expect(trail[6].toolCalls[0].result.storedPlanIds.fixture_sla_first).toBe(body.proposal.recommendedPlanId);
+    expect(trail[6].stage).toBe('compare_plans');
+    expect(trail[7].toolCalls[0].result.storedPlanIds.fixture_sla_first).toBe(body.proposal.recommendedPlanId);
     expect(await h.db.assignments.listAll()).toEqual(h.before);
     expect(await h.db.boardSnapshots.getLatest()).toEqual(h.snapshot);
     expect(await h.db.approvals.listPending()).toEqual([]);
-    expect((await h.db.events.getById(event.id))?.status).toBe('PROPOSAL_READY');
+    expect((await h.db.events.getById(event.id))?.status).toBe('AWAITING_APPROVAL');
     expect(JSON.stringify(body)).not.toContain('sourceContextFingerprint');
     expect(JSON.stringify(trail)).not.toContain('unit-test-key');
   });

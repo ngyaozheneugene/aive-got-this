@@ -9,7 +9,7 @@ function protocolRules(protocol: GatewayProtocol): string {
     : 'Reply with exactly one JSON object: {"tool":"named_tool","args":{...}}. Choose ONE object from allowedCalls. No markdown, prose or extra fields.';
 }
 
-const RULES = `You are the Dispatch Coordinator's G1 urgent-job supervisor.
+const RULES = `You are the Dispatch Coordinator's recovery supervisor for urgent_job, technician_unavailable and job_overrun.
 Never invent IDs or add arguments.
 Retrieve the board, propose BOTH profiles, then independently validate every candidate.
 Do not assign technicians, calculate scores, recommend a plan, approve or commit.
@@ -53,7 +53,7 @@ export function buildUrgentMessages(
   if (protocol === 'native' && previous?.outcome === 'ok') {
     const call = urgentToolCallSchema.parse({ tool: previous.tool, args: previous.args });
     messages.push(
-      { role: 'user', content: 'Continue this urgent-job run. The previous executed tool step follows.' },
+      { role: 'user', content: 'Continue this recovery run. The previous executed tool step follows.' },
       { role: 'assistant', content: '', tool_calls: [{ function: { name: call.tool, arguments: call.args } }] },
       { role: 'tool', tool_name: call.tool, content: escapedJson(previous.result) },
     );

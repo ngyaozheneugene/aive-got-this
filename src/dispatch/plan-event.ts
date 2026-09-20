@@ -4,12 +4,13 @@ import { randomUUID } from 'node:crypto';
 import type { IDatabase } from '../db/interface';
 import { createGatewayClient, readGatewayConfig } from '../agent/runtime/gateway';
 import type { ToolModel } from '../agent/runtime/gateway';
-import { runUrgentJobAgent } from '../agent/runtime/urgent-graph';
+import { runStructuredRecovery, runUrgentJobAgent, shouldUseStructuredFallback } from '../agent/runtime/urgent-graph';
 import { createUrgentTools } from '../agent/tools/urgent';
 import type { SchedulerPort } from '../agent/tools/urgent';
 import { planningContextFingerprint } from '../agent/tools/context-fingerprint';
 import { AgentError } from '../agent/runtime/errors';
 import { classifyProposalRisk } from '../agent/policy/risk';
+import { compareCandidatePlans } from '../agent/policy/compare';
 import { candidatePlanSchema } from '../shared/contracts/propose';
 import type {
   CandidatePlan, OperationalEventStatus, PlanProfile, Proposal, SolverEngine,
@@ -46,16 +47,16 @@ export async function planUrgentEvent(
   // The status planning took the event from, so an infrastructure failure that
   // wrote nothing can hand it back instead of consuming it.
   let priorStatus: OperationalEventStatus | undefined;
-  const tools = createUrgentTools(db, dependencies.scheduler);
   const runId = randomUUID();
   const checkCancelled = () => { if (input.signal?.aborted) throw new AgentError('AGENT_ABORTED'); };
   try {
+    const tools = createUrgentTools(db, dependencies.scheduler);
     checkCancelled();
     const event = await db.events.getById(input.eventId);
     if (!event) throw new PlanningError('event_not_found', 404, 'No event with that id.');
-    if (event.type !== 'urgent_job') {
+    if (!['urgent_job', 'technician_unavailable', 'job_overrun'].includes(event.type)) {
       throw new PlanningError('unsupported_event_type', 422,
-        'This agent endpoint currently supports urgent_job only. Other playbooks are not integrated.');
+        'This endpoint supports urgent_job, technician_unavailable and job_overrun only.');
     }
     if (event.status === 'PLANNING') throw new PlanningError('planning_in_progress', 409, 'This event is already being planned.');
     if (!['RECEIVED', 'VALIDATED'].includes(event.status)) {
@@ -71,17 +72,39 @@ export async function planUrgentEvent(
     await db.events.updateStatus(event.id, 'PLANNING');
     claimed = true;
     const model = (dependencies.createModel ?? (() => createGatewayClient(readGatewayConfig()).model))();
-    const result = await runUrgentJobAgent({ eventId: event.id, tools, model, signal: input.signal });
+    let result = await runUrgentJobAgent({ eventId: event.id, tools, model, signal: input.signal });
+    if ((result.status === 'failed' || result.status === 'blocked_dependency')
+        && shouldUseStructuredFallback(result.errorCode)) {
+      const fallback = await runStructuredRecovery({ eventId: event.id, tools, signal: input.signal });
+      if (fallback.status === 'candidates_ready' || fallback.status === 'no_candidates') {
+        const bridge = {
+          sequence: result.trace.length + 1, tool: 'structured_fallback', args: { eventId: event.id },
+          result: { claimedModelRan: false, gatewayError: result.errorCode }, durationMs: 0, outcome: 'ok' as const,
+        };
+        result = {
+          ...fallback,
+          modelCalls: result.modelCalls,
+          trace: [...result.trace, bridge, ...fallback.trace.map((step, index) => ({
+            ...step, sequence: result.trace.length + 2 + index,
+          }))],
+        };
+      }
+    }
 
     // Persist observed tool evidence, not assistant prose. No credentials or raw notes.
     const previous = await db.decisionLogs.listByEvent(event.id);
     let sequence = previous.reduce((n, entry) => Math.max(n, entry.sequence ?? 0), 0);
     for (const step of result.trace) {
       await db.decisionLogs.create({
-        eventId: event.id, eventType: event.type, playbook: 'urgent_job', sequence: ++sequence,
+        eventId: event.id, eventType: event.type, playbook: event.type, sequence: ++sequence,
         stage: step.tool, toolCalls: [{ tool: step.tool, args: step.args, result: { ...step.result, runId } }],
-        summary: `Agent tool ${step.tool}: ${step.outcome}.`, durationMs: step.durationMs,
-        reasonCodes: step.outcome === 'error' ? ['agent_step_failed'] : [], result: step.outcome,
+        summary: step.tool === 'structured_fallback'
+          ? 'Gateway unavailable; structured propose() ran. The model did not produce this plan.'
+          : `Agent tool ${step.tool}: ${step.outcome}.`,
+        durationMs: step.durationMs,
+        reasonCodes: step.outcome === 'error' ? ['agent_step_failed']
+          : step.tool === 'structured_fallback' ? ['structured_fallback'] : [],
+        result: step.outcome,
       });
     }
     checkCancelled();
@@ -122,7 +145,8 @@ export async function planUrgentEvent(
       checkCancelled();
     };
     await assertFresh();
-    const engines = new Set(result.trace.filter((step) => step.tool === 'propose').map((step) => step.result.engine));
+    const engines = new Set(result.trace.filter((step) => step.tool === 'propose' && step.outcome === 'ok')
+      .map((step) => step.result.engine));
     const reportedEngine = [...engines][0];
     if (engines.size !== 1 || (reportedEngine !== 'insertion' && reportedEngine !== 'ortools')) {
       throw new AgentError('INVALID_AGENT_ENGINE');
@@ -140,13 +164,24 @@ export async function planUrgentEvent(
       plans, liveAssignments: context.schedule.assignments,
     });
     await db.decisionLogs.create({
-      eventId: event.id, eventType: event.type, playbook: 'urgent_job', sequence: ++sequence,
+      eventId: event.id, eventType: event.type, playbook: event.type, sequence: ++sequence,
       stage: 'classify_risk',
       toolCalls: [{ tool: 'classify_risk', args: { eventId: event.id, planIds: plans.map((plan) => plan.id) },
         result: { runId, risk: classification.risk, autonomyMode: classification.autonomyMode,
           reasons: classification.reasons } }],
       summary: `Risk ${classification.risk} (${classification.autonomyMode}) from stored plan evidence, not a model score.`,
       reasonCodes: classification.reasons, result: classification.autonomyMode,
+    });
+    const comparison = compareCandidatePlans(plans);
+    await db.decisionLogs.create({
+      eventId: event.id, eventType: event.type, playbook: event.type, sequence: ++sequence,
+      stage: 'compare_plans',
+      toolCalls: [{ tool: 'compare_plans', args: { eventId: event.id },
+        result: { runId, ...comparison } }],
+      summary: comparison.comparisonReady
+        ? 'Compared stored backend metrics for sla_first vs minimal_disruption. The model did not rank them.'
+        : 'Only one validated profile is available; this is not a comparison.',
+      reasonCodes: comparison.reasons, result: comparison.comparisonReady ? 'comparison_ready' : 'incomplete_comparison',
     });
 
     const proposal = await db.proposals.create({ eventId: event.id, sourceSnapshotId: result.sourceSnapshotId,
@@ -167,20 +202,24 @@ export async function planUrgentEvent(
     const recommendedId = storedIds[selected.id];
     if (!recommendedId) throw new AgentError('INVALID_STORED_PLAN');
     await db.decisionLogs.create({
-      eventId: event.id, eventType: event.type, playbook: 'urgent_job', sequence: ++sequence,
+      eventId: event.id, eventType: event.type, playbook: event.type, sequence: ++sequence,
       stage: 'persist_proposal',
       toolCalls: [{ tool: 'persist_proposal', args: { eventId: event.id },
-        result: { runId, proposalId: proposal.id, storedPlanIds: storedIds, selectionBasis, engine, timedOut } }],
+        result: { runId, proposalId: proposal.id, storedPlanIds: storedIds, selectionBasis, engine, timedOut,
+          claimedModelRan: result.protocol !== 'structured_fallback' } }],
       summary: `Stored ${savedPlans.length} agent-validated candidate(s); selected ${selected.profile} by ${selectionBasis}, not model ranking.`,
       reasonCodes: [selectionBasis], result: 'candidates_stored',
     });
     await assertFresh();
     const updated = await db.proposals.updateStatus(proposal.id, 'RECOMMENDED', recommendedId);
     checkCancelled();
-    await db.events.updateStatus(event.id, 'PROPOSAL_READY');
+    await db.events.updateStatus(event.id,
+      classification.autonomyMode === 'approval' ? 'AWAITING_APPROVAL' : 'PROPOSAL_READY');
     return { ok: true, proposal: updated, plans: savedPlans, engine, timedOut,
-      comparisonReady: new Set(savedPlans.map((plan) => plan.profile)).size === 2, selectionBasis,
-      agent: { runId, protocol: model.protocol ?? 'strict_json', modelCalls: result.modelCalls, status: 'candidates_ready' } };
+      comparisonReady: comparison.comparisonReady, selectionBasis,
+      agent: { runId,
+        protocol: result.protocol === 'structured_fallback' ? 'structured_fallback' : (model.protocol ?? 'strict_json'),
+        modelCalls: result.modelCalls, status: 'candidates_ready' } };
   } catch (error) {
     const failure = planningError(error);
     // Best-effort invalidation, NOT a rollback or a transaction. Keep partial rows for review.

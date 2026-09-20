@@ -34,14 +34,27 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     expect((await h.run({}, 'missing_event')).status).toBe(404);
     expect(h.fetcher).not.toHaveBeenCalled();
   });
-  it.each(['technician_unavailable', 'job_overrun'] as const)('refuses unsupported %s instead of routing it through urgent insertion', async (type) => {
+  it.each([
+    {
+      type: 'technician_unavailable' as const,
+      payload: { technicianId: 'tech_hafiz' },
+      affectedIds: ['tech_hafiz'],
+    },
+    {
+      type: 'job_overrun' as const,
+      payload: { jobId: 'job_hafiz_1', overrunMinutes: 45 },
+      affectedIds: ['job_hafiz_1'],
+    },
+  ])('plans $type through the same recovery tools as urgent_job', async ({ type, payload, affectedIds }) => {
     const h = await setupPlanningEndpoint();
-    const event = await h.db.events.create({ ...h.event, type });
+    const event = await h.db.events.create({
+      type, rawText: '', normalizedPayload: payload, sourceSnapshotId: h.snapshot.id,
+      affectedIds, validationIssues: [], status: 'RECEIVED',
+    });
     const response = await h.run({}, event.id);
-    expect(response.status).toBe(422);
-    expect((await response.json()).error).toBe('unsupported_event_type');
-    expect(h.fetcher).not.toHaveBeenCalled();
-    expect(await h.db.events.getById(event.id)).toEqual(event);
+    expect(response.status).toBe(201);
+    expect((await response.json()).agent.status).toBe('candidates_ready');
+    expect(h.scheduler.propose.mock.calls.map(([input]) => input.event.type)).toEqual([type, type]);
   });
   it('leaves no proposal when every candidate fails independent validation', async () => {
     const h = await setupPlanningEndpoint();
@@ -66,7 +79,7 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
   });
-  it('sanitizes a rejected gateway response; does not fall back or claim model success', async () => {
+  it('sanitizes a rejected 401; does not fall back or claim model success', async () => {
     const h = await setupPlanningEndpoint();
     h.fetcher.mockImplementation(async () => new Response('private diagnostic unit-test-key', { status: 401 }));
     const response = await h.run();
@@ -75,12 +88,24 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     expect(h.fetcher).toHaveBeenCalledTimes(1);
     expect(h.scheduler.propose).not.toHaveBeenCalled();
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
-    // The gateway refused us, which says nothing about the event, and nothing
-    // was written. The event goes back to the status it arrived with so the
-    // request can be retried once the credential or the outage is fixed.
     expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
     expect(await h.db.boardSnapshots.getLatest()).toEqual(h.snapshot);
   });
+  it('still calls propose() on a 5xx gateway outage and does not claim the model ran (UC-08)', async () => {
+    const h = await setupPlanningEndpoint();
+    h.fetcher.mockImplementation(async () => new Response('down', { status: 503 }));
+    const response = await h.run();
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.agent.protocol).toBe('structured_fallback');
+    expect(body.agent.status).toBe('candidates_ready');
+    expect(h.scheduler.propose).toHaveBeenCalled();
+    const summary = JSON.stringify(await h.db.decisionLogs.listByEvent(h.event.id));
+    expect(summary).toContain('structured_fallback');
+    expect(summary).toContain('The model did not produce this plan');
+    expect(summary).not.toContain('unit-test-key');
+    expect(await h.db.assignments.listAll()).toEqual(h.before);
+  }, 60_000);
   it('handles missing server configuration without exposing it or creating a proposal', async () => {
     const h = await setupPlanningEndpoint();
     vi.stubEnv('LLM_GATEWAY_API_KEY', '');
@@ -192,7 +217,7 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     const h = await setupPlanningEndpoint();
     const update = h.db.events.updateStatus.bind(h.db.events);
     vi.spyOn(h.db.events, 'updateStatus').mockImplementation(async (id, status) => {
-      if (status === 'PROPOSAL_READY') throw new Error('write unavailable');
+      if (status === 'PROPOSAL_READY' || status === 'AWAITING_APPROVAL') throw new Error('write unavailable');
       return update(id, status);
     });
     expect((await h.run()).status).toBe(500);
