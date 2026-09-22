@@ -6,6 +6,8 @@ import { DeskApiError, deskApi, type PlanResult } from '../../_components/desk-a
 import { BoardView } from '../../_components/BoardView';
 import { Simulator } from '../../_components/Simulator';
 import { ProposalPanel } from '../../_components/ProposalPanel';
+import { RefusalNotice } from '../../_components/RefusalNotice';
+import type { Refusal } from '../../_components/refusals';
 import { ghostBtn, label } from '../../_components/ui';
 
 const RAFFLES_JOB_ID = 'job_raffles';
@@ -14,7 +16,8 @@ export default function DeskPage() {
   const [board, setBoard] = useState<DeskBoard | null>(null);
   const [proposal, setProposal] = useState<PlanResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [simError, setSimError] = useState<string | null>(null);
+  const [planError, setPlanError] = useState<Refusal | null>(null);
+  const [lastProfile, setLastProfile] = useState<PlanProfile | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -34,16 +37,17 @@ export default function DeskPage() {
     async (profile: PlanProfile) => {
       if (!board) return;
       setBusy(true);
-      setSimError(null);
+      setPlanError(null);
       setProposal(null);
+      setLastProfile(profile);
       try {
         const event = await deskApi.createUrgentEvent(RAFFLES_JOB_ID, board.snapshot.id);
         setProposal(await deskApi.plan(event.id, profile));
       } catch (e) {
-        setSimError(
+        setPlanError(
           e instanceof DeskApiError
-            ? `${e.code}${e.detail ? ` — ${e.detail}` : ''}`
-            : 'Planning failed.',
+            ? { code: e.code, detail: e.detail }
+            : { code: 'planning_failed', detail: 'Planning could not be completed.' },
         );
       } finally {
         setBusy(false);
@@ -55,7 +59,8 @@ export default function DeskPage() {
   const reset = useCallback(async () => {
     setBusy(true);
     setProposal(null);
-    setSimError(null);
+    setPlanError(null);
+    setLastProfile(null);
     try {
       await deskApi.reset();
       await load();
@@ -99,10 +104,14 @@ export default function DeskPage() {
 
         <Simulator busy={busy} disabled={Boolean(proposal)} onSimulate={(p) => void simulate(p)} />
 
-        {simError ? (
-          <p style={{ margin: 0, color: '#8c2f21', fontSize: 13 }}>
-            <strong>Planning refused:</strong> {simError}
-          </p>
+        {planError ? (
+          <RefusalNotice
+            refusal={planError}
+            busy={busy}
+            onRetry={() => {
+              if (lastProfile) void simulate(lastProfile);
+            }}
+          />
         ) : null}
 
         {proposal ? <ProposalPanel result={proposal} onCommitted={onCommitted} /> : null}
