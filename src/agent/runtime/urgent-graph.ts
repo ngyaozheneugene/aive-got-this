@@ -1,8 +1,7 @@
 import { Annotation, END, GraphRecursionError, START, StateGraph } from '@langchain/langgraph';
 import type { CandidatePlan } from '../../shared/types/domain';
-import { planValidationSchema, proposeOutputSchema } from '../../shared/contracts/propose';
-import { AGENT_RECURSION_LIMIT, SOLVER_TIMEOUT_MS } from '../../shared/config/timeouts';
-import { allowedUrgentCalls, MAX_CANDIDATES_PER_PROFILE, validatedCandidates } from '../playbooks/urgent';
+import { AGENT_RECURSION_LIMIT } from '../../shared/config/timeouts';
+import { allowedUrgentCalls, validatedCandidates } from '../playbooks/urgent';
 import type { AgentTraceStep, UrgentProgress, UrgentStatus } from '../playbooks/urgent';
 import { buildUrgentMessages } from '../prompts/urgent';
 import { parseToolCall, sameToolCall } from '../tools/protocol';
@@ -12,6 +11,7 @@ import { planningContextFingerprint } from '../tools/context-fingerprint';
 import type { ToolModel } from './gateway';
 import { bounded } from './bounds';
 import { AgentError, errorCode } from './errors';
+import { applyRecoveryTool, recoveryTrace } from './recovery-step';
 
 const GraphState = Annotation.Root({
   progress: Annotation<UrgentProgress>(),
@@ -32,18 +32,66 @@ export interface UrgentAgentResult {
   trace: AgentTraceStep[];
   errorCode?: string;
   modelCalls: number;
+  protocol?: 'native' | 'strict_json' | 'structured_fallback';
 }
 export interface UrgentAgentInput {
   eventId: string;
   tools: UrgentTools;
-  model: ToolModel;
+  model?: ToolModel;
   signal?: AbortSignal;
   maxSteps?: number;
   timeoutMs?: number;
 }
 
-/** G1 ends at independently validated candidates. No persistence or commit capability. */
+const GATEWAY_STRUCTURED_FALLBACK = new Set([
+  'GATEWAY_TIMEOUT', 'GATEWAY_NETWORK_ERROR', 'GATEWAY_FAILED',
+  'GATEWAY_HTTP_408', 'GATEWAY_HTTP_429',
+  'GATEWAY_HTTP_500', 'GATEWAY_HTTP_502', 'GATEWAY_HTTP_503', 'GATEWAY_HTTP_504',
+]);
+
+export function shouldUseStructuredFallback(code?: string): boolean {
+  return !!code && GATEWAY_STRUCTURED_FALLBACK.has(code);
+}
+
+/** Deterministic retrieve → propose both profiles → validate. No model, no invented metrics. */
+export async function runStructuredRecovery(input: Omit<UrgentAgentInput, 'model'>): Promise<UrgentAgentResult> {
+  const startedRun = Date.now();
+  let progress: UrgentProgress = {
+    eventId: input.eventId, proposedProfiles: [], candidates: [], validatedPlanIds: [],
+  };
+  const trace: AgentTraceStep[] = [];
+  let status: UrgentStatus = 'running';
+  const maxSteps = input.maxSteps ?? AGENT_RECURSION_LIMIT;
+  try {
+    while (status === 'running' && trace.length < maxSteps) {
+      const allowed = allowedUrgentCalls(progress);
+      if (!allowed.length) {
+        status = validatedCandidates(progress).length ? 'candidates_ready' : 'no_candidates';
+        break;
+      }
+      const request = allowed[0]!;
+      const started = Date.now();
+      const applied = await applyRecoveryTool({
+        eventId: input.eventId, progress, request, tools: input.tools, signal: input.signal,
+      });
+      progress = applied.progress;
+      status = applied.status;
+      trace.push(recoveryTrace(trace.length + 1, request, applied.result, Date.now() - started, 'ok'));
+    }
+    if (status === 'running') status = 'failed';
+  } catch (error) {
+    const code = errorCode(error, 'TOOL_FAILED');
+    status = code === 'SCHEDULER_NOT_IMPLEMENTED' ? 'blocked_dependency' :
+      ['STALE_SNAPSHOT', 'PLANNING_CONTEXT_CHANGED'].includes(code) ? 'superseded' : 'failed';
+    trace.push(recoveryTrace(trace.length + 1, undefined, { errorCode: code }, Date.now() - startedRun, 'error'));
+    return finish(input.eventId, progress, status, trace, 0, 'structured_fallback', code);
+  }
+  return finish(input.eventId, progress, status, trace, 0, 'structured_fallback');
+}
+
+/** G1/G3 recovery supervisor. Model chooses the next named tool; structured fallback skips the model. */
 export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<UrgentAgentResult> {
+  if (!input.model) return runStructuredRecovery(input);
   const maxSteps = input.maxSteps ?? AGENT_RECURSION_LIMIT;
   const timeoutMs = input.timeoutMs ?? 90_000;
   if (!input.eventId || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > AGENT_RECURSION_LIMIT ||
@@ -65,82 +113,24 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
       if (!allowed.length) throw new AgentError('EMPTY_TOOL_FRONTIER');
       const reply = await bounded((turnSignal) => {
         modelCalls += 1;
-        return input.model.chooseTool(
-          buildUrgentMessages(state.progress, input.model.protocol, state.trace.at(-1)), turnSignal, allowed,
+        return input.model!.chooseTool(
+          buildUrgentMessages(state.progress, input.model!.protocol, state.trace.at(-1)), turnSignal, allowed,
         );
       },
         65_000, signal, 'GATEWAY_TIMEOUT');
       request = parseToolCall(reply);
       if (!allowed.some((choice) => sameToolCall(choice, request!))) throw new AgentError('TOOL_NOT_ALLOWED_IN_STATE');
-      const expected = state.progress.context?.schedule.snapshotId;
-      const context = await bounded(() => input.tools.readContext(input.eventId, expected), SOLVER_TIMEOUT_MS, signal);
-      if (context.event.id !== input.eventId || (expected && context.schedule.snapshotId !== expected)) {
-        throw new AgentError('STALE_SNAPSHOT');
-      }
-      if (state.progress.context && JSON.stringify(context.event.normalizedPayload) !==
-          JSON.stringify(state.progress.context.event.normalizedPayload)) throw new AgentError('EVENT_CHANGED');
-      if (state.progress.context && planningContextFingerprint(context) !==
-          planningContextFingerprint(state.progress.context)) throw new AgentError('PLANNING_CONTEXT_CHANGED');
-      const progress: UrgentProgress = { ...state.progress, context };
-      let result: Record<string, unknown>;
-
-      if (request.tool === 'retrieve_board') {
-        result = { eventId: context.event.id, sourceSnapshotId: context.schedule.snapshotId, jobs: context.schedule.jobs.length,
-          technicians: context.schedule.technicians.length };
-      } else if (request.tool === 'propose') {
-        const profile = request.args.profile;
-        const raw = await bounded(() => input.tools.propose({ event: context.event,
-          schedule: context.schedule, profile }), SOLVER_TIMEOUT_MS, signal);
-        const parsed = proposeOutputSchema.safeParse(raw);
-        if (!parsed.success) throw new AgentError('INVALID_SCHEDULER_RESULT');
-        const output = parsed.data;
-        if (output.engine === 'stub' || output.message === 'not_implemented') throw new AgentError('SCHEDULER_NOT_IMPLEMENTED');
-        if (output.plans.length > MAX_CANDIDATES_PER_PROFILE) throw new AgentError('TOO_MANY_CANDIDATES');
-        const seen = new Set(progress.candidates.map((plan) => plan.id));
-        for (const plan of output.plans) {
-          if (!plan.id || !plan.proposalId || seen.has(plan.id)) throw new AgentError('INVALID_CANDIDATE_ID');
-          if (plan.sourceSnapshotId !== context.schedule.snapshotId || plan.profile !== profile) {
-            throw new AgentError('CANDIDATE_CONTEXT_MISMATCH');
-          }
-          seen.add(plan.id);
-        }
-        progress.proposedProfiles = [...progress.proposedProfiles, profile];
-        progress.candidates = [...progress.candidates, ...structuredClone(output.plans)];
-        result = { profile, engine: output.engine, timedOut: output.timedOut, planIds: output.plans.map((plan) => plan.id) };
-      } else {
-        const planId = request.args.planId;
-        const plan = progress.candidates.find((candidate) => candidate.id === planId);
-        if (!plan) throw new AgentError('UNKNOWN_CANDIDATE');
-        const raw = await bounded(() => input.tools.validate(structuredClone(plan), context.schedule), SOLVER_TIMEOUT_MS, signal);
-        const parsed = planValidationSchema.safeParse(raw);
-        if (!parsed.success) throw new AgentError('INVALID_VALIDATOR_RESULT');
-        const violations = [...new Set([...plan.validations.violations, ...parsed.data.violations])];
-        const ok = plan.status !== 'REJECTED' && plan.validations.ok && parsed.data.ok && violations.length === 0;
-        const checked: CandidatePlan = { ...plan, validations: { ok, violations }, status: ok ? 'VALIDATED' : 'REJECTED' };
-        progress.candidates = progress.candidates.map((candidate) => candidate.id === plan.id ? checked : candidate);
-        progress.validatedPlanIds = [...progress.validatedPlanIds, plan.id];
-        result = { planId: plan.id, ok, violations };
-      }
-
-      let status: UrgentStatus = 'running';
-      if (!allowedUrgentCalls(progress).length) {
-        const fresh = await bounded(() => input.tools.readContext(input.eventId, context.schedule.snapshotId), SOLVER_TIMEOUT_MS, signal);
-        if (fresh.schedule.snapshotId !== context.schedule.snapshotId) throw new AgentError('STALE_SNAPSHOT');
-        if (planningContextFingerprint(fresh) !== planningContextFingerprint(context)) {
-          throw new AgentError('PLANNING_CONTEXT_CHANGED');
-        }
-        status = validatedCandidates(progress).length ? 'candidates_ready' : 'no_candidates';
-      }
-      const trace: AgentTraceStep = { sequence: state.trace.length + 1, tool: request.tool,
-        args: request.args, result, durationMs: Date.now() - started, outcome: 'ok' };
-      last = { progress, status, trace: [...state.trace, trace], errorCode: undefined };
-      return { progress, status, trace: [trace] };
+      const applied = await applyRecoveryTool({
+        eventId: input.eventId, progress: state.progress, request, tools: input.tools, signal,
+      });
+      const trace = recoveryTrace(state.trace.length + 1, request, applied.result, Date.now() - started, 'ok');
+      last = { progress: applied.progress, status: applied.status, trace: [...state.trace, trace], errorCode: undefined };
+      return { progress: applied.progress, status: applied.status, trace: [trace] };
     } catch (error) {
       const code = errorCode(error, 'TOOL_FAILED');
       const status: UrgentStatus = code === 'SCHEDULER_NOT_IMPLEMENTED' ? 'blocked_dependency' :
         ['STALE_SNAPSHOT', 'PLANNING_CONTEXT_CHANGED'].includes(code) ? 'superseded' : 'failed';
-      const trace: AgentTraceStep = { sequence: state.trace.length + 1, tool: request?.tool ?? 'supervisor',
-        args: request?.args ?? {}, result: { errorCode: code }, durationMs: Date.now() - started, outcome: 'error' };
+      const trace = recoveryTrace(state.trace.length + 1, request, { errorCode: code }, Date.now() - started, 'error');
       last = { ...state, status, errorCode: code, trace: [...state.trace, trace] };
       return { status, errorCode: code, trace: [trace] };
     }
@@ -160,11 +150,18 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
   } finally {
     clearTimeout(timer);
   }
-  const plans = last.status === 'candidates_ready' ? validatedCandidates(last.progress) : [];
+  return finish(input.eventId, last.progress, last.status, last.trace, modelCalls, input.model.protocol, last.errorCode);
+}
+
+function finish(
+  eventId: string, progress: UrgentProgress, status: UrgentStatus, trace: AgentTraceStep[],
+  modelCalls: number, protocol: UrgentAgentResult['protocol'], errorCode?: string,
+): UrgentAgentResult {
+  const plans = status === 'candidates_ready' ? validatedCandidates(progress) : [];
   return {
-    eventId: input.eventId, sourceSnapshotId: last.progress.context?.schedule.snapshotId,
-    sourceContextFingerprint: last.progress.context ? planningContextFingerprint(last.progress.context) : undefined,
-    status: last.status, plans, comparisonReady: new Set(plans.map((plan) => plan.profile)).size === 2,
-    trace: last.trace, errorCode: last.errorCode, modelCalls,
+    eventId, sourceSnapshotId: progress.context?.schedule.snapshotId,
+    sourceContextFingerprint: progress.context ? planningContextFingerprint(progress.context) : undefined,
+    status, plans, comparisonReady: new Set(plans.map((plan) => plan.profile)).size === 2,
+    trace, errorCode, modelCalls, protocol,
   };
 }

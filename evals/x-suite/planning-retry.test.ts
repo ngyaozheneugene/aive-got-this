@@ -16,31 +16,30 @@ import { restorePlanningTest, setupPlanningEndpoint } from '../a-suite/planning-
 afterEach(restorePlanningTest);
 
 describe('X-20 planning survives a dependency outage', () => {
-  it('hands the event back after a sustained gateway outage, and plans on retry', async () => {
+  it('still produces plans via structured propose() when the gateway is down (UC-08)', async () => {
     const h = await setupPlanningEndpoint();
-    const before = await h.db.events.getById(h.event.id);
-    expect(before?.status).toBe('RECEIVED');
-
     h.fetcher.mockImplementation(async () => new Response('down', { status: 503 }));
+
+    const planned = await h.run();
+    expect(planned.status).toBe(201);
+    const body = await planned.json();
+    expect(body.agent.protocol).toBe('structured_fallback');
+    expect(body.plans.length).toBeGreaterThan(0);
+    expect(h.scheduler.propose).toHaveBeenCalled();
+    expect(await h.db.assignments.listAll()).toEqual(h.before);
+  }, 60_000);
+
+  it('hands the event back when both the gateway and structured propose() fail', async () => {
+    const h = await setupPlanningEndpoint();
+    h.fetcher.mockImplementation(async () => new Response('down', { status: 503 }));
+    h.scheduler.propose.mockImplementation(() => { throw new Error('scheduler unavailable'); });
 
     const failed = await h.run();
     expect(failed.status).toBe(503);
     expect((await failed.json()).error).toBe('gateway_unavailable');
-
-    // Nothing written, nothing to review, so the event is plannable again,
-    // at exactly the status it arrived with.
     expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
-
-    // The board never moved.
     expect(await h.db.assignments.listAll()).toEqual(h.before);
-
-    h.fetcher.mockImplementation(h.reply);
-    const recovered = await h.run();
-    expect(recovered.status).toBe(201);
-    const body = await recovered.json();
-    expect(body.plans.length).toBeGreaterThan(0);
-    expect((await h.db.events.getById(h.event.id))?.status).toBe('PROPOSAL_READY');
   }, 60_000);
 
   it('keeps an event terminal when the agent itself misbehaves', async () => {

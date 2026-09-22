@@ -51,6 +51,10 @@ export function planningError(error: unknown): PlanningError {
   if (['INVALID_EVENT', 'INVALID_EVENT_PAYLOAD', 'EVENT_AFFECTED_IDS_MISMATCH'].includes(code)) {
     return new PlanningError('invalid_event_context', 422, 'The stored event has an invalid or inconsistent payload.', 'INVALID');
   }
+  if (code === 'UNSUPPORTED_EVENT_TYPE') {
+    return new PlanningError('unsupported_event_type', 422,
+      'This endpoint supports urgent_job, technician_unavailable and job_overrun only.', 'INVALID');
+  }
   if (code === 'EVENT_NOT_PLANNABLE') {
     return new PlanningError('event_not_plannable', 409, 'This event is no longer available for planning.');
   }
