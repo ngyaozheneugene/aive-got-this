@@ -1,8 +1,8 @@
 # Task board
 
-**Current gate:** G3 (G0, G1 and G2 complete except one member 4 click-through, noted under G2)
+**Current gate:** G3 closing, G4 next (G2 still needs member 4’s click-through tick)
 **Kickoff:** 9 Sep 2026 (Day 1)  
-**Today:** 20 Sep 2026 — Day 12. G1 and G2 closed; eight days to the wall.
+**Today:** 23 Sep 2026 — Day 15. Past the Day 14 feature freeze: fixes only, no new features (`AGENTS.md`). Five days to the wall.
 **Hard wall:** the AWS lease and the submission both land ~28 Sep 2026. Confirm the exact
 date in the lease portal — the Day 21 row below currently falls *after* it.  
 **Agents:** read [`AGENTS.md`](../AGENTS.md), then this file. Tick boxes you complete. Do not invent a parallel TODO.  
@@ -106,7 +106,9 @@ Live gateway planning on 19 Sep produced two legal Raffles candidates (see G1 ag
 ## G3 — Feature complete (Day 14)
 
 - [x] Sidecar implements `propose()` for `technician_unavailable` and `job_overrun` (2)
+  - 23 Sep, member 1: this was ticked but false in production. The sidecar is only reachable on the box, and there it placed every job at 09:00-10:30, ignored certificates and parts, and assigned every job on the board including ones outside the event. The validator refused all of it, so both events returned `no_candidate_plans` on the live URL. Rewritten as a real CP-SAT model: Stage A's eligibility is sent from TypeScript so legality has one implementation, each technician's day is a route circuit with exact drive times, and only the jobs the event touches are in play. Proven against the real solver by `evals/g-suite/g08-sidecar-legality.acceptance.test.ts` (4 of 4, and 0 of 4 against the old solver). See [handover 5.5](team/member-1/handover.md).
 - [x] Insertion is 10 s timeout fallback only on those events (2)
+  - 23 Sep, member 1: a sidecar that answered "infeasible" was reported as `timedOut: true`, which the planning endpoint turns into the retryable `scheduler_timeout`. A coordinator would retry an event no legal plan can satisfy. Now only a real timeout or an unreachable sidecar is `timedOut`; a verdict falls through to insertion and, if that fails validation too, reads as `no_candidate_plans`.
 - [x] UC-03: in-progress stays; remaining jobs replan as a set
 - [x] UC-04: 45-minute overrun; frozen horizon
 - [x] Five frozen violation codes have no rule behind them (2) - `OUTSIDE_SHIFT`, `TRAVEL_INFEASIBLE`, `LOCKED_MOVED`, `MISSING_PARTS`, `EXCESSIVE_OVERTIME`. All 11 frozen validation violation rules are fully implemented in validatePlan() and UNIMPLEMENTED list is cleared.
@@ -118,6 +120,8 @@ Live gateway planning on 19 Sep produced two legal Raffles candidates (see G1 ag
   - 23 Sep, member 3: `scheduler_timeout` is constructed with the fifth argument `true`, so the event is restored when nothing was persisted. Desk Retry on that code matches the server.
 - [x] Agent: compare, explain from evidence, interrupt, resume; playbooks for all three events (3)
   - 20 Sep: `compareCandidatePlans()` diffs stored backend metrics only. `classify_risk` / `compare_plans` / `structured_fallback` audit copy is evidence, not a model ranking. Medium risk parks at `AWAITING_APPROVAL`; desk `recordDecision` is resume (no LangGraph checkpoint). Same retrieve → propose both profiles → validate tools for `urgent_job`, `technician_unavailable`, and `job_overrun`; non-urgent `propose()` uses `proposeWithSidecar` when present. Offline regression 228 passed (`RUN_GATEWAY_SMOKE=0 RUN_AGENT_GATEWAY_SMOKE=0 RUN_SCHEDULER_ACCEPTANCE=0`).
+- [ ] Compare reports two identical plans as a comparison (3) - `compareCandidatePlans` sets `comparisonReady` whenever both profiles exist. With the sidecar now correct, both profiles legitimately agree for Hafiz unavailable and for both overrun sizes on the Eastwind board, because the board offers no trade-off. The desk would present two identical cards as a choice. Report `comparisonReady: false` with reason `identical_plans` when the assignments match. Context: [handover 5.5](team/member-1/handover.md).
+- [ ] Known limitation, not a G4 item: an unavailability nobody can cover (2 + 1) - with Kumar or Siti off sick, every other technician is booked through the morning, so no legal plan covers all of their jobs and the endpoint correctly returns `no_candidate_plans`. The real answer is partial coverage (reassign what can be, flag the rest for a call), which needs the commit path to support un-assigning. That is a feature, and it is past the freeze. The demo scenario (Hafiz) is unaffected.
 - [ ] Desk: unavailable + overrun simulators; trace drawer (4) — UC-13
 - [x] G/A/X: E01–E04, E06–E08 must-pass; E09–E10 safe behaviour (2 + 3)
   - 21 Sep, member 3: A-02/A-03/A-04 now run through `planUrgentEvent` against the real scheduler (model doubled; `propose()` not). Unavailable keeps `job_hafiz_1` on Hafiz and moves the rest; 45-minute overrun keeps the frozen on-site job and extends its window; empty feasible set is `INFEASIBLE` with no proposal and no commit path. A-01, X-01–X-04, UC-08 (E09) and duplicate-plan 409 (E10) already exist. G-06/G-07 remain Damon's. Not a live Lightsail three-event click-through.
