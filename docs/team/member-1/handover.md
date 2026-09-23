@@ -1,8 +1,8 @@
-# Stream 1 handover v1.6
+# Stream 1 handover v1.7
 
 **Author:** Eugene (member 1, platform and data)<br>
 **Date:** 20 Sep 2026 (Day 12)<br>
-**Status:** Current as of `main` at `b8bae2d`, which is deployed and verified end to end on the box. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
+**Status:** Current as of `main` at `3855399`, which is deployed and verified end to end on the box for all three events. The release blocker recorded in v1.1 is closed. Read alongside the brief in [`README.md`](README.md) and the board in [`../../tasks.md`](../../tasks.md).
 
 Everything stream 1 has built, deployed, and found, in one place. Read this before working on anything that stores, approves, or commits a schedule, and before pointing a desk or an agent at the API. Section 5 records the blocker that is now closed and the three faults found while closing it. Section 6 lists what each of the other three streams needs to know or do.
 
@@ -421,6 +421,10 @@ RUN_SIDECAR_ACCEPTANCE=1 OPTIMIZER_URL=http://localhost:8081 npx vitest run eval
 | Hafiz overruns 90 minutes | Only `job_hafiz_2` moves, to Jonah; `job_hafiz_3` stays |
 | Kumar or Siti unavailable | Honestly infeasible: everyone else is booked through the morning |
 
+**Confirmed in production on 23 Sep**, after deploying `3855399`. The same
+three events that returned `no_candidate_plans` that morning now plan, approve
+and commit on the live URL with `engine=ortools`. Full results in section 7.1.
+
 > **Note:** the two profiles agree on every solvable scenario above. That is the
 > truth about this board rather than a defect: with every job pinned to its
 > booked window, lateness is zero for any legal plan, and the cheapest route is
@@ -526,6 +530,26 @@ Three things changed in `src/matching/propose.ts`:
 
 **One shared file to glance at.** `src/shared/config/reason-codes.ts` gained `COMMIT_REJECTIONS`. It is additive so nothing of yours breaks, but you are the consuming stream, so the strings are yours to be happy with.
 
+**The desk can only raise one of the three events.** The simulator hard-codes
+`type: 'urgent_job'` in `desk-api.ts`. `technician_unavailable` and
+`job_overrun` now plan and commit correctly on the box, verified through the
+API in section 7.1, but a coordinator on `/desk` has no way to trigger them. For
+two of the three demo events this is the gap between working and demonstrable.
+The payloads the endpoint accepts:
+
+```json
+{"type": "technician_unavailable", "payload": {"technicianId": "tech_hafiz"}}
+{"type": "job_overrun", "payload": {"jobId": "job_hafiz_1", "overrunMinutes": 45}}
+```
+
+A 90-minute overrun on `job_hafiz_1` is the better demo beat of the two
+overruns: it collides with Hafiz's 11:00 job, so exactly that job moves, while
+45 minutes is absorbed and nothing visibly happens.
+
+**The compare card will show identical plans for those events** until member
+3's compare step stops reporting `comparisonReady: true` when the profiles
+agree. Hide or collapse the comparison when it is false.
+
 **The safety story is demonstrable in five requests**, which makes a compact demo beat:
 
 ```text
@@ -605,6 +629,37 @@ it, now agent-driven rather than calling the scheduler directly:
 > field silently discarded at the contract boundary and the commit refused on its
 > merits, rather than a validation error. Nothing privileged reaches the guard,
 > because the guard is never given the chance to read it.
+
+Re-run on 23 Sep against `main` at `3855399`, after the OR-Tools rewrite, for all
+three events. Each run reset the board, raised the event, planned, then went
+through the full commit sequence:
+
+| Event | Engine | Plan | Commit sequence |
+|---|---|---|---|
+| Urgent job, Raffles Place | insertion | Siti 22 min vs Jonah 30 min, a real choice | 403, approve, 200 v2, 409 |
+| Hafiz unavailable | ortools | Jonah takes both unstarted jobs, 48 min travel | 403, approve, 200 v2, 409 |
+| Hafiz overruns 45 min | ortools | Absorbed, nothing else moves | 403, approve, 200 v2, 409 |
+| Hafiz overruns 90 min | ortools | `job_hafiz_1` to 11:30, only `job_hafiz_2` moves to Jonah | 403, approve, 200 v2, 409 |
+
+Every plan validated clean. Planning took 11 to 15 seconds including five live
+model calls, native protocol. Risk classified `medium` / `approval` in all four;
+events ended planning in `AWAITING_APPROVAL`. Every audit trail read 1 to 10
+without a gap: `retrieve_board`, two `propose`, two `validate`,
+`classify_risk`, `compare_plans`, `persist_proposal`, `decision`, `commit`.
+
+That morning, before the rewrite, the two G3 events returned
+`no_candidate_plans` on the same URL.
+
+**What these runs did not cover, and why it matters for the demo:**
+
+- **All four ran through the API.** The desk's simulator raises `urgent_job`
+  only, so `/desk` cannot show the other two events. See section 6.3.
+- **`comparisonReady` was `true` in all three G3 runs, with identical plans.**
+  The solver is right that this board offers no trade-off for those events; the
+  compare step is wrong to present two matching cards as a choice.
+- **These are four runs, not the G4 "five consecutive successful runs after
+  reset".** That item belongs to members 1 and 4 together and means the desk
+  click-through, not API calls.
 
 ### 7.2 Known gaps
 
@@ -695,6 +750,10 @@ exempt", because the whole demo is one box.
 
 ## Revision history
 
+- **v1.7** 23 Sep 2026 - Deployed `3855399` and re-ran all three events on the
+  box: every one plans, approves and commits, the two G3 events on OR-Tools.
+  Recorded what the runs did not cover: the desk can only raise the urgent job,
+  and the compare step offers identical plans as a choice.
 - **v1.6** 23 Sep 2026 - Added 5.5. The OR-Tools sidecar, reachable only on the
   box, produced plans the validator refused in full, so two of the three demo
   events planned nothing in production. Rewrote it as a CP-SAT route model fed
