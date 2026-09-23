@@ -25,7 +25,8 @@ export interface PlanEventDependencies {
 }
 export type PlanEventResult =
   | { ok: true; proposal: Proposal; plans: CandidatePlan[]; engine: SolverEngine; timedOut: boolean;
-      comparisonReady: boolean; selectionBasis: 'requested_profile' | 'available_validated_plan';
+      comparisonReady: boolean; comparisonReasons: string[];
+      selectionBasis: 'requested_profile' | 'available_validated_plan';
       agent: { runId: string; protocol: string; modelCalls: number; status: 'candidates_ready' } }
   | { ok: false; code: string; httpStatus: number; detail: string };
 
@@ -180,8 +181,12 @@ export async function planUrgentEvent(
         result: { runId, ...comparison } }],
       summary: comparison.comparisonReady
         ? 'Compared stored backend metrics for sla_first vs minimal_disruption. The model did not rank them.'
-        : 'Only one validated profile is available; this is not a comparison.',
-      reasonCodes: comparison.reasons, result: comparison.comparisonReady ? 'comparison_ready' : 'incomplete_comparison',
+        : comparison.reasons.includes('identical_plans')
+          ? 'Both profiles assigned the same slots. This is not a comparison.'
+          : 'Only one validated profile is available; this is not a comparison.',
+      reasonCodes: comparison.reasons,
+      result: comparison.comparisonReady ? 'comparison_ready'
+        : comparison.reasons.includes('identical_plans') ? 'identical_plans' : 'incomplete_comparison',
     });
 
     const proposal = await db.proposals.create({ eventId: event.id, sourceSnapshotId: result.sourceSnapshotId,
@@ -216,7 +221,7 @@ export async function planUrgentEvent(
     await db.events.updateStatus(event.id,
       classification.autonomyMode === 'approval' ? 'AWAITING_APPROVAL' : 'PROPOSAL_READY');
     return { ok: true, proposal: updated, plans: savedPlans, engine, timedOut,
-      comparisonReady: comparison.comparisonReady, selectionBasis,
+      comparisonReady: comparison.comparisonReady, comparisonReasons: comparison.reasons, selectionBasis,
       agent: { runId,
         protocol: result.protocol === 'structured_fallback' ? 'structured_fallback' : (model.protocol ?? 'strict_json'),
         modelCalls: result.modelCalls, status: 'candidates_ready' } };

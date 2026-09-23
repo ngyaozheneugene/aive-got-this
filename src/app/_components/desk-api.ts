@@ -40,6 +40,7 @@ export interface PlanResult {
   engine: string;
   timedOut: boolean;
   comparisonReady: boolean;
+  comparisonReasons?: string[];
   selectionBasis: 'requested_profile' | 'available_validated_plan';
   agent: { runId: string; protocol: string; modelCalls: number; status: string };
 }

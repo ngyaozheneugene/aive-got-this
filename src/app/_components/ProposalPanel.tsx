@@ -89,7 +89,9 @@ export function ProposalPanel({
 
       {!result.comparisonReady ? (
         <p style={{ margin: 0, color: '#8a5a00', fontSize: 13 }}>
-          Only one profile produced a valid plan; showing what is available.
+          {result.comparisonReasons?.includes('identical_plans')
+            ? 'Both profiles assigned the same slots. This is not a choice.'
+            : 'Only one profile produced a valid plan; showing what is available.'}
         </p>
       ) : null}
 
