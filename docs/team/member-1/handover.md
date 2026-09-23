@@ -1,4 +1,4 @@
-# Stream 1 handover v1.5
+# Stream 1 handover v1.6
 
 **Author:** Eugene (member 1, platform and data)<br>
 **Date:** 20 Sep 2026 (Day 12)<br>
@@ -356,6 +356,86 @@ forgetting to update the list fails that test.
 
 ---
 
+### 5.5 Fault: the OR-Tools sidecar never modelled time or legality
+
+Found 23 Sep by running all three events against the deployed box. Urgent job
+worked end to end. `technician_unavailable` and `job_overrun` both returned
+`409 no_candidate_plans`, while the same events produced two legal plans each
+locally.
+
+**Why local and production disagreed.** `propose.ts` defaults `OPTIMIZER_URL` to
+`localhost:8000`; the optimizer listens on 8081. No test, no CI run and no local
+probe had ever reached the real solver. Every one of them silently took the
+insertion fallback and passed. Only the box, where Compose sets
+`OPTIMIZER_URL=http://optimizer:8081`, talks to OR-Tools.
+
+**What the solver actually did.** It was a skeleton rather than a scheduling
+model:
+
+| Defect | Consequence on the box |
+|---|---|
+| Every job placed at `09:00-10:30`, travel 15 | `OVERLAP` and `WINDOW_INFEASIBLE` on nearly every technician |
+| No certificate, tier, parts or shift rules | Wei assigned to Raffles Place, the v1.1 blocker again |
+| Every job on the board had to be assigned | `job_raffles`, unassigned and unrelated, pulled into Hafiz's sick day |
+| No time model, travel or daily cap | Wei handed four jobs |
+| `job_overrun` not handled at all | The overrun minutes were never applied |
+| Profiles differ by multiplying the objective by 10 or 100 | Scaling an objective never moves its optimum; the plans were always identical |
+
+The validator refused every one of these plans, nothing was persisted, and the
+board never moved. The failure was real, but it failed closed.
+
+**What replaced it.** `services/optimizer/app.py` is now a CP-SAT model built on
+three decisions:
+
+- **Legality has one implementation.** TypeScript runs Stage A for every job and
+  sends the verdict as `eligibility`. The solver never decides certificates,
+  parts or shifts itself, because a Python copy of those rules would drift from
+  the TypeScript one. A missing verdict makes the solver refuse, not guess.
+- **Each technician's day is a route.** `AddCircuit` per technician, each arc a
+  real drive between consecutive jobs, which is exactly the rule `validatePlan`
+  enforces. A first version scored travel from where each technician began the
+  day, could not see that a technician finishing one Bedok job is already in
+  Bedok, and split work for more driving and no benefit. The route model fixed
+  that; its plans dropped from 80 to 48 minutes of travel on the same event.
+- **Only what the event touches is in play.** Everything else stays exactly
+  where it is booked.
+
+**Proof.** `evals/g-suite/g08-sidecar-legality.acceptance.test.ts` runs the real
+solver and refuses the fallback: `engine` must be `ortools`. It passes 4 of 4
+against the new solver and fails 4 of 4 against the old one, so it demonstrably
+catches this fault. `src/matching/propose-sidecar.test.ts` pins the contract in
+CI without a solver: eligibility is sent, answers are re-validated, and an
+answered "infeasible" is not reported as a timeout.
+
+```sh
+docker compose up -d --build optimizer
+RUN_SIDECAR_ACCEPTANCE=1 OPTIMIZER_URL=http://localhost:8081 npx vitest run evals/g-suite/g08-sidecar-legality.acceptance.test.ts
+```
+
+**Results on the Eastwind board:**
+
+| Event | Plan |
+|---|---|
+| Hafiz unavailable | Jonah takes both of his unstarted jobs, 48 minutes of travel |
+| Hafiz overruns 45 minutes | Absorbed: his next job starts at 11:00 and the drive is 8 minutes |
+| Hafiz overruns 90 minutes | Only `job_hafiz_2` moves, to Jonah; `job_hafiz_3` stays |
+| Kumar or Siti unavailable | Honestly infeasible: everyone else is booked through the morning |
+
+> **Note:** the two profiles agree on every solvable scenario above. That is the
+> truth about this board rather than a defect: with every job pinned to its
+> booked window, lateness is zero for any legal plan, and the cheapest route is
+> also the least disruptive one. The profiles use genuinely different
+> objectives and will separate on a board that offers a trade-off. Member 3's
+> compare step should report `comparisonReady: false` when they agree, rather
+> than offering two identical cards as a choice.
+
+> **Warning:** the old answered-infeasible path reported `timedOut: true`, which
+> the planning endpoint maps to the retryable `scheduler_timeout`. A coordinator
+> would retry an event that no legal plan can satisfy, forever. Fixed in the same
+> change.
+
+---
+
 ## 6. What each stream needs to know
 
 > **Note:** an `@handle` in a repository file renders as a link but sends no notification. Share this section directly if you need someone to act on it.
@@ -615,6 +695,11 @@ exempt", because the whole demo is one box.
 
 ## Revision history
 
+- **v1.6** 23 Sep 2026 - Added 5.5. The OR-Tools sidecar, reachable only on the
+  box, produced plans the validator refused in full, so two of the three demo
+  events planned nothing in production. Rewrote it as a CP-SAT route model fed
+  by Stage A's eligibility, and added a gate that runs the real solver and
+  fails on the old one.
 - **v1.5** 20 Sep 2026 - Ran the G4 rollback drill. A restored instance brings
   the whole stack back unattended. Recorded the one unproven step and the reason
   it cannot be proven here: the sandbox account destroys any second Lightsail

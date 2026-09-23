@@ -64,15 +64,43 @@ function toSgIso(ms: number): string {
 /**
  * Async HTTP bridge calling the Python OR-Tools sidecar container.
  */
+/**
+ * Stage A's verdict for every job on the board: who may legally take it.
+ *
+ * The sidecar receives this rather than re-deriving it, so certificates, tier,
+ * parts, tools and shift status have exactly one implementation. Before this,
+ * the solver had none of those rules and placed Wei on Raffles Place, which the
+ * validator then correctly refused, leaving no legal candidate at all.
+ */
+function eligibilityFor(schedule: ProposeInput['schedule']): Record<string, string[]> {
+  const certs: TechnicianCert[] = schedule.certs ?? EASTWIND.certs;
+  const shifts: Shift[] = schedule.shifts ?? EASTWIND.shifts;
+  const requirements: JobRequirement[] = schedule.jobRequirements ?? EASTWIND.jobRequirements;
+  const verdict: Record<string, string[]> = {};
+  for (const job of schedule.jobs ?? []) {
+    verdict[job.id] = stageA(job, schedule.technicians ?? [], certs, shifts, requirements)
+      .filter((r) => r.isEligible)
+      .map((r) => r.technician.id);
+  }
+  return verdict;
+}
+
 export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOutput> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SOLVER_TIMEOUT_MS);
+
+  // Whether the sidecar actually answered. An answer of "no plan" is a verdict,
+  // not a timeout: labelling it timedOut made the planning endpoint report the
+  // retryable scheduler_timeout, so a coordinator would retry an event that no
+  // legal plan can ever satisfy, and get the same result every time.
+  let answered = false;
+  let sidecarMessage: string | undefined;
 
   try {
     const res = await fetch(`${OPTIMIZER_URL}/propose`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, eligibility: eligibilityFor(input.schedule) }),
       signal: controller.signal,
     });
 
@@ -80,6 +108,8 @@ export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOu
 
     if (res.ok) {
       const data = (await res.json()) as ProposeOutput;
+      answered = true;
+      sidecarMessage = data?.message;
       if (data && Array.isArray(data.plans) && data.plans.length > 0) {
         // Validate sidecar candidate plans using independent validator
         for (const plan of data.plans) {
@@ -96,11 +126,14 @@ export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOu
     clearTimeout(timeoutId);
   }
 
-  // Graceful fallback to weighted insertion on timeout / network error
+  // Insertion runs whenever the sidecar produced nothing usable. Only a real
+  // timeout or an unreachable sidecar is reported as timedOut; an infeasible
+  // verdict is not, so a failed insertion then reads as no legal plan.
   const fallback = proposeInsertion(input);
   return {
     ...fallback,
-    timedOut: true,
+    timedOut: !answered,
+    message: fallback.message ?? (sidecarMessage ? `sidecar_${sidecarMessage}` : undefined),
   };
 }
 
