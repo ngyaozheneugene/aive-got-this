@@ -13,9 +13,11 @@ import { badge, card, label } from './ui';
  */
 export function ProposalPanel({
   result,
+  title,
   onCommitted,
 }: {
   result: PlanResult;
+  title: string;
   onCommitted: (snapshotVersion: number) => void;
 }) {
   const { proposal, plans } = result;
@@ -75,7 +77,7 @@ export function ProposalPanel({
         <div>
           <span style={label}>Proposal</span>
           <p style={{ margin: '4px 0 0', fontSize: 16 }}>
-            Recovery for the urgent job · engine {result.engine}
+            Recovery for {title} · engine {result.engine}
             {result.timedOut ? ' (insertion fallback)' : ''}
           </p>
         </div>

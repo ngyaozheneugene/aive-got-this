@@ -1,23 +1,24 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { DeskBoard, PlanProfile } from '../../../shared/types/domain';
-import { DeskApiError, deskApi, type PlanResult } from '../../_components/desk-api';
+import type { DeskBoard } from '../../../shared/types/domain';
+import {
+  DeskApiError, deskApi, DISRUPTION_LABEL, type DeskDisruption, type PlanResult,
+} from '../../_components/desk-api';
 import { BoardView } from '../../_components/BoardView';
 import { Simulator } from '../../_components/Simulator';
 import { ProposalPanel } from '../../_components/ProposalPanel';
+import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import { ghostBtn, label } from '../../_components/ui';
-
-const RAFFLES_JOB_ID = 'job_raffles';
 
 export default function DeskPage() {
   const [board, setBoard] = useState<DeskBoard | null>(null);
   const [proposal, setProposal] = useState<PlanResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [planError, setPlanError] = useState<Refusal | null>(null);
-  const [lastProfile, setLastProfile] = useState<PlanProfile | null>(null);
+  const [lastDisruption, setLastDisruption] = useState<DeskDisruption | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -34,15 +35,15 @@ export default function DeskPage() {
   }, [load]);
 
   const simulate = useCallback(
-    async (profile: PlanProfile) => {
+    async (disruption: DeskDisruption) => {
       if (!board) return;
       setBusy(true);
       setPlanError(null);
       setProposal(null);
-      setLastProfile(profile);
+      setLastDisruption(disruption);
       try {
-        const event = await deskApi.createUrgentEvent(RAFFLES_JOB_ID, board.snapshot.id);
-        setProposal(await deskApi.plan(event.id, profile));
+        const event = await deskApi.createEvent(disruption, board.snapshot.id);
+        setProposal(await deskApi.plan(event.id, disruption.profile));
       } catch (e) {
         setPlanError(
           e instanceof DeskApiError
@@ -60,7 +61,7 @@ export default function DeskPage() {
     setBusy(true);
     setProposal(null);
     setPlanError(null);
-    setLastProfile(null);
+    setLastDisruption(null);
     try {
       await deskApi.reset();
       await load();
@@ -102,19 +103,27 @@ export default function DeskPage() {
           </button>
         </div>
 
-        <Simulator busy={busy} disabled={Boolean(proposal)} onSimulate={(p) => void simulate(p)} />
+        <Simulator busy={busy} disabled={Boolean(proposal)} onSimulate={(disruption) => void simulate(disruption)} />
 
         {planError ? (
           <RefusalNotice
             refusal={planError}
             busy={busy}
             onRetry={() => {
-              if (lastProfile) void simulate(lastProfile);
+              if (lastDisruption) void simulate(lastDisruption);
             }}
           />
         ) : null}
 
-        {proposal ? <ProposalPanel result={proposal} onCommitted={onCommitted} /> : null}
+        {proposal && lastDisruption ? (
+          <ProposalPanel
+            result={proposal}
+            title={DISRUPTION_LABEL[lastDisruption.kind]}
+            onCommitted={onCommitted}
+          />
+        ) : null}
+
+        {proposal ? <TraceDrawer eventId={proposal.proposal.eventId} /> : null}
 
         <BoardView board={board} />
       </div>

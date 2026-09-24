@@ -50,7 +50,7 @@ Route groups still must not each define a root `page.tsx`. Named paths inside gr
 
 **Week 1.** Shell, timeline from fixtures, proposal card for the urgent job. Mock the API until member 1’s handlers exist. G1: a first-time observer can see the disruption and two plans.
 
-**Week 2.** Compare, approve, committed snapshot, trace. Wire unavailable and overrun simulators. Location panel if it helps the story; not a live map.
+**Week 2.** Compare, approve, committed snapshot, trace. Unavailable and overrun simulators are implemented (24 Sep, member 3, `Simulator` + `TraceDrawer`). Do not rebuild them. Location panel if it helps the story; not a live map.
 
 **Week 3.** Loading / empty / failure states, copy, keyboard path, demo reset control. Drive five timed 30-minute rehearsals. Technician status only if G2 is green.
 

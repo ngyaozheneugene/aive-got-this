@@ -4,6 +4,7 @@ import type {
   Approval,
   BoardSnapshot,
   CandidatePlan,
+  DecisionLog,
   DeskBoard,
   OperationalEvent,
   PlanProfile,
@@ -59,17 +60,54 @@ export interface CommitResult {
 
 const ACTOR = 'desk_coordinator';
 
+export type DeskDisruptionKind = 'urgent_job' | 'technician_unavailable' | 'job_overrun';
+
+export interface DeskDisruption {
+  kind: DeskDisruptionKind;
+  profile: PlanProfile;
+}
+
+/** Bodies the desk posts. Member 4 must not invent a second planner. */
+export function disruptionEventBody(disruption: DeskDisruption, sourceSnapshotId?: string) {
+  const source = sourceSnapshotId ? { sourceSnapshotId } : {};
+  if (disruption.kind === 'technician_unavailable') {
+    return { type: 'technician_unavailable' as const, payload: { technicianId: 'tech_hafiz' }, ...source };
+  }
+  if (disruption.kind === 'job_overrun') {
+    return {
+      type: 'job_overrun' as const,
+      payload: { jobId: 'job_hafiz_1', overrunMinutes: 90 },
+      ...source,
+    };
+  }
+  return { type: 'urgent_job' as const, payload: { jobId: 'job_raffles' }, ...source };
+}
+
+export const DISRUPTION_LABEL: Record<DeskDisruptionKind, string> = {
+  urgent_job: 'Raffles Place urgent job',
+  technician_unavailable: 'Hafiz unavailable',
+  job_overrun: 'Hafiz overrun 90 minutes',
+};
+
+export interface AuditResult {
+  eventId: string;
+  status: string;
+  entries: DecisionLog[];
+}
+
 export const deskApi = {
   getBoard: () => request<DeskBoard>('/api/schedule/current'),
 
   reset: () => request<unknown>('/api/demo/reset', { method: 'POST' }),
 
-  createUrgentEvent: (jobId: string, sourceSnapshotId?: string) =>
+  createEvent: (disruption: DeskDisruption, sourceSnapshotId?: string) =>
     request<OperationalEvent>('/api/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'urgent_job', payload: { jobId }, sourceSnapshotId }),
+      body: JSON.stringify(disruptionEventBody(disruption, sourceSnapshotId)),
     }),
+
+  audit: (eventId: string) => request<AuditResult>(`/api/events/${eventId}/audit`),
 
   plan: (eventId: string, profile: PlanProfile = 'sla_first') =>
     request<PlanResult>(`/api/events/${eventId}/plan`, {
