@@ -58,36 +58,13 @@ export interface CommitResult {
   applied: unknown[];
 }
 
+/** The disruption event bodies the platform accepts (see createEventBodySchema). */
+export type EventBody =
+  | { type: 'urgent_job'; payload: { jobId: string } }
+  | { type: 'technician_unavailable'; payload: { technicianId: string } }
+  | { type: 'job_overrun'; payload: { jobId: string; overrunMinutes: number } };
+
 const ACTOR = 'desk_coordinator';
-
-export type DeskDisruptionKind = 'urgent_job' | 'technician_unavailable' | 'job_overrun';
-
-export interface DeskDisruption {
-  kind: DeskDisruptionKind;
-  profile: PlanProfile;
-}
-
-/** Bodies the desk posts. Member 4 must not invent a second planner. */
-export function disruptionEventBody(disruption: DeskDisruption, sourceSnapshotId?: string) {
-  const source = sourceSnapshotId ? { sourceSnapshotId } : {};
-  if (disruption.kind === 'technician_unavailable') {
-    return { type: 'technician_unavailable' as const, payload: { technicianId: 'tech_hafiz' }, ...source };
-  }
-  if (disruption.kind === 'job_overrun') {
-    return {
-      type: 'job_overrun' as const,
-      payload: { jobId: 'job_hafiz_1', overrunMinutes: 90 },
-      ...source,
-    };
-  }
-  return { type: 'urgent_job' as const, payload: { jobId: 'job_raffles' }, ...source };
-}
-
-export const DISRUPTION_LABEL: Record<DeskDisruptionKind, string> = {
-  urgent_job: 'Raffles Place urgent job',
-  technician_unavailable: 'Hafiz unavailable',
-  job_overrun: 'Hafiz overrun 90 minutes',
-};
 
 export interface AuditResult {
   eventId: string;
@@ -100,11 +77,11 @@ export const deskApi = {
 
   reset: () => request<unknown>('/api/demo/reset', { method: 'POST' }),
 
-  createEvent: (disruption: DeskDisruption, sourceSnapshotId?: string) =>
+  createEvent: (body: EventBody, sourceSnapshotId?: string) =>
     request<OperationalEvent>('/api/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(disruptionEventBody(disruption, sourceSnapshotId)),
+      body: JSON.stringify({ ...body, sourceSnapshotId }),
     }),
 
   audit: (eventId: string) => request<AuditResult>(`/api/events/${eventId}/audit`),

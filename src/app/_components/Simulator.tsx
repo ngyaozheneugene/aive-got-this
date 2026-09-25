@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import type { PlanProfile } from '../../shared/types/domain';
-import { DISRUPTION_LABEL, type DeskDisruption, type DeskDisruptionKind } from './desk-api';
+import { DISRUPTIONS, findDisruption } from './disruptions';
 import { card, label, primaryBtn } from './ui';
 
-const KINDS: DeskDisruptionKind[] = ['urgent_job', 'technician_unavailable', 'job_overrun'];
-
-/** Raises one of the three P0 disruptions and asks for a plan. No second planner. */
+/** Event simulator. Raises one of the three disruptions and asks for a plan. */
 export function Simulator({
   busy,
   disabled,
@@ -13,52 +11,52 @@ export function Simulator({
 }: {
   busy: boolean;
   disabled: boolean;
-  onSimulate: (disruption: DeskDisruption) => void;
+  onSimulate: (disruptionKey: string, profile: PlanProfile) => void;
 }) {
-  const [kind, setKind] = useState<DeskDisruptionKind>('urgent_job');
+  const [disruptionKey, setDisruptionKey] = useState<string>(DISRUPTIONS[0]!.key);
   const [profile, setProfile] = useState<PlanProfile>('sla_first');
+  const disruption = findDisruption(disruptionKey);
+  const inactive = busy || disabled;
+
   return (
     <section style={{ ...card, display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
-      <div>
+      <div style={{ minWidth: 240 }}>
         <span style={label}>Simulate disruption</span>
-        <p style={{ margin: '4px 0 0', fontSize: 14 }}>{DISRUPTION_LABEL[kind]}</p>
-      </div>
-      <label style={{ fontSize: 13 }}>
-        <span style={{ display: 'block', color: '#6b6455' }}>Event</span>
         <select
-          aria-label="Disruption"
-          value={kind}
-          onChange={(e) => setKind(e.target.value as DeskDisruptionKind)}
-          disabled={busy}
-          style={{ font: 'inherit', padding: '4px 6px', marginTop: 4 }}
+          value={disruptionKey}
+          onChange={(e) => setDisruptionKey(e.target.value)}
+          disabled={inactive}
+          style={{ display: 'block', font: 'inherit', padding: '4px 6px', marginTop: 4, width: '100%' }}
         >
-          {KINDS.map((value) => (
-            <option key={value} value={value}>
-              {DISRUPTION_LABEL[value]}
+          {DISRUPTIONS.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label}
             </option>
           ))}
         </select>
-      </label>
+        <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b6455' }}>{disruption.detail}</p>
+      </div>
+
       <label style={{ fontSize: 13 }}>
         <span style={{ display: 'block', color: '#6b6455' }}>Preferred profile</span>
         <select
-          aria-label="Preferred profile"
           value={profile}
           onChange={(e) => setProfile(e.target.value as PlanProfile)}
-          disabled={busy}
+          disabled={inactive}
           style={{ font: 'inherit', padding: '4px 6px', marginTop: 4 }}
         >
           <option value="sla_first">SLA first</option>
           <option value="minimal_disruption">Minimal disruption</option>
         </select>
       </label>
+
       <button
         type="button"
-        onClick={() => onSimulate({ kind, profile })}
-        disabled={busy || disabled}
-        style={{ ...primaryBtn, opacity: busy || disabled ? 0.5 : 1 }}
+        onClick={() => onSimulate(disruptionKey, profile)}
+        disabled={inactive}
+        style={{ ...primaryBtn, opacity: inactive ? 0.5 : 1 }}
       >
-        {busy ? 'Planning…' : 'Raise event'}
+        {busy ? 'Planning…' : `Raise ${disruption.label.toLowerCase()}`}
       </button>
     </section>
   );
