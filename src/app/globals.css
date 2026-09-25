@@ -14,3 +14,90 @@ button {
 a {
   color: #16325c;
 }
+
+/* Desk timeline and map motion. */
+@keyframes desk-pop {
+  from { transform: scale(0.92); opacity: 0.4; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes desk-ants {
+  to { stroke-dashoffset: -14; }
+}
+
+/* Leaflet desk map markers (MapView). */
+.leaflet-container {
+  font-family: system-ui, sans-serif;
+}
+
+.desk-ants {
+  animation: desk-ants 0.8s linear infinite;
+}
+
+.desk-map-tech span {
+  display: block;
+  height: 24px;
+  line-height: 20px;
+  padding: 0 10px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.desk-map-tag span {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1.5px solid;
+  border-radius: 4px;
+  background: #fffdf8;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.desk-map-open__dot,
+.desk-map-open__pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.desk-map-open__dot {
+  background: #fff;
+  border: 4px solid #c0392b;
+}
+
+.desk-map-open__pulse {
+  border: 3px solid #c0392b;
+  animation: desk-pulse 1.6s ease-out infinite;
+}
+
+.desk-map-open__label {
+  position: absolute;
+  left: 24px;
+  top: 16px;
+  padding: 1px 6px;
+  border: 1.5px solid #8c2f21;
+  border-radius: 4px;
+  background: #fffdf8;
+  color: #8c2f21;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@keyframes desk-pulse {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(3); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; }
+}

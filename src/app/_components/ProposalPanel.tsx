@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { CandidatePlan } from '../../shared/types/domain';
 import { DeskApiError, deskApi, type PlanResult } from './desk-api';
 import { CompareView } from './CompareView';
 import { ApproveBar, type DecisionPhase } from './ApproveBar';
@@ -15,10 +16,13 @@ export function ProposalPanel({
   result,
   title,
   onCommitted,
+  onPreview,
 }: {
   result: PlanResult;
   title: string;
   onCommitted: (snapshotVersion: number) => void;
+  /** The plan the desk should draw over the board, or none once decided away. */
+  onPreview?: (plan: CandidatePlan | undefined) => void;
 }) {
   const { proposal, plans } = result;
   const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>(
@@ -29,6 +33,11 @@ export function ProposalPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const live = phase === 'recommended' || phase === 'approved';
+    onPreview?.(live ? plans.find((p) => p.id === selectedPlanId) : undefined);
+  }, [phase, selectedPlanId, plans, onPreview]);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
