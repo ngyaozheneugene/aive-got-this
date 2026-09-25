@@ -7,7 +7,12 @@ import type { EventBody } from './desk-api';
 
 export interface Disruption {
   key: string;
+  /** What the demo presenter picks: what happens out in the field. */
   label: string;
+  /** Who it comes from. In real use the event arrives from here by itself. */
+  source: string;
+  /** How it lands on the coordinator's desk. */
+  headline: string;
   detail: string;
   body: EventBody;
 }
@@ -15,20 +20,26 @@ export interface Disruption {
 export const DISRUPTIONS: readonly Disruption[] = [
   {
     key: 'urgent',
-    label: 'Urgent job',
-    detail: 'Raffles Place chiller trip — a new urgent job needs a slot.',
+    label: 'A customer calls with an urgent job',
+    source: 'Customer call',
+    headline: 'Urgent job: Raffles Place Capital',
+    detail: 'Their chiller has tripped. They need a technician this afternoon, 13:00–17:00.',
     body: { type: 'urgent_job', payload: { jobId: 'job_raffles' } },
   },
   {
     key: 'unavailable',
-    label: 'Technician unavailable',
-    detail: 'Hafiz is off; his remaining jobs must move as a set.',
+    label: 'A technician calls in sick',
+    source: 'Technician app',
+    headline: 'Hafiz is off sick today',
+    detail: 'His remaining jobs need someone else.',
     body: { type: 'technician_unavailable', payload: { technicianId: 'tech_hafiz' } },
   },
   {
     key: 'overrun',
-    label: 'Job overrun (+90 min)',
-    detail: 'Hafiz’s 08:00 job runs 90 minutes over and collides with his 11:00.',
+    label: 'A job runs late',
+    source: 'Technician app',
+    headline: 'Hafiz’s 08:00 job is running 90 min late',
+    detail: 'It now clashes with his 11:00 job.',
     body: { type: 'job_overrun', payload: { jobId: 'job_hafiz_1', overrunMinutes: 90 } },
   },
 ];

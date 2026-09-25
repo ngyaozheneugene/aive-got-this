@@ -37,7 +37,7 @@ export const CLUSTER_COORDS: Record<string, LatLng> = {
 
 /** Map window: all of the island the Eastwind day touches, with a margin. */
 export const MAP_BOUNDS = { north: 1.462, south: 1.248, west: 103.675, east: 104.0 } as const;
-export const TILE_URL = 'https://www.onemap.gov.sg/maps/tiles/Grey/{z}/{x}/{y}.png';
+export const TILE_URL = 'https://www.onemap.gov.sg/maps/tiles/Night/{z}/{x}/{y}.png';
 /** OneMap's terms require their logo and SLA credit on every map. */
 export const TILE_ATTRIBUTION =
   '<img src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" alt="" style="height:16px;width:16px;vertical-align:middle"/>&nbsp;' +
@@ -63,10 +63,10 @@ export function clock(minutes: number): string {
 }
 
 /** One colour per technician, stable across the timeline and the map. */
-const TECH_PALETTE = ['#16325c', '#1b7a74', '#7b3f8c', '#b07a12', '#4d6fa8', '#3d7a3a'];
+const TECH_PALETTE = ['#3b82f6', '#14b8a6', '#a855f7', '#f59e0b', '#ec4899', '#22c55e'];
 
 export function techColor(technicianIds: string[], technicianId: string | undefined): string {
-  if (!technicianId) return '#8c2f21';
+  if (!technicianId) return '#ef4444';
   const i = technicianIds.indexOf(technicianId);
   return TECH_PALETTE[(i < 0 ? 0 : i) % TECH_PALETTE.length]!;
 }

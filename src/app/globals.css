@@ -1,18 +1,71 @@
-html,
-body {
-  margin: 0;
-  background: #f4f1ea;
-  color: #161410;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* The desk is dark only: shadcn zinc dark tokens sit on :root. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.18 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.623 0.214 259.815);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.623 0.214 259.815);
+  --success: oklch(0.765 0.177 163.223);
+  --warning: oklch(0.795 0.184 86.047);
+  color-scheme: dark;
 }
 
-button {
-  font: inherit;
-  padding: 0.4rem 0.8rem;
-  cursor: pointer;
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter), "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
 }
 
-a {
-  color: #16325c;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    letter-spacing: -0.01em;
+  }
 }
 
 /* Desk timeline and map motion. */
@@ -27,7 +80,35 @@ a {
 
 /* Leaflet desk map markers (MapView). */
 .leaflet-container {
-  font-family: system-ui, sans-serif;
+  font-family: inherit;
+  background: #0f0f12 !important;
+}
+
+.leaflet-control-attribution {
+  background: rgb(9 9 11 / 0.75) !important;
+  color: #a1a1aa !important;
+}
+
+.leaflet-control-attribution a {
+  color: #d4d4d8 !important;
+}
+
+.leaflet-bar a {
+  background: #18181b !important;
+  color: #fafafa !important;
+  border-color: #27272a !important;
+}
+
+.leaflet-tooltip {
+  background: #18181b;
+  color: #fafafa;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.5);
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: #27272a;
 }
 
 .desk-ants {
@@ -39,7 +120,7 @@ a {
   height: 24px;
   line-height: 20px;
   padding: 0 10px;
-  border: 2px solid #fff;
+  border: 2px solid #09090b;
   border-radius: 12px;
   box-sizing: border-box;
   font-size: 13px;
@@ -55,7 +136,7 @@ a {
   padding: 1px 6px;
   border: 1.5px solid;
   border-radius: 4px;
-  background: #fffdf8;
+  background: #09090b;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -70,12 +151,12 @@ a {
 }
 
 .desk-map-open__dot {
-  background: #fff;
-  border: 4px solid #c0392b;
+  background: #09090b;
+  border: 4px solid #ef4444;
 }
 
 .desk-map-open__pulse {
-  border: 3px solid #c0392b;
+  border: 3px solid #ef4444;
   animation: desk-pulse 1.6s ease-out infinite;
 }
 
@@ -84,10 +165,10 @@ a {
   left: 24px;
   top: 16px;
   padding: 1px 6px;
-  border: 1.5px solid #8c2f21;
+  border: 1.5px solid #ef4444;
   border-radius: 4px;
-  background: #fffdf8;
-  color: #8c2f21;
+  background: #09090b;
+  color: #fca5a5;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -96,6 +177,64 @@ a {
 @keyframes desk-pulse {
   from { transform: scale(1); opacity: 0.9; }
   to { transform: scale(3); opacity: 0; }
+}
+
+/* ---- Motion pieces (fx.tsx), in the style of 21st.dev / Magic UI ---- */
+
+/* Ambient backdrop: a soft blue glow from the top and a faint dot grid. */
+.fx-ambient {
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% -10%, oklch(0.623 0.214 259.815 / 0.14), transparent 70%),
+    radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 22px 22px;
+}
+
+@property --beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.fx-border-beam {
+  padding: 1px;
+  background: conic-gradient(
+    from var(--beam-angle),
+    transparent 0 68%,
+    var(--beam-from) 80%,
+    var(--beam-to) 92%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: fx-beam-spin var(--beam-duration, 6s) linear infinite;
+}
+
+@keyframes fx-beam-spin {
+  to { --beam-angle: 360deg; }
+}
+
+.fx-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    var(--muted-foreground) 20%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 80%
+  );
+  background-size: 220% 100%;
+  animation: fx-shimmer 2.2s linear infinite;
+}
+
+@keyframes fx-shimmer {
+  from { background-position: 110% 0; }
+  to { background-position: -110% 0; }
+}
+
+/* Glow behind a card that needs attention. */
+.fx-attention {
+  box-shadow:
+    0 0 0 1px oklch(0.795 0.184 86.047 / 0.25),
+    0 0 40px -8px oklch(0.795 0.184 86.047 / 0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -9,9 +9,8 @@ import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMa
 import type { CandidatePlan, DeskBoard, DeskJobRow } from '../../shared/types/domain';
 import { CLUSTER_COORDS, MAP_BOUNDS, SITE_COORDS, TILE_ATTRIBUTION, TILE_URL, clock, techColor } from './geo';
 import { buildScheduleView } from './schedule-view';
-import { card, label, warn } from './ui';
-
-const URGENT = '#8c2f21';
+import { urgent as URGENT, warn } from './tokens';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 
 const WINDOW: LatLngBoundsExpression = [
   [MAP_BOUNDS.south, MAP_BOUNDS.west],
@@ -39,13 +38,18 @@ export default function MapView({
   plan,
   unavailableTechId,
   focusTechId,
+  pinnedTechId,
   onFocusTech,
+  onPinTech,
 }: {
   board: DeskBoard;
   plan?: CandidatePlan;
   unavailableTechId?: string;
   focusTechId?: string;
+  /** A technician the coordinator clicked; the map frames their route. */
+  pinnedTechId?: string;
   onFocusTech: (technicianId: string | undefined) => void;
+  onPinTech?: (technicianId: string) => void;
 }) {
   const view = useMemo(() => buildScheduleView(board, plan), [board, plan]);
   const techIds = board.technicians.map((t) => t.technician.id);
@@ -78,21 +82,28 @@ export default function MapView({
     return { technician, points, changedLegs };
   });
 
-  const focusPoints = routes.flatMap((r) => r.changedLegs.flat());
+  const pinnedRoute = routes.find((r) => r.technician.id === pinnedTechId);
+  const focusPoints = pinnedRoute ? pinnedRoute.points : routes.flatMap((r) => r.changedLegs.flat());
+  const fitSignature = pinnedRoute
+    ? `tech:${pinnedTechId}:${plan?.id ?? 'board'}`
+    : plan
+      ? `${plan.id}:${focusPoints.length}`
+      : 'board';
   const dimmed = (technicianId: string | undefined) => focusTechId !== undefined && focusTechId !== technicianId;
 
   return (
-    <section style={{ ...card, display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <span style={label}>Singapore · field map</span>
-          <p style={{ margin: '4px 0 0', fontSize: 15 }}>
-            {plan ? 'Routes as the selected plan would run them' : 'Routes on the committed board'}
-          </p>
-        </div>
-        <span style={{ fontSize: 11, color: '#6b6455' }}>Hover a technician to trace their day</span>
-      </div>
-
+    <Card className="h-full gap-3 py-4">
+      <CardHeader className="px-4">
+        <CardTitle>Singapore field map</CardTitle>
+        <CardDescription>
+          {pinnedRoute
+            ? `${pinnedRoute.technician.name}’s route${plan ? ' under the selected option' : ''} · click again to show everyone`
+            : plan
+              ? 'Routes as the selected option would run them'
+              : 'Routes on the current schedule · click a technician to follow their day'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="min-h-0 flex-1 px-4">
       <MapContainer
         bounds={WINDOW}
         maxBounds={LIMIT}
@@ -101,7 +112,7 @@ export default function MapView({
         maxZoom={18}
         zoomSnap={0.25}
         scrollWheelZoom={false}
-        style={{ width: '100%', aspectRatio: '16 / 10', minHeight: 300, borderRadius: 6, background: '#e9e6de' }}
+        style={{ width: '100%', height: '100%', minHeight: 240, borderRadius: 8 }}
       >
         <TileLayer
           url={TILE_URL}
@@ -113,7 +124,8 @@ export default function MapView({
           bounds={LIMIT}
         />
 
-        <FitToChange signature={plan ? `${plan.id}:${focusPoints.length}` : 'board'} points={focusPoints} />
+        <FitToChange signature={fitSignature} points={focusPoints} />
+        <TrackSize />
 
         {routes.map(({ technician, points, changedLegs }) => {
           if (points.length < 2) return null;
@@ -122,6 +134,7 @@ export default function MapView({
           const hover = {
             mouseover: () => onFocusTech(technician.id),
             mouseout: () => onFocusTech(undefined),
+            click: () => onPinTech?.(technician.id),
           };
           return (
             <Fragment key={`route-${technician.id}`}>
@@ -173,7 +186,7 @@ export default function MapView({
                 center={at}
                 radius={8}
                 pathOptions={{
-                  color: '#fff',
+                  color: '#09090b',
                   weight: 2.5,
                   fillColor: urgent ? URGENT : techColor(techIds, s.technicianId),
                   fillOpacity: dim ? 0.25 : 1,
@@ -223,12 +236,25 @@ export default function MapView({
             eventHandlers={{
               mouseover: () => onFocusTech(technician.id),
               mouseout: () => onFocusTech(undefined),
+              click: () => onPinTech?.(technician.id),
             }}
           />
         ))}
       </MapContainer>
-    </section>
+      </CardContent>
+    </Card>
   );
+}
+
+/** The map's pane is sized by the layout, so Leaflet must re-measure when it changes. */
+function TrackSize() {
+  const map = useMap();
+  useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
 }
 
 /**
@@ -257,7 +283,7 @@ function techIcon(name: string, color: string, off: boolean, fan: number): L.Div
   const w = name.length * 8.5 + 20;
   return L.divIcon({
     className: 'desk-map-tech',
-    html: `<span style="background:${off ? '#f3e0dc' : color};color:${off ? URGENT : '#fff'};${
+    html: `<span style="background:${off ? '#3f1d1d' : color};color:${off ? '#fca5a5' : '#fff'};${
       off ? 'text-decoration:line-through;' : ''
     }">${escape(name)}</span>`,
     iconSize: [w, 24],
