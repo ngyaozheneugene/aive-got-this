@@ -13,9 +13,11 @@ import { badge, card, label } from './ui';
  */
 export function ProposalPanel({
   result,
+  title,
   onCommitted,
 }: {
   result: PlanResult;
+  title: string;
   onCommitted: (snapshotVersion: number) => void;
 }) {
   const { proposal, plans } = result;
@@ -75,7 +77,7 @@ export function ProposalPanel({
         <div>
           <span style={label}>Proposal</span>
           <p style={{ margin: '4px 0 0', fontSize: 16 }}>
-            Recovery for the urgent job · engine {result.engine}
+            Recovery for {title} · engine {result.engine}
             {result.timedOut ? ' (insertion fallback)' : ''}
           </p>
         </div>
@@ -89,7 +91,9 @@ export function ProposalPanel({
 
       {!result.comparisonReady ? (
         <p style={{ margin: 0, color: '#8a5a00', fontSize: 13 }}>
-          Only one profile produced a valid plan; showing what is available.
+          {result.comparisonReasons?.includes('identical_plans')
+            ? 'Both profiles assigned the same slots. This is not a choice.'
+            : 'Only one profile produced a valid plan; showing what is available.'}
         </p>
       ) : null}
 

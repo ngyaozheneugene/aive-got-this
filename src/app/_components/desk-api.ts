@@ -4,6 +4,7 @@ import type {
   Approval,
   BoardSnapshot,
   CandidatePlan,
+  DecisionLog,
   DeskBoard,
   OperationalEvent,
   PlanProfile,
@@ -40,6 +41,7 @@ export interface PlanResult {
   engine: string;
   timedOut: boolean;
   comparisonReady: boolean;
+  comparisonReasons?: string[];
   selectionBasis: 'requested_profile' | 'available_validated_plan';
   agent: { runId: string; protocol: string; modelCalls: number; status: string };
 }
@@ -64,6 +66,12 @@ export type EventBody =
 
 const ACTOR = 'desk_coordinator';
 
+export interface AuditResult {
+  eventId: string;
+  status: string;
+  entries: DecisionLog[];
+}
+
 export const deskApi = {
   getBoard: () => request<DeskBoard>('/api/schedule/current'),
 
@@ -75,6 +83,8 @@ export const deskApi = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...body, sourceSnapshotId }),
     }),
+
+  audit: (eventId: string) => request<AuditResult>(`/api/events/${eventId}/audit`),
 
   plan: (eventId: string, profile: PlanProfile = 'sla_first') =>
     request<PlanResult>(`/api/events/${eventId}/plan`, {

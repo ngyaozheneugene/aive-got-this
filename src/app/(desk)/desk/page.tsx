@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { DeskBoard, PlanProfile } from '../../../shared/types/domain';
-import { DeskApiError, deskApi, type PlanResult } from '../../_components/desk-api';
+import {
+  DeskApiError, deskApi, type PlanResult,
+} from '../../_components/desk-api';
 import { BoardView } from '../../_components/BoardView';
 import { Simulator } from '../../_components/Simulator';
 import { ProposalPanel } from '../../_components/ProposalPanel';
+import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import { findDisruption } from '../../_components/disruptions';
@@ -119,7 +122,15 @@ export default function DeskPage() {
           />
         ) : null}
 
-        {proposal ? <ProposalPanel result={proposal} onCommitted={onCommitted} /> : null}
+        {proposal && lastAttempt ? (
+          <ProposalPanel
+            result={proposal}
+            title={findDisruption(lastAttempt.disruptionKey).label}
+            onCommitted={onCommitted}
+          />
+        ) : null}
+
+        {proposal ? <TraceDrawer eventId={proposal.proposal.eventId} /> : null}
 
         <BoardView board={board} />
       </div>
