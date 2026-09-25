@@ -56,6 +56,12 @@ export interface CommitResult {
   applied: unknown[];
 }
 
+/** The disruption event bodies the platform accepts (see createEventBodySchema). */
+export type EventBody =
+  | { type: 'urgent_job'; payload: { jobId: string } }
+  | { type: 'technician_unavailable'; payload: { technicianId: string } }
+  | { type: 'job_overrun'; payload: { jobId: string; overrunMinutes: number } };
+
 const ACTOR = 'desk_coordinator';
 
 export const deskApi = {
@@ -63,11 +69,11 @@ export const deskApi = {
 
   reset: () => request<unknown>('/api/demo/reset', { method: 'POST' }),
 
-  createUrgentEvent: (jobId: string, sourceSnapshotId?: string) =>
+  createEvent: (body: EventBody, sourceSnapshotId?: string) =>
     request<OperationalEvent>('/api/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'urgent_job', payload: { jobId }, sourceSnapshotId }),
+      body: JSON.stringify({ ...body, sourceSnapshotId }),
     }),
 
   plan: (eventId: string, profile: PlanProfile = 'sla_first') =>

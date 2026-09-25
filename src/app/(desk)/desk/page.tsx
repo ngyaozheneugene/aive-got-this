@@ -8,16 +8,17 @@ import { Simulator } from '../../_components/Simulator';
 import { ProposalPanel } from '../../_components/ProposalPanel';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
+import { findDisruption } from '../../_components/disruptions';
 import { ghostBtn, label } from '../../_components/ui';
-
-const RAFFLES_JOB_ID = 'job_raffles';
 
 export default function DeskPage() {
   const [board, setBoard] = useState<DeskBoard | null>(null);
   const [proposal, setProposal] = useState<PlanResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [planError, setPlanError] = useState<Refusal | null>(null);
-  const [lastProfile, setLastProfile] = useState<PlanProfile | null>(null);
+  const [lastAttempt, setLastAttempt] = useState<{ disruptionKey: string; profile: PlanProfile } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -34,14 +35,14 @@ export default function DeskPage() {
   }, [load]);
 
   const simulate = useCallback(
-    async (profile: PlanProfile) => {
+    async (disruptionKey: string, profile: PlanProfile) => {
       if (!board) return;
       setBusy(true);
       setPlanError(null);
       setProposal(null);
-      setLastProfile(profile);
+      setLastAttempt({ disruptionKey, profile });
       try {
-        const event = await deskApi.createUrgentEvent(RAFFLES_JOB_ID, board.snapshot.id);
+        const event = await deskApi.createEvent(findDisruption(disruptionKey).body, board.snapshot.id);
         setProposal(await deskApi.plan(event.id, profile));
       } catch (e) {
         setPlanError(
@@ -60,7 +61,7 @@ export default function DeskPage() {
     setBusy(true);
     setProposal(null);
     setPlanError(null);
-    setLastProfile(null);
+    setLastAttempt(null);
     try {
       await deskApi.reset();
       await load();
@@ -102,14 +103,18 @@ export default function DeskPage() {
           </button>
         </div>
 
-        <Simulator busy={busy} disabled={Boolean(proposal)} onSimulate={(p) => void simulate(p)} />
+        <Simulator
+          busy={busy}
+          disabled={Boolean(proposal)}
+          onSimulate={(k, p) => void simulate(k, p)}
+        />
 
         {planError ? (
           <RefusalNotice
             refusal={planError}
             busy={busy}
             onRetry={() => {
-              if (lastProfile) void simulate(lastProfile);
+              if (lastAttempt) void simulate(lastAttempt.disruptionKey, lastAttempt.profile);
             }}
           />
         ) : null}
