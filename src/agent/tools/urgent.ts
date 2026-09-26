@@ -105,7 +105,9 @@ export function createUrgentTools(
     },
     async propose(input) {
       const sidecar = scheduler.proposeWithSidecar;
-      const useSidecar = input.event.type !== 'urgent_job' && typeof sidecar === 'function';
+      // Every event goes to the solver, urgent jobs included, so a new request
+      // can rebalance the day around it. Insertion answers when it cannot.
+      const useSidecar = typeof sidecar === 'function';
       const raw = await (useSidecar ? sidecar(structuredClone(input)) : scheduler.propose(structuredClone(input)));
       return selectRequestedProfile(input, raw);
     },

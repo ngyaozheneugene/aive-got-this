@@ -21,9 +21,15 @@ import type { CandidatePlan, OperationalEventType, PlanProfile } from '../../src
 const enabled = process.env.RUN_SIDECAR_ACCEPTANCE === '1';
 const PROFILES: PlanProfile[] = ['sla_first', 'minimal_disruption'];
 
-async function solve(type: OperationalEventType, payload: Record<string, unknown>, affected: string[]) {
+async function solve(
+  type: OperationalEventType,
+  payload: Record<string, unknown>,
+  affected: string[],
+  reshape?: (schedule: Awaited<ReturnType<typeof buildBoardSchedule>>) => void,
+) {
   const db = new InMemoryDatabase();
   const schedule = await buildBoardSchedule(db);
+  reshape?.(schedule);
   const snapshot = await db.boardSnapshots.getLatest();
   const event = await db.events.create({
     type,
@@ -119,6 +125,59 @@ describe.skipIf(!enabled)('G-08 real OR-Tools sidecar legality', () => {
       const next = slotOf(plan, 'job_hafiz_2')!;
       expect(next.technicianId).not.toBe('tech_hafiz');
       expect(plan.metrics.jobsMoved).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('keeps the Raffles comparison: nearest van against the one with room', async () => {
+    const { plans } = await solve('urgent_job', { jobId: 'job_raffles' }, ['job_raffles']);
+    for (const profile of PROFILES) {
+      expect(plans[profile].validations.violations, `${profile} violations`).toEqual([]);
+      // An urgent job starts as soon as its window opens, whichever profile.
+      expect(hhmm(slotOf(plans[profile], 'job_raffles')?.windowStart)).toBe('13:00');
+      expect(plans[profile].metrics.jobsMoved).toBe(0);
+    }
+    expect(slotOf(plans.sla_first, 'job_raffles')?.technicianId).toBe('tech_siti');
+    expect(slotOf(plans.minimal_disruption, 'job_raffles')?.technicianId).toBe('tech_jonah');
+  });
+
+  it('evens out the day when a sick technician leaves one colleague overloaded', async () => {
+    const { plans } = await solve('technician_unavailable', { technicianId: 'tech_hafiz' }, ['tech_hafiz']);
+    // minimal_disruption disturbs one colleague; sla_first pays for extra
+    // driving to stop that colleague ending at 69% while Wei sits at 25%.
+    const gap = (p: CandidatePlan) => p.metrics.workloadSpreadPct ?? Infinity;
+    expect(gap(plans.sla_first)).toBeLessThan(gap(plans.minimal_disruption));
+    expect(plans.sla_first.metrics.travelMinutes).toBeGreaterThan(plans.minimal_disruption.metrics.travelMinutes);
+    const holders = new Set(plans.sla_first.assignments
+      .filter((a) => a.jobId === 'job_hafiz_2' || a.jobId === 'job_hafiz_3').map((a) => a.technicianId));
+    expect(holders.size).toBe(2);
+  });
+
+  it('rebalances around an urgent job: frees the only qualified technician', async () => {
+    // Raffles must start at 13:00 and needs the inverter board. Jonah has none
+    // today, and Siti is booked 13:00-14:15 for a job others can do. Insertion
+    // can only overlap her; the solver hands her booked job to a colleague at
+    // the customer's booked time, and gives her Raffles.
+    const at = (hm: string) => `2026-09-15T${hm}:00+08:00`;
+    const { live, plans } = await solve('urgent_job', { jobId: 'job_raffles' }, ['job_raffles'], (s) => {
+      s.jobs.find((j) => j.id === 'job_raffles')!.windowEnd = at('14:30');
+      const booked = s.jobs.find((j) => j.id === 'job_siti_2')!;
+      booked.windowStart = at('13:00');
+      booked.windowEnd = at('15:00');
+      const slot = s.assignments.find((a) => a.jobId === 'job_siti_2')!;
+      slot.windowStart = at('13:00');
+      slot.windowEnd = at('14:15');
+      s.technicians.find((t) => t.id === 'tech_jonah')!.parts = [];
+    });
+
+    for (const profile of PROFILES) {
+      const plan = plans[profile];
+      expect(plan.validations.violations, `${profile} violations`).toEqual([]);
+      expect(slotOf(plan, 'job_raffles')?.technicianId).toBe('tech_siti');
+      const moved = slotOf(plan, 'job_siti_2')!;
+      expect(moved.technicianId).not.toBe('tech_siti');
+      expect(`${moved.windowStart}-${moved.windowEnd}`).toBe(live.get('job_siti_2')!.split(' ')[1]);
+      expect(plan.metrics.jobsMoved).toBe(1);
+      expect(plan.changeSet).toContainEqual(expect.objectContaining({ action: 'reassign', jobId: 'job_siti_2' }));
     }
   });
 

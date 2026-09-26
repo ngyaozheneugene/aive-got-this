@@ -27,8 +27,18 @@ Scope per event
   technician_unavailable  their jobs that have not started are reassigned
   job_overrun             the job's end moves; that technician's later jobs
                           may be retimed or reassigned if the overrun collides
-  urgent_job              the unassigned job is inserted (insertion normally
-                          handles this; supported so the sidecar is complete)
+  urgent_job              the unassigned job is inserted, and the day is
+                          rebalanced around it: any booked job that has not
+                          started, is not promised or locked, and starts beyond
+                          the frozen horizon may change technician. It keeps
+                          its customer's booked time; only who does it moves.
+
+Balance
+-------
+Both profiles also minimise the workload gap: the busiest working technician's
+share of their day minus the idlest one's. A new job goes where it evens the
+day out, and an urgent job can pull a booked job off an overloaded technician
+when that pays for the extra move.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -51,6 +61,20 @@ OT_ALLOWANCE_MINUTES = 120
 SOLVER_SECONDS = 5.0
 LIVE_STATUSES = ("accepted", "offered")
 PRIORITY_WEIGHT = {"urgent": 5, "on_demand": 2, "callback": 2, "when_available": 1, "quote": 1}
+# A booked job starting sooner than this after the board's "now" is frozen:
+# its technician may already be driving to it.
+FROZEN_HORIZON_MINUTES = 60
+# Cost of handing a booked job to someone else while rebalancing around an
+# urgent job, in sla_first units (5 per drive minute). A move has to save about
+# 12 minutes of driving, or even out the day, to be worth a customer's update.
+REBALANCE_MOVE_COST = 60
+# Per percentage point of workload gap, per profile. One point is about five
+# minutes of a technician's day; sla_first trades it for 1.2 drive minutes.
+BALANCE_WEIGHT = {"sla_first": 6, "minimal_disruption": 5}
+# insertion's load pressure: a technician who cannot take overtime is 25%
+# closer to the edge at the same load. Mirrors loadPressure() in propose.ts.
+NO_OT_PRESSURE = 1.25
+WORKING_SHIFT_STATUSES = ("clocked_in", "scheduled")
 
 
 class ProposeRequest(BaseModel):
@@ -158,6 +182,8 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
 
     fixed: Dict[str, Dict[str, Any]] = {job_id: dict(slot) for job_id, slot in live.items()}
     in_scope: List[str] = []
+    # Booked jobs an urgent job may move to another technician, at their booked time.
+    rebalance: set = set()
     unavailable: Optional[str] = None
     overrun_job: Optional[str] = None
     overrun_by = 0
@@ -184,6 +210,25 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         if target not in jobs or target in live:
             return _empty("urgent_job_not_unassigned")
         in_scope = [target]
+        # The board's "now" is the latest start of work already under way; with
+        # nothing started, it is the earliest clock-in. The demo has no wall
+        # clock on the board day, so this is read from the board, not the host.
+        started = [s["start"] for j, s in live.items() if in_progress(j)]
+        clock_ins = [m for m in (_to_minutes(sh.get("clockInAt")) for sh in shifts.values()) if m is not None]
+        now = max(started) if started else (min(clock_ins) if clock_ins else 0)
+        for j, s in live.items():
+            job = jobs[j]
+            if (
+                not in_progress(j)
+                and job.get("lockState") in (None, "none")
+                and job.get("status") in (None, "assigned")
+                and s["start"] >= now + FROZEN_HORIZON_MINUTES
+                # Only if its own technician is still legal for it; otherwise
+                # opening it up would force a move the event did not cause.
+                and s["tech"] in (body.eligibility.get(j) or [])
+            ):
+                rebalance.add(j)
+        in_scope += sorted(rebalance)
     else:
         return _empty("unsupported_event_type")
 
@@ -208,6 +253,8 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         opens, closes = _to_minutes(job.get("windowStart")), _to_minutes(job.get("windowEnd"))
         lo = opens if opens is not None else 0
         hi = (closes - dur) if closes is not None else DAY_MINUTES - dur
+        if job_id in rebalance:
+            lo = hi = booked["start"]
         if hi < lo:
             if not booked:
                 unplaceable.append(job_id)
@@ -321,6 +368,29 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             drift[job_id] = gap
 
     committed = {t: sum(s["end"] - s["start"] for s in fixed.values() if s["tech"] == t) for t in techs}
+    # Load as booked: what is fixed, plus rebalanceable jobs where they sit now.
+    # Those are in play but mostly stay, and leaving them out would make a
+    # technician whose afternoon happens to be movable look idle.
+    booked_load = dict(committed)
+    for j in rebalance:
+        booked_load[live[j]["tech"]] += live[j]["end"] - live[j]["start"]
+
+    # Workload gap: busiest minus idlest working technician, in whole percent
+    # of each one's day ceiling. Linear because each ceiling is a constant.
+    working = [
+        t for t, tech in techs.items()
+        if t != unavailable and tech.get("isActive", True)
+        and (not shifts or (shifts.get(t) or {}).get("status") in WORKING_SHIFT_STATUSES)
+    ]
+    busiest = model.NewIntVar(0, 1000, "busiest_pct")
+    idlest = model.NewIntVar(0, 1000, "idlest_pct")
+    for t in working:
+        ceiling = int(techs[t].get("maxMinutesDay") or 480)
+        load = committed[t] + sum(duration[j] * assign[t, j] for j in in_scope if (t, j) in assign)
+        model.Add(busiest * ceiling >= 100 * load)
+        model.Add(idlest * ceiling <= 100 * load)
+    gap = model.NewIntVar(-1000, 1000, "workload_gap_pct")
+    model.Add(gap == busiest - idlest)
 
     def moves(tech_id: str, job_id: str) -> bool:
         booked = live.get(job_id)
@@ -345,7 +415,9 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         # so a move still wins whenever it saves any driving.
         for (tech_id, job_id), chosen in assign.items():
             if moves(tech_id, job_id):
-                terms.append(chosen)
+                terms.append((REBALANCE_MOVE_COST if job_id in rebalance else 1) * chosen)
+        if working:
+            terms.append(BALANCE_WEIGHT[profile] * gap)
         model.Minimize(sum(terms))
     else:
         objective_name = "least_knock_on"
@@ -357,11 +429,27 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
                 if tech_id not in receives_new_work:
                     receives_new_work[tech_id] = model.NewBoolVar(f"disturbed_{tech_id}")
                 model.Add(receives_new_work[tech_id] >= chosen)
-            terms.append((committed[tech_id] // 10) * chosen)
+            # The receiving technician's load pressure, as insertion reads it,
+            # so the two engines agree on who has room.
+            tech = techs[tech_id]
+            ceiling = int(tech.get("maxMinutesDay") or 480)
+            own = duration[job_id] if job_id in rebalance and live[job_id]["tech"] == tech_id else 0
+            pressure = (booked_load[tech_id] - own + duration[job_id]) * 100 / ceiling
+            if not tech.get("acceptsOt"):
+                pressure *= NO_OT_PRESSURE
+            terms.append(round(pressure) * chosen)
         for travel_terms in route_travel.values():
             terms.extend(travel_terms)
         terms.extend(300 * flag for flag in receives_new_work.values())
-        terms.extend(10 * gap for gap in drift.values())
+        terms.extend(10 * shift for shift in drift.values())
+        # A job nobody was booked for has no drift to measure, so without this
+        # an urgent job could be parked at the end of its window for free.
+        for job_id in in_scope:
+            if job_id not in live:
+                weight = PRIORITY_WEIGHT.get(jobs[job_id].get("priority"), 2)
+                terms.append(weight * (start[job_id] - window_open[job_id]))
+        if working:
+            terms.append(BALANCE_WEIGHT[profile] * gap)
         model.Minimize(sum(terms))
 
     solver = cp_model.CpSolver()
@@ -471,6 +559,8 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             "objectiveValue": solver.ObjectiveValue(),
             "solveTimeMs": int(solver.WallTime() * 1000),
             "inScope": in_scope,
+            "rebalanceable": sorted(rebalance),
+            "workloadGapPct": solver.Value(gap) if working else 0,
             "candidates": candidates_by_job,
         },
         "timedOut": False,

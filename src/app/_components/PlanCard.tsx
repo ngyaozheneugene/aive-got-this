@@ -139,8 +139,8 @@ export function PlanCard({
             <div key={key} className="flex justify-between border-t py-1.5" title={METRIC_COPY[key].help}>
               <dt className="text-muted-foreground">{METRIC_COPY[key].label}</dt>
               <dd className="font-mono tabular-nums">
-                {plan.metrics[key]}
-                {METRIC_COPY[key].unit ? <span className="text-muted-foreground"> {METRIC_COPY[key].unit}</span> : null}
+                {plan.metrics[key] ?? '—'}
+                {plan.metrics[key] !== undefined && METRIC_COPY[key].unit ? <span className="text-muted-foreground"> {METRIC_COPY[key].unit}</span> : null}
               </dd>
             </div>
           ))}
