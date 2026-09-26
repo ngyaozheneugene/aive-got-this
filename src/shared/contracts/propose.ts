@@ -11,6 +11,7 @@ export const planMetricsSchema = z.object({
   jobsMoved: z.number(),
   customersAffected: z.number(),
   unassignedCount: z.number(),
+  workloadSpreadPct: z.number().optional(),
 });
 
 export const planValidationSchema = z.object({

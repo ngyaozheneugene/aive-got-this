@@ -39,7 +39,7 @@ export function compareCandidatePlans(plans: readonly CandidatePlan[]): PlanComp
   );
   if (sla && quiet && !sameAssignments) {
     (Object.keys(emptyPlanMetrics()) as (keyof PlanMetrics)[]).forEach((key) => {
-      deltas[key] = sla[key] - quiet[key];
+      deltas[key] = (sla[key] ?? 0) - (quiet[key] ?? 0);
     });
     reasons.push('stored_metrics_only');
   } else if (sameAssignments) {

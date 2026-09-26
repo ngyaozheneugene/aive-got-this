@@ -265,6 +265,11 @@ export interface PlanMetrics {
   jobsMoved: number;
   customersAffected: number;
   unassignedCount: number;
+  /**
+   * Busiest minus idlest working technician, as % of their day ceiling.
+   * Optional so plans stored before it existed still parse.
+   */
+  workloadSpreadPct?: number;
 }
 
 export function emptyPlanMetrics(): PlanMetrics {
@@ -275,6 +280,7 @@ export function emptyPlanMetrics(): PlanMetrics {
     jobsMoved: 0,
     customersAffected: 0,
     unassignedCount: 0,
+    workloadSpreadPct: 0,
   };
 }
 

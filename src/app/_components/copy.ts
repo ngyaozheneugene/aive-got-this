@@ -37,11 +37,16 @@ export function profileName(profile: string): string {
 
 export const METRIC_COPY: Record<keyof PlanMetrics, { label: string; unit?: string; help: string }> = {
   slaLatenessMinutes: { label: 'Late for promised window', unit: 'min', help: 'How late jobs finish past what the customer was promised.' },
-  travelMinutes: { label: 'Driving time', unit: 'min', help: 'Extra travel this plan adds, from the travel-time table.' },
+  travelMinutes: { label: 'Driving time', unit: 'min', help: 'Driving this plan adds across the team, from the travel-time table. Negative means it saves driving.' },
   overtimeMinutes: { label: 'Overtime', unit: 'min', help: 'Work past the end of a technician’s shift.' },
   jobsMoved: { label: 'Other jobs moved', help: 'Existing jobs that get a new time or technician.' },
   customersAffected: { label: 'Customers to update', help: 'Customers who should hear about a change.' },
   unassignedCount: { label: 'Jobs still without a technician', help: 'Jobs this plan could not place.' },
+  workloadSpreadPct: {
+    label: 'Workload gap',
+    unit: '%',
+    help: 'Busiest technician minus least busy, as a share of their working day. Lower means a more even day.',
+  },
 };
 
 /** Lower is better for every stored metric. */
@@ -51,6 +56,7 @@ const METRIC_ORDER: Array<keyof PlanMetrics> = [
   'travelMinutes',
   'jobsMoved',
   'overtimeMinutes',
+  'workloadSpreadPct',
   'customersAffected',
 ];
 
@@ -106,7 +112,11 @@ export function compareToOther(plan: CandidatePlan, other: CandidatePlan): { bet
   const better: string[] = [];
   const worse: string[] = [];
   for (const key of METRIC_ORDER) {
-    const diff = plan.metrics[key] - other.metrics[key];
+    const mine = plan.metrics[key];
+    const theirs = other.metrics[key];
+    // Plans stored before a metric existed have no value for it; say nothing.
+    if (mine === undefined || theirs === undefined) continue;
+    const diff = mine - theirs;
     if (diff === 0) continue;
     const phrase = deltaPhrase(key, Math.abs(diff), diff < 0);
     (diff < 0 ? better : worse).push(phrase);
@@ -130,6 +140,8 @@ function deltaPhrase(key: keyof PlanMetrics, n: number, less: boolean): string {
       return `${n} ${fewer} ${n === 1 ? 'customer' : 'customers'} to update`;
     case 'unassignedCount':
       return `${n} ${fewer} ${n === 1 ? 'job' : 'jobs'} left without a technician`;
+    case 'workloadSpreadPct':
+      return `${n} points ${less ? 'more even' : 'less even'} workload`;
   }
 }
 
