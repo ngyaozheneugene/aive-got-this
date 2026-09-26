@@ -84,13 +84,30 @@
   background: #0f0f12 !important;
 }
 
+/* OneMap's terms need their logo and the SLA credit; keep it to one small line. */
 .leaflet-control-attribution {
-  background: rgb(9 9 11 / 0.75) !important;
-  color: #a1a1aa !important;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px !important;
+  border-radius: 6px 0 0 0;
+  background: rgb(9 9 11 / 0.6) !important;
+  color: #71717a !important;
+  font-size: 9.5px !important;
+  line-height: 1.4 !important;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.leaflet-control-attribution img {
+  display: inline-block;
+  width: 11px !important;
+  height: 11px !important;
 }
 
 .leaflet-control-attribution a {
-  color: #d4d4d8 !important;
+  color: #a1a1aa !important;
+  text-decoration: none;
 }
 
 .leaflet-bar a {
@@ -115,62 +132,122 @@
   animation: desk-ants 0.8s linear infinite;
 }
 
-.desk-map-tech span {
+/* Numbered stop pins; the number matches the stop in the technician list. */
+.desk-pin {
+  position: relative;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.55));
+}
+
+.desk-pin svg {
   display: block;
-  height: 24px;
-  line-height: 20px;
-  padding: 0 10px;
-  border: 2px solid #09090b;
-  border-radius: 12px;
-  box-sizing: border-box;
-  font-size: 13px;
-  font-weight: 700;
+  overflow: visible;
+}
+
+.desk-pin svg path {
+  stroke: rgb(0 0 0 / 0.45);
+  stroke-width: 1;
+}
+
+.desk-pin span {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 0;
   text-align: center;
-  white-space: nowrap;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.desk-pin--moved svg path {
+  stroke: #f59e0b;
+  stroke-width: 2.5;
+}
+
+.desk-pin--moved {
+  filter: drop-shadow(0 0 8px rgb(245 158 11 / 0.7));
+  animation: desk-pop 320ms ease-out;
+}
+
+.desk-pin--open span {
+  top: 6px;
+}
+
+.desk-pin__pulse {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid #ef4444;
+  animation: desk-pulse 1.6s ease-out infinite;
+}
+
+/* Technician: a dot with a soft halo, like a live location. */
+.desk-tech {
   cursor: pointer;
+}
+
+.desk-tech i,
+.desk-tech b {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.desk-tech i {
+  inset: 4px;
+  opacity: 0.2;
+  transition: inset 160ms, opacity 160ms;
+}
+
+.desk-tech b {
+  inset: 10px;
+  border: 2.5px solid #09090b;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+}
+
+.desk-tech--focus i {
+  inset: 0;
+  opacity: 0.3;
+}
+
+.desk-tech--off b {
+  border-color: #ef4444;
+}
+
+/* Direction of travel along the highlighted route. */
+.desk-arrow svg {
+  display: block;
+  filter: drop-shadow(0 0 1.5px #09090b) drop-shadow(0 0 1.5px #09090b);
+}
+
+/* The light callout beside a focused technician. */
+.leaflet-tooltip.desk-callout {
+  background: #f5f7fa;
+  color: #111827;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
+}
+
+.leaflet-tooltip.desk-callout::before {
+  border-right-color: #f5f7fa;
 }
 
 .desk-map-tag span {
   display: inline-block;
   padding: 1px 6px;
   border: 1.5px solid;
-  border-radius: 4px;
+  border-radius: 5px;
   background: #09090b;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.desk-map-open__dot,
-.desk-map-open__pulse {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.desk-map-open__dot {
-  background: #09090b;
-  border: 4px solid #ef4444;
-}
-
-.desk-map-open__pulse {
-  border: 3px solid #ef4444;
-  animation: desk-pulse 1.6s ease-out infinite;
-}
-
-.desk-map-open__label {
-  position: absolute;
-  left: 24px;
-  top: 16px;
-  padding: 1px 6px;
-  border: 1.5px solid #ef4444;
-  border-radius: 4px;
-  background: #09090b;
-  color: #fca5a5;
-  font-size: 12px;
-  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 650;
   white-space: nowrap;
 }
 

@@ -1,36 +1,40 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CandidatePlan, DeskBoard, PlanProfile } from '../../../shared/types/domain';
 import {
   DeskApiError, deskApi, type PlanResult,
 } from '../../_components/desk-api';
 import { BoardView } from '../../_components/BoardView';
 import { MapBoundary } from '../../_components/MapBoundary';
-import { Timeline } from '../../_components/Timeline';
 import { Simulator } from '../../_components/Simulator';
-import { ProposalPanel } from '../../_components/ProposalPanel';
+import { ProposalPanel, type ProposalMemory } from '../../_components/ProposalPanel';
 import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import { findDisruption } from '../../_components/disruptions';
+import { TechList } from '../../_components/TechList';
+import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
+import type { MapInsets } from '../../_components/MapView';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { BellRing, Check, List, Loader2, Map as MapIcon, RotateCcw, Snowflake } from 'lucide-react';
-import { BorderBeam, LiveDot, NumberTicker, ShimmerText, slideIn } from '../../_components/fx';
-import { PROFILE_COPY } from '../../_components/copy';
+import {
+  Bell, ChevronDown, Clock, FlaskConical, History, List, Loader2, Maximize2, RotateCcw, Snowflake, Table2, X,
+} from 'lucide-react';
+import { BorderBeam, LiveDot, NumberTicker, ShimmerText } from '../../_components/fx';
+import { PROFILE_COPY, eventStatusCopy } from '../../_components/copy';
+import { cn } from '../../_components/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../_components/ui/select';
 import { Badge } from '../../_components/ui/badge';
 import { Button } from '../../_components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../_components/ui/card';
 import { Skeleton } from '../../_components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../_components/ui/tabs';
 
 // Leaflet needs `window`, so the map renders only in the browser.
 const MapView = dynamic(() => import('../../_components/MapView'), {
   ssr: false,
-  loading: () => <Skeleton className="h-full min-h-[240px] rounded-xl" />,
+  loading: () => <Skeleton className="h-full w-full rounded-none" />,
 });
 
 export default function DeskPage() {
@@ -46,9 +50,13 @@ export default function DeskPage() {
   const [priority, setPriority] = useState<PlanProfile>('sla_first');
   const [preview, setPreview] = useState<CandidatePlan | undefined>(undefined);
   // Hover previews a technician; a click pins them so the map follows their route.
-  const [hoverTechId, setHoverTechId] = useState<string | undefined>(undefined);
+  // Clicking a technician pins them: the map moves to their day and their
+  // route stays highlighted until they are unpinned. Hover highlights only
+  // while nobody is pinned, and never moves the map.
+  const [mapHoverTechId, setMapHoverTechId] = useState<string | undefined>(undefined);
+  const [listHoverTechId, setListHoverTechId] = useState<string | undefined>(undefined);
   const [pinnedTechId, setPinnedTechId] = useState<string | undefined>(undefined);
-  const focusTechId = hoverTechId ?? pinnedTechId;
+  const focusTechId = pinnedTechId ?? listHoverTechId ?? mapHoverTechId;
   const togglePin = useCallback(
     (technicianId: string) => setPinnedTechId((current) => (current === technicianId ? undefined : technicianId)),
     [],
@@ -56,6 +64,73 @@ export default function DeskPage() {
   // What the coordinator did with the current proposal; a decided proposal no
   // longer blocks reporting the next problem.
   const [decision, setDecision] = useState<'committed' | 'rejected' | null>(null);
+  // The proposal panel's own state, kept here because closing the event card
+  // unmounts the panel; reopening must resume, not offer the choice again.
+  const [proposalMemory, setProposalMemory] = useState<ProposalMemory | undefined>(undefined);
+  // Layers over the map: the event card, a bottom drawer, the demo popover
+  // and, on narrow screens, the technician list.
+  const [cardOpen, setCardOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(true);
+  const [listOpen, setListOpen] = useState(false);
+  const [resetSignal, setResetSignal] = useState(0);
+  // Today's events: what this desk has received, newest first. Kept for the
+  // browser session so a reload keeps the feed; statuses always come from the server.
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const [currentEventId, setCurrentEventId] = useState<string | undefined>(undefined);
+  const [feedRef, feedSize] = useElementSize<HTMLDivElement>();
+  const wide = useMediaQuery('(min-width: 768px)');
+  const [cardRef, cardSize] = useElementSize<HTMLDivElement>();
+  const [drawerRef, drawerSize] = useElementSize<HTMLDivElement>();
+
+  // Restore before saving: saving first would overwrite the stored feed with
+  // the empty initial one (and strict mode runs mount effects twice).
+  const [feedRestored, setFeedRestored] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(FEED_KEY);
+      if (saved) setFeed(JSON.parse(saved) as FeedItem[]);
+    } catch {
+      // No storage (private window, blocked): the feed just starts empty.
+    }
+    setFeedRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!feedRestored) return;
+    try {
+      sessionStorage.setItem(FEED_KEY, JSON.stringify(feed));
+    } catch {
+      // Best effort only.
+    }
+  }, [feed, feedRestored]);
+
+  // Refetch statuses whenever something about the current event moves.
+  const feedRefresh = `${currentEventId}|${busy}|${proposal?.proposal.id}|${decision}|${planError?.code}`;
+  const statuses = useEventStatuses(feed, feedRefresh);
+
+  // The server forgets events on a demo reset or a restart; so does the feed.
+  useEffect(() => {
+    if (feed.some((i) => statuses[i.eventId] === 'missing')) {
+      setFeed((prev) => prev.filter((i) => statuses[i.eventId] !== 'missing'));
+    }
+  }, [feed, statuses]);
+
+  // Choosing an option hands the map back to the change it makes.
+  useEffect(() => {
+    if (preview) setPinnedTechId(undefined);
+  }, [preview]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setDemoOpen(false);
+      setPinnedTechId(undefined);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -78,16 +153,22 @@ export default function DeskPage() {
       setProposal(null);
       setPreview(undefined);
       setDecision(null);
+      setProposalMemory(undefined);
       setLastAttempt({ disruptionKey, profile });
-      // The arrival itself is the slide-in card in the decision column.
+      setPinnedTechId(undefined);
+      setCardOpen(true);
+      setDemoOpen(false);
       const incoming = findDisruption(disruptionKey);
+      toast(`New · ${incoming.source}`, { description: incoming.headline, icon: <Bell className="size-4 text-warning" /> });
       try {
         const event = await deskApi.createEvent(incoming.body, board.snapshot.id);
+        setCurrentEventId(event.id);
+        setFeed((prev) => [{ eventId: event.id, disruptionKey }, ...prev.filter((i) => i.eventId !== event.id)]);
         const result = await deskApi.plan(event.id, profile);
         setProposal(result);
         toast.success(
           result.plans.length === 1 ? 'One option is ready' : `${result.plans.length} options are ready`,
-          { description: 'Pick one on the right; the map and timeline show what it changes.' },
+          { description: 'Each one is drawn on the map as you select it.' },
         );
       } catch (e) {
         setPlanError(
@@ -95,7 +176,7 @@ export default function DeskPage() {
             ? { code: e.code, detail: e.detail }
             : { code: 'planning_failed', detail: 'Planning could not be completed.' },
         );
-        toast.error('The assistant couldn’t plan this one', { description: 'Details are on the right.' });
+        toast.error('The assistant couldn’t plan this one', { description: 'Details are in the event card.' });
       } finally {
         setBusy(false);
       }
@@ -108,15 +189,25 @@ export default function DeskPage() {
     setProposal(null);
     setPreview(undefined);
     setDecision(null);
+    setProposalMemory(undefined);
     setPlanError(null);
     setLastAttempt(null);
     setPinnedTechId(undefined);
+    setCardOpen(false);
+    setFeed([]);
+    setCurrentEventId(undefined);
     try {
       await deskApi.reset();
       await load();
     } finally {
       setBusy(false);
     }
+  }, [load]);
+
+  const onAlreadyApplied = useCallback(() => {
+    setDecision('committed');
+    toast('Already on the schedule', { description: 'This option was applied earlier. Nothing was changed twice.' });
+    void load();
   }, [load]);
 
   const onCommitted = useCallback((version: number) => {
@@ -163,77 +254,43 @@ export default function DeskPage() {
   const unassigned = board.jobs.filter((j) => !j.technician).length;
   const incoming = lastAttempt ? findDisruption(lastAttempt.disruptionKey) : undefined;
   const headerStatus: { label: string; tone: 'warning' | 'success' } =
-    proposal && decision === null
+    busy && incoming && !proposal
+      ? { label: 'Something just came in', tone: 'warning' }
+      : proposal && decision === null
       ? { label: 'Waiting for your decision', tone: 'warning' }
       : decision === 'rejected'
         ? { label: 'Arrange this one manually', tone: 'warning' }
         : { label: 'Schedule up to date', tone: 'success' };
 
+  const openEvents = feed.filter((i) => {
+    const e = statuses[i.eventId];
+    return e && e !== 'missing' && eventStatusCopy(e.status).open;
+  }).length;
+  const latest = feed.find((i) => statuses[i.eventId] && statuses[i.eventId] !== 'missing');
+  const latestEvent = latest ? statuses[latest.eventId] : undefined;
+  const hasEvent = Boolean(proposal) || (Boolean(incoming) && (busy || Boolean(planError)));
+  const cardVisible = cardOpen && hasEvent;
+  const pending = (busy && Boolean(incoming)) || (Boolean(proposal) && decision === null);
+  // Frame map changes in the part of the map no floating layer covers.
+  const insets: MapInsets = {
+    top: 16,
+    right: feedOpen && wide ? feedSize.width + 28 : 16,
+    left: cardVisible && wide ? cardSize.width + 28 : 16,
+    bottom: tableOpen ? drawerSize.height + 16 : cardVisible && !wide ? cardSize.height + 16 : 16,
+  };
+
   return (
-    <div className="flex min-h-dvh flex-col lg:flex-row">
-      <aside className="flex flex-col gap-6 border-b bg-card/40 p-5 lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:w-72 lg:flex-none lg:border-r lg:border-b-0">
-        <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-[0_0_24px_-4px] shadow-blue-500/60">
-            <Snowflake className="size-5" />
+    <div className="fixed inset-0 grid grid-rows-[48px_minmax(0,1fr)_40px] bg-background">
+      {/* Top bar */}
+      <header className="z-20 grid grid-cols-[1fr_auto] items-center gap-3 border-b bg-background px-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-[0_0_18px_-4px] shadow-blue-500/70">
+            <Snowflake className="size-4" />
           </div>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold">Dispatch Coordinator</div>
-            <div className="text-xs text-muted-foreground">Eastwind Aircon</div>
-          </div>
+          <span className="truncate text-sm font-semibold">Dispatch Coordinator</span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:inline">Eastwind Aircon</span>
         </div>
-
-        <div className="flex items-center gap-3 rounded-lg border bg-background/50 p-3">
-          <div className="grid size-8 place-items-center rounded-full bg-secondary text-sm font-semibold">C</div>
-          <div className="leading-tight">
-            <div className="text-sm font-medium">You: Coordinator</div>
-            <div className="text-xs text-muted-foreground">Eastwind dispatch office</div>
-          </div>
-        </div>
-
-        <div className="grid gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Your priority when problems come in</span>
-          <Select value={priority} onValueChange={(v) => setPriority(v as PlanProfile)} disabled={busy}>
-            <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sla_first">{PROFILE_COPY.sla_first.name}</SelectItem>
-              <SelectItem value="minimal_disruption">{PROFILE_COPY.minimal_disruption.name}</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {PROFILE_COPY[priority].promise} You always see both options; this decides which one is recommended.
-          </p>
-        </div>
-
-        <dl className="grid grid-cols-2 gap-3">
-          <Stat label="Schedule version" value={board.snapshot.version} />
-          <Stat label="Date" value={board.date} />
-          <Stat label="Technicians" value={board.technicians.length} />
-          <Stat label="Jobs needing a technician" value={unassigned} tone={unassigned > 0 ? 'bad' : undefined} />
-        </dl>
-
-        <div className="mt-auto">
-          <Simulator
-            busy={busy}
-            disabled={Boolean(proposal) && decision === null}
-            onSimulate={(k) => void simulate(k)}
-            onReset={() => void reset()}
-          />
-        </div>
-      </aside>
-
-      {/*
-        Wide screens: nothing scrolls away. The map and timeline share the
-        left pane and always show what the selected option would do; the
-        decision lives in its own scrolling column beside them.
-      */}
-      <main className="fx-ambient flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6 xl:h-dvh xl:overflow-hidden xl:py-5">
-        <header className="flex flex-none flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-            <h1 className="text-xl font-semibold tracking-tight">Today’s schedule</h1>
-            <Steps step={decision === 'committed' ? 3 : proposal && decision === null ? 2 : 1} />
-          </div>
+        <div className="flex items-center justify-end gap-2">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={headerStatus.label}
@@ -244,192 +301,459 @@ export default function DeskPage() {
             >
               <Badge variant={headerStatus.tone} className="gap-2 py-1">
                 <LiveDot tone={headerStatus.tone} />
-                {headerStatus.label}
+                <span className="hidden sm:inline">{headerStatus.label}</span>
               </Badge>
             </motion.div>
           </AnimatePresence>
-        </header>
+          <Select value={priority} onValueChange={(v) => setPriority(v as PlanProfile)} disabled={busy}>
+            <SelectTrigger size="sm" className="w-auto gap-1.5" title={`${PROFILE_COPY[priority].promise} This decides which option is recommended.`}>
+              <span className="hidden text-muted-foreground xl:inline">Priority</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="sla_first">{PROFILE_COPY.sla_first.name}</SelectItem>
+              <SelectItem value="minimal_disruption">{PROFILE_COPY.minimal_disruption.name}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setListOpen((o) => !o)}
+            aria-label="Show jobs and technicians"
+            aria-pressed={listOpen}
+          >
+            <List />
+          </Button>
+        </div>
+      </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-          {/* Decision column. First on narrow screens, right-hand on wide ones. */}
-          <div className="grid min-h-0 content-start gap-4 xl:order-2 xl:overflow-y-auto xl:pr-1">
-            <AnimatePresence mode="popLayout" initial={false}>
-            {incoming && (busy || planError) && !proposal ? (
-              <motion.div key={`incoming-${incoming.key}`} {...slideIn}>
-                <Card className="fx-attention overflow-hidden border-warning/30 bg-warning/[0.06]">
-                  {busy ? <BorderBeam duration={4} /> : null}
-                  <CardHeader>
-                    <CardDescription className="flex items-center gap-2 text-warning">
-                      <motion.span
-                        animate={{ rotate: [0, -14, 12, -8, 6, 0] }}
-                        transition={{ duration: 0.8, delay: 0.25 }}
-                        className="inline-flex"
-                      >
-                        <BellRing className="size-4" />
-                      </motion.span>
-                      New · {incoming.source}
-                    </CardDescription>
-                    <CardTitle className="text-base">{incoming.headline}</CardTitle>
-                    <CardDescription>{incoming.detail}</CardDescription>
-                  </CardHeader>
-                  {busy ? (
-                    <CardContent className="grid gap-3">
-                      <span className="flex items-center gap-2 text-sm">
-                        <Loader2 className="size-4 animate-spin text-primary" />
-                        <ShimmerText>The assistant is working out your options…</ShimmerText>
-                      </span>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Skeleton className="h-28 rounded-lg" />
-                        <Skeleton className="h-28 rounded-lg [animation-delay:150ms]" />
-                      </div>
-                    </CardContent>
-                  ) : null}
-                </Card>
-              </motion.div>
+      <div className="relative flex min-h-0">
+        {/* Left rail */}
+        <nav className="z-10 flex w-[52px] flex-none flex-col items-center gap-2 border-r bg-background py-2.5" aria-label="Tools">
+          <span title="You: coordinator" className="grid size-8 place-items-center rounded-full border bg-secondary text-[11px] font-bold">
+            C
+          </span>
+          <span className="my-0.5 h-px w-6 bg-border" />
+          <RailButton
+            label={hasEvent ? (cardVisible ? 'Hide the event' : 'Show the event') : 'No events'}
+            active={cardVisible}
+            onClick={() => {
+              if (!hasEvent) {
+                toast('Nothing needs your attention', { description: 'New events appear here as they arrive.' });
+                return;
+              }
+              setCardOpen((o) => !o);
+            }}
+          >
+            <Bell />
+            {pending && !cardVisible ? (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[9.5px] font-bold text-white ring-2 ring-background"
+              >
+                1
+              </motion.span>
             ) : null}
-
-            {planError ? (
-              <RefusalNotice
-                refusal={planError}
-                busy={busy}
-                onRetry={() => {
-                  if (lastAttempt) void simulate(lastAttempt.disruptionKey, lastAttempt.profile);
-                }}
-              />
+          </RailButton>
+          <RailButton label="Today’s events" active={feedOpen} onClick={() => setFeedOpen((o) => !o)}>
+            <History />
+            {openEvents > 0 && !feedOpen ? (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[9.5px] font-bold text-black ring-2 ring-background"
+              >
+                {openEvents}
+              </motion.span>
             ) : null}
-
-            {proposal && lastAttempt ? (
-              <motion.div key={`proposal-${proposal.proposal.id}`} {...slideIn}>
-              <ProposalPanel
-                result={proposal}
-                board={board}
-                source={findDisruption(lastAttempt.disruptionKey).source}
-                title={findDisruption(lastAttempt.disruptionKey).headline}
-                detail={findDisruption(lastAttempt.disruptionKey).detail}
-                onCommitted={onCommitted}
-                onRejected={() => setDecision('rejected')}
-                onPreview={setPreview}
-              />
-              </motion.div>
-            ) : !busy && !planError ? (
-              <motion.div key="idle" {...slideIn}>
-              <Card className="border-dashed bg-transparent backdrop-blur-none">
-                <CardHeader>
-                  <CardTitle>Nothing needs your attention</CardTitle>
-                  <CardDescription>
-                    When a customer calls with an urgent job, a technician goes off sick or a job runs late, it shows
-                    up here. The assistant suggests options, you see each one on the map and timeline, and nothing
-                    changes until you approve.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              </motion.div>
-            ) : null}
-            </AnimatePresence>
-
-            {proposal ? <TraceDrawer eventId={proposal.proposal.eventId} /> : null}
+          </RailButton>
+          <RailButton
+            label="Show all of Singapore"
+            onClick={() => {
+              setPinnedTechId(undefined);
+              setResetSignal((n) => n + 1);
+            }}
+          >
+            <Maximize2 />
+          </RailButton>
+          <div className="mt-auto">
+            <RailButton label="Demo controls" active={demoOpen} onClick={() => setDemoOpen((o) => !o)} className="text-warning">
+              <FlaskConical />
+            </RailButton>
           </div>
+        </nav>
 
-          {/* What the day looks like: map (or list) above, timeline below. */}
-          <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:order-1">
-            <Tabs defaultValue="map" className="flex min-h-[360px] flex-1 flex-col gap-2 xl:min-h-0">
-              <TabsList className="flex-none">
-                <TabsTrigger value="map">
-                  <MapIcon />
-                  Map
-                </TabsTrigger>
-                <TabsTrigger value="list">
-                  <List />
-                  List
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="map" className="min-h-0 flex-1">
-                <MapBoundary>
-                  <MapView
-                    board={board}
-                    plan={preview}
-                    unavailableTechId={unavailableTechId}
-                    focusTechId={focusTechId}
-                    pinnedTechId={pinnedTechId}
-                    onFocusTech={setHoverTechId}
-                    onPinTech={togglePin}
-                  />
-                </MapBoundary>
-              </TabsContent>
-              <TabsContent value="list" className="min-h-0 flex-1 overflow-y-auto">
-                <Card className="py-4">
-                  <CardContent className="px-4">
-                    <BoardView board={board} />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-
-            <div className="flex-none">
-              <Timeline
+        {/* Map and everything floating on it */}
+        <main className="relative min-w-0 flex-1 overflow-hidden">
+          {/* isolate: Leaflet's own z-indexes stay inside the map. */}
+          <div className="absolute inset-0 isolate">
+            <MapBoundary>
+              <MapView
                 board={board}
                 plan={preview}
                 unavailableTechId={unavailableTechId}
                 focusTechId={focusTechId}
-                pinnedTechId={pinnedTechId}
-                onFocusTech={setHoverTechId}
+                frameTechId={pinnedTechId}
+                onFocusTech={setMapHoverTechId}
                 onPinTech={togglePin}
+                insets={insets}
+                resetSignal={resetSignal}
               />
-            </div>
+            </MapBoundary>
           </div>
-        </div>
-      </main>
-    </div>
-  );
-}
 
-function Stat({ label, value, tone }: { label: string; value: string | number; tone?: 'bad' }) {
-  return (
-    <div className="rounded-lg border bg-background/50 px-3 py-2 transition-colors hover:bg-accent/40">
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
-      <dd className={tone === 'bad' ? 'font-mono text-sm text-destructive' : 'font-mono text-sm'}>
-        {typeof value === 'number' ? <NumberTicker value={value} /> : value}
-      </dd>
-    </div>
-  );
-}
+          {/* The event card: arrives from the left, like a message over the map. */}
+          <AnimatePresence>
+            {cardVisible ? (
+              <motion.div
+                key="event-card"
+                ref={cardRef}
+                initial={wide ? { opacity: 0, x: -28, scale: 0.98 } : { opacity: 0, y: 28 }}
+                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                exit={wide ? { opacity: 0, x: -20, scale: 0.98 } : { opacity: 0, y: 20 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+                className={cn(
+                  'absolute z-[500] overflow-y-auto overscroll-contain rounded-xl shadow-[0_24px_60px_-20px_rgb(0_0_0/0.85)]',
+                  'inset-x-2 bottom-2 max-h-[46%]',
+                  'md:inset-x-auto md:top-3 md:bottom-auto md:left-3 md:max-h-[calc(100%-24px)] md:w-[380px]',
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => setCardOpen(false)}
+                  aria-label="Close the event"
+                  className="absolute top-2 right-2 z-10 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+                <div className="grid gap-3">
+                  {incoming && (busy || planError) && !proposal ? (
+                    <Card className="fx-attention overflow-hidden border-warning/30 bg-card/95">
+                      {busy ? <BorderBeam duration={4} /> : null}
+                      <CardHeader className="pr-10">
+                        <CardDescription className="flex items-center gap-2 text-xs font-semibold tracking-wide text-warning uppercase">
+                          <motion.span
+                            animate={{ rotate: [0, -14, 12, -8, 6, 0] }}
+                            transition={{ duration: 0.8, delay: 0.25 }}
+                            className="inline-flex"
+                          >
+                            <Bell className="size-4" />
+                          </motion.span>
+                          New · {incoming.source}
+                        </CardDescription>
+                        <CardTitle className="text-base">{incoming.headline}</CardTitle>
+                        <CardDescription>{incoming.detail}</CardDescription>
+                      </CardHeader>
+                      {busy ? (
+                        <CardContent className="grid gap-3">
+                          <span className="flex items-center gap-2 text-sm">
+                            <Loader2 className="size-4 animate-spin text-primary" />
+                            <ShimmerText>The assistant is working out your options…</ShimmerText>
+                          </span>
+                          <Skeleton className="h-20 rounded-lg" />
+                          <Skeleton className="h-20 rounded-lg [animation-delay:150ms]" />
+                        </CardContent>
+                      ) : null}
+                    </Card>
+                  ) : null}
 
-const STEPS = ['Something comes in', 'You choose an option', 'Schedule updated'];
+                  {planError ? (
+                    <div className="rounded-xl bg-card/95">
+                      <RefusalNotice
+                        refusal={planError}
+                        busy={busy}
+                        onRetry={() => {
+                          if (lastAttempt) void simulate(lastAttempt.disruptionKey, lastAttempt.profile);
+                        }}
+                      />
+                    </div>
+                  ) : null}
 
-/** Where the coordinator is in the loop, so the next action is never a guess. */
-function Steps({ step }: { step: 1 | 2 | 3 }) {
-  return (
-    <ol className="flex flex-wrap items-center gap-1 rounded-full border bg-card/60 p-1 text-xs backdrop-blur-sm">
-      {STEPS.map((label, i) => {
-        const n = i + 1;
-        const state = n < step ? 'done' : n === step ? 'current' : 'next';
-        return (
-          <li key={label} className="relative flex items-center gap-2 rounded-full px-2.5 py-1">
-            {state === 'current' ? (
-              <motion.span
-                layoutId="step-highlight"
-                className="absolute inset-0 rounded-full bg-primary/15 ring-1 ring-primary/40"
-                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-              />
+                  {proposal && lastAttempt ? (
+                    <div className="[&>[data-slot=card]]:bg-card/95">
+                      <ProposalPanel
+                        result={proposal}
+                        board={board}
+                        source={findDisruption(lastAttempt.disruptionKey).source}
+                        title={findDisruption(lastAttempt.disruptionKey).headline}
+                        detail={findDisruption(lastAttempt.disruptionKey).detail}
+                        onCommitted={onCommitted}
+                        onRejected={() => setDecision('rejected')}
+                        onAlreadyApplied={onAlreadyApplied}
+                        onPreview={setPreview}
+                        memory={proposalMemory}
+                        onMemoryChange={setProposalMemory}
+                      />
+                    </div>
+                  ) : null}
+
+                  {proposal ? (
+                    <div className="[&>[data-slot=card]]:bg-card/95">
+                      <TraceDrawer
+                        eventId={proposal.proposal.eventId}
+                        refreshKey={feedRefresh}
+                        awaitingDecision={decision === null}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </motion.div>
             ) : null}
-            <span
-              className={
-                'relative grid size-4 place-items-center rounded-full text-[10px] font-semibold ' +
-                (state === 'current'
-                  ? 'bg-primary text-primary-foreground'
-                  : state === 'done'
-                    ? 'bg-success/20 text-success'
-                    : 'border text-muted-foreground')
-              }
-            >
-              {state === 'done' ? <Check className="size-2.5" strokeWidth={3} /> : n}
-            </span>
-            <span className={'relative ' + (state === 'current' ? 'font-medium' : 'text-muted-foreground')}>
-              {label}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+          </AnimatePresence>
+
+          {/* Today's events: floats on the right of the map, opposite the event card. */}
+          <AnimatePresence>
+            {feedOpen ? (
+              <motion.section
+                key="feed"
+                ref={feedRef}
+                initial={wide ? { opacity: 0, x: 28 } : { opacity: 0, y: -16 }}
+                animate={{ opacity: 1, x: 0, y: 0 }}
+                exit={wide ? { opacity: 0, x: 20 } : { opacity: 0, y: -16 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+                className={cn(
+                  'absolute z-[550] flex flex-col overflow-hidden rounded-xl border bg-card/95 shadow-[0_24px_60px_-20px_rgb(0_0_0/0.85)] backdrop-blur-md',
+                  'inset-x-2 top-2 max-h-[60%]',
+                  'md:inset-x-auto md:top-3 md:right-3 md:max-h-[calc(100%-24px)] md:w-[360px]',
+                )}
+                aria-label="Today’s events"
+              >
+                <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
+                  <div>
+                    <h2 className="text-sm font-semibold">Today’s events</h2>
+                    <p className="text-[11px] text-muted-foreground">
+                      {feed.length === 0
+                        ? 'Nothing yet'
+                        : `${feed.length} received · ${openEvents} waiting on you`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFeedOpen(false)}
+                    aria-label="Close today’s events"
+                    className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 overflow-y-auto overscroll-contain">
+                  <EventFeed
+                    items={feed}
+                    statuses={statuses}
+                    refreshKey={feedRefresh}
+                    currentEventId={currentEventId}
+                    onOpenCurrent={() => setCardOpen(true)}
+                  />
+                </div>
+              </motion.section>
+            ) : null}
+          </AnimatePresence>
+
+          {/* The job table, pulled up from the bottom bar. */}
+          <AnimatePresence>
+            {tableOpen ? (
+              <motion.section
+                key="drawer"
+                ref={drawerRef}
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+                className="absolute inset-x-0 bottom-0 z-[600] max-h-[55%] overflow-y-auto border-t bg-background/95 backdrop-blur-md"
+                aria-label="Table"
+              >
+                <button
+                  type="button"
+                  onClick={() => setTableOpen(false)}
+                  aria-label="Close"
+                  className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <ChevronDown className="size-4" />
+                </button>
+                <div className="px-7 pt-4 pb-3">
+                  <BoardView board={board} />
+                </div>
+              </motion.section>
+            ) : null}
+          </AnimatePresence>
+
+          {/* Demo controls: stand-in for the outside world. */}
+          <AnimatePresence>
+            {demoOpen ? (
+              <motion.div
+                key="demo"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                transition={{ duration: 0.2 }}
+                className="absolute bottom-3 left-3 z-[700] w-[min(290px,calc(100%-24px))] rounded-xl bg-background/95 shadow-[0_24px_50px_-20px_rgb(0_0_0/0.8)] backdrop-blur-md"
+              >
+                <Simulator
+                  busy={busy}
+                  disabled={Boolean(proposal) && decision === null}
+                  onSimulate={(k) => void simulate(k)}
+                  onReset={() => void reset()}
+                />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </main>
+
+        {/* Right panel: what needs a technician, then the team and their stops. */}
+        <aside
+          className={cn(
+            'z-[800] w-[340px] flex-none border-l bg-card',
+            'max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:w-[min(340px,calc(100%-52px))] max-md:shadow-2xl max-md:transition-transform max-md:duration-300',
+            !listOpen && 'max-md:translate-x-full',
+          )}
+          aria-label="Jobs and technicians"
+        >
+          <TechList
+            board={board}
+            plan={preview}
+            unavailableTechId={unavailableTechId}
+            focusTechId={focusTechId}
+            pinnedTechId={pinnedTechId}
+            onFocusTech={setListHoverTechId}
+            onPinTech={togglePin}
+            onOpenJob={hasEvent ? () => setCardOpen(true) : undefined}
+          />
+        </aside>
+      </div>
+
+      {/* Bottom bar */}
+      <footer className="z-20 flex items-center gap-1 overflow-x-auto border-t bg-background px-2 text-xs whitespace-nowrap [scrollbar-width:none]">
+        <span className="flex items-center gap-1.5 px-2 text-muted-foreground">
+          <Clock className="size-3.5" />
+          <span className="font-medium text-foreground">{formatDay(board.date)}</span>
+        </span>
+        <span className="px-2 text-muted-foreground">
+          Schedule version{' '}
+          <span className="font-mono font-semibold text-foreground">
+            <NumberTicker value={board.snapshot.version} />
+          </span>
+        </span>
+        <span className="px-2 text-muted-foreground">
+          <span className={cn('font-mono font-semibold', unassigned > 0 ? 'text-destructive' : 'text-success')}>
+            <NumberTicker value={unassigned} />
+          </span>{' '}
+          {unassigned === 1 ? 'job needs' : 'jobs need'} a technician
+        </span>
+        {latest && latestEvent && latestEvent !== 'missing' ? (
+          <button
+            type="button"
+            onClick={() => setFeedOpen(true)}
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Open today’s events"
+          >
+            <SourceIcon source={findDisruption(latest.disruptionKey).source} className="size-3.5 shrink-0" />
+            <span className="font-mono">{receivedTime(latestEvent.receivedAt)}</span>
+            <span className="truncate text-foreground">{findDisruption(latest.disruptionKey).headline}</span>
+            <Badge variant={eventStatusCopy(latestEvent.status).tone} className="py-0 text-[10.5px]">
+              {eventStatusCopy(latestEvent.status).label}
+            </Badge>
+          </button>
+        ) : null}
+        <span className="flex-1" />
+        <BarToggle active={tableOpen} onClick={() => setTableOpen((o) => !o)}>
+          <Table2 className="size-3.5" />
+          Table
+        </BarToggle>
+      </footer>
+    </div>
   );
 }
+
+function RailButton({
+  label,
+  active,
+  onClick,
+  className,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      className={cn(
+        'relative grid size-9 place-items-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[18px]',
+        active && 'border-primary/35 bg-primary/15 text-foreground',
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function BarToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+        active && 'bg-primary/15 text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function formatDay(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return Number.isNaN(d.getTime())
+    ? date
+    : d.toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setMatches(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
+
+/** Tracks an element's rendered size, for keeping map framing clear of it. */
+function useElementSize<T extends HTMLElement>(): [(el: T | null) => void, { width: number; height: number }] {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const observer = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: T | null) => {
+    observer.current?.disconnect();
+    if (!el) {
+      setSize({ width: 0, height: 0 });
+      return;
+    }
+    observer.current = new ResizeObserver(([entry]) => {
+      const box = entry!.target.getBoundingClientRect();
+      setSize((prev) =>
+        Math.abs(prev.width - box.width) < 8 && Math.abs(prev.height - box.height) < 8
+          ? prev
+          : { width: Math.round(box.width), height: Math.round(box.height) },
+      );
+    });
+    observer.current.observe(el);
+  }, []);
+  return [ref, size];
+}
+
+
+const FEED_KEY = 'desk:today-events';

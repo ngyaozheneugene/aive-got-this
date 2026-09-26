@@ -17,13 +17,21 @@ export class MapBoundary extends Component<{ children: ReactNode }, { failed: bo
     return { failed: true };
   }
 
+  // The map fills the desk, so try a fresh container a couple of times
+  // before asking the coordinator to reload it.
+  componentDidCatch() {
+    if (this.state.attempt < 2) {
+      setTimeout(() => this.setState((s) => ({ failed: false, attempt: s.attempt + 1 })), 250);
+    }
+  }
+
   render() {
-    if (this.state.failed) {
+    if (this.state.failed && this.state.attempt >= 2) {
       return (
-        <Card className="border-dashed">
+        <Card className="m-4 border-dashed">
           <CardHeader>
             <CardTitle>Map didn’t load</CardTitle>
-            <CardDescription>The timeline and your options still work. The map is only for orientation.</CardDescription>
+            <CardDescription>The list, the timeline and your options still work. The map is only for orientation.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" onClick={() => this.setState((s) => ({ failed: false, attempt: s.attempt + 1 }))}>
@@ -34,6 +42,7 @@ export class MapBoundary extends Component<{ children: ReactNode }, { failed: bo
         </Card>
       );
     }
+    if (this.state.failed) return null;
     // A fresh key gives Leaflet a brand-new container on retry.
     return (
       <div key={this.state.attempt} className="h-full min-h-0">

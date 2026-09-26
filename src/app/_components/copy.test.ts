@@ -67,7 +67,20 @@ describe('compareToOther', () => {
 });
 
 describe('recommendationReason', () => {
-  it('explains the pick from how the backend selected it', () => {
+  it('says so when the pick is no worse on any measure', () => {
+    expect(recommendationReason('requested_profile', sla, calm)).toBe(
+      'It’s as good or better on every measure: 8 min less driving.',
+    );
+  });
+
+  it('names the priority setting and the trade-off when there is one', () => {
+    const busy = { ...calm, id: 'p4', metrics: { ...calm.metrics, travelMinutes: 10, jobsMoved: 2 } } as CandidatePlan;
+    const text = recommendationReason('requested_profile', sla, busy);
+    expect(text).toContain('“On-time first”');
+    expect(text).toContain('“Least disruption” would mean');
+  });
+
+  it('falls back to the setting, or to being the only valid option', () => {
     expect(recommendationReason('requested_profile', sla)).toContain('On-time first');
     expect(recommendationReason('available_validated_plan', sla)).toContain('only option');
     expect(recommendationReason('requested_profile', undefined)).toBeNull();

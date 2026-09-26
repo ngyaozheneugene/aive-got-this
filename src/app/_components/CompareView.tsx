@@ -23,21 +23,25 @@ export function CompareView({
 }) {
   return (
     <div className="grid gap-3">
-      <div className="grid gap-1">
-        <span className="text-sm font-medium">Choose an option</span>
-        {plans.length > 1 ? (
-          <p className="text-sm text-muted-foreground">
-            {plans.every((p) => p.validations.ok && p.status !== 'REJECTED')
-              ? 'Both options are safe to use. '
-              : 'Only an option that passes every safety check can be chosen. '}
-            They trade off speed for the customer against changes to the rest of the team’s day. The one you select
-            is drawn on the map and timeline.
-          </p>
-        ) : null}
+      <div className="grid gap-2">
+        <div className="grid gap-0.5">
+          <span className="text-sm font-semibold">Choose an option</span>
+          {plans.length > 1 ? (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {plans.every((p) => p.validations.ok && p.status !== 'REJECTED')
+                ? 'Both pass every safety check. '
+                : 'Only an option that passes every safety check can be chosen. '}
+              The one you select is drawn on the map.
+            </p>
+          ) : null}
+        </div>
         {recommendation ? (
-          <p className="flex items-start gap-1.5 text-sm">
-            <Lightbulb className="mt-0.5 size-4 shrink-0 text-warning" />
-            {recommendation}
+          <p className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/[0.06] px-3 py-2 text-[13px] leading-relaxed">
+            <Lightbulb className="mt-0.5 size-4 shrink-0 text-success" />
+            <span>
+              <span className="font-semibold text-success">Why it’s recommended: </span>
+              {recommendation}
+            </span>
           </p>
         ) : null}
       </div>

@@ -25,7 +25,7 @@ export default function RootLayout({
     <html lang="en" className={`dark ${inter.variable}`}>
       <body className="min-h-dvh font-sans">
         <TooltipProvider delayDuration={150}>{children}</TooltipProvider>
-        <Toaster position="bottom-center" closeButton />
+        <Toaster position="top-center" offset={60} closeButton />
       </body>
     </html>
   );

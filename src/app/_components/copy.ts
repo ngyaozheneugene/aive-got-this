@@ -4,7 +4,9 @@
 //
 // Everything here describes numbers the backend already stored. The desk
 // does not score plans; it only puts stored metrics and slots into words.
-import type { CandidatePlan, DeskBoard, PlanMetrics, PlanProfile, RiskLevel } from '../../shared/types/domain';
+import type {
+  CandidatePlan, DeskBoard, OperationalEventStatus, PlanMetrics, PlanProfile, RiskLevel,
+} from '../../shared/types/domain';
 import { clock } from './geo';
 import { buildScheduleView } from './schedule-view';
 
@@ -131,14 +133,28 @@ function deltaPhrase(key: keyof PlanMetrics, n: number, less: boolean): string {
   }
 }
 
-/** Why the backend marked this plan recommended, from how it chose. */
+/**
+ * Why the backend marked this plan recommended, in words a coordinator can
+ * check. The backend picks the option built for the coordinator's priority
+ * setting; when that option is also no worse on any stored measure, that is
+ * the stronger reason and is said first. Compares stored metrics only.
+ */
 export function recommendationReason(
   selectionBasis: 'requested_profile' | 'available_validated_plan' | undefined,
   plan: CandidatePlan | undefined,
+  other?: CandidatePlan,
 ): string | null {
   if (!plan) return null;
-  if (selectionBasis === 'available_validated_plan') return 'Recommended because it is the only option that passed every check.';
-  return `Recommended because today’s priority is set to “${profileName(plan.profile)}”.`;
+  if (selectionBasis === 'available_validated_plan') return 'It’s the only option that passed every safety check.';
+  const setting = `your priority setting, “${profileName(plan.profile)}”`;
+  if (!other) return `It matches ${setting}.`;
+  const vs = compareToOther(plan, other);
+  if (vs.worse.length === 0 && vs.better.length > 0) {
+    return `It’s as good or better on every measure: ${vs.better.join(', ')}.`;
+  }
+  if (vs.worse.length === 0) return `Both options come out the same, so it follows ${setting}.`;
+  const theirs = compareToOther(other, plan).better;
+  return `It matches ${setting}: ${vs.better.join(', ') || 'it keeps to that priority'}. “${profileName(other.profile)}” would mean ${theirs.join(', ')}.`;
 }
 
 /** One-click reasons for approving `plan`, specific first. The coordinator can edit any of them. */
@@ -216,4 +232,35 @@ export function violationCopy(violation: string): string {
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** An event's backend status, as the coordinator would say it. */
+export function eventStatusCopy(status: OperationalEventStatus | string): {
+  label: string;
+  tone: 'warning' | 'success' | 'danger' | 'secondary';
+  open: boolean;
+} {
+  switch (status) {
+    case 'RECEIVED':
+    case 'VALIDATED':
+    case 'PLANNING':
+      return { label: 'Finding options…', tone: 'warning', open: true };
+    case 'PROPOSAL_READY':
+    case 'AWAITING_APPROVAL':
+      return { label: 'Waiting for you', tone: 'warning', open: true };
+    case 'COMMITTED':
+      return { label: 'Schedule updated', tone: 'success', open: false };
+    case 'REJECTED':
+      return { label: 'Handled manually', tone: 'secondary', open: false };
+    case 'INFEASIBLE':
+      return { label: 'No safe option', tone: 'danger', open: false };
+    case 'INVALID':
+      return { label: 'Couldn’t read this event', tone: 'danger', open: false };
+    case 'FAILED':
+      return { label: 'Couldn’t plan', tone: 'danger', open: false };
+    case 'SUPERSEDED':
+      return { label: 'Out of date', tone: 'secondary', open: false };
+    default:
+      return { label: status, tone: 'secondary', open: false };
+  }
 }

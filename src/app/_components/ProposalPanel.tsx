@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BellRing, ChevronRight, XCircle } from 'lucide-react';
+import { AlertTriangle, BellRing, ChevronRight, ShieldCheck, XCircle } from 'lucide-react';
 import type { CandidatePlan, DeskBoard } from '../../shared/types/domain';
 import { DeskApiError, deskApi, type PlanResult } from './desk-api';
 import { CompareView } from './CompareView';
@@ -9,7 +9,29 @@ import { ApproveBar, type DecisionPhase } from './ApproveBar';
 import { approveReasons, describeChanges, profileName, recommendationReason, refusalCopy, riskCopy } from './copy';
 import { DrawnCheck, LiveDot } from './fx';
 import { Badge } from './ui/badge';
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+
+interface Applied {
+  changes: string[];
+  /** Unknown when the server reports the plan was applied before this panel saw it. */
+  version?: number;
+  plan: CandidatePlan;
+}
+
+/**
+ * Everything the panel knows about one proposal's decision. The page keeps it,
+ * because the event card unmounts when it is closed: without it, reopening a
+ * decided proposal would offer the choice again.
+ */
+export interface ProposalMemory {
+  proposalId: string;
+  phase: DecisionPhase;
+  selectedPlanId?: string;
+  reason: string;
+  applied: Applied | null;
+  /** The board the options were made against; the live board moves on commit. */
+  sourceBoard: DeskBoard;
+}
 
 interface DeskError {
   title: string;
@@ -31,7 +53,10 @@ export function ProposalPanel({
   detail,
   onCommitted,
   onRejected,
+  onAlreadyApplied,
   onPreview,
+  memory,
+  onMemoryChange,
 }: {
   result: PlanResult;
   board: DeskBoard;
@@ -41,20 +66,30 @@ export function ProposalPanel({
   detail?: string;
   onCommitted: (snapshotVersion: number) => void;
   onRejected?: () => void;
+  /** The server says this proposal was already applied (e.g. from another tab). */
+  onAlreadyApplied?: () => void;
   /** The plan the desk should draw over the board, or none once decided away. */
   onPreview?: (plan: CandidatePlan | undefined) => void;
+  /** Where to resume from when the panel is rebuilt; ignored if it is for another proposal. */
+  memory?: ProposalMemory;
+  onMemoryChange?: (memory: ProposalMemory) => void;
 }) {
   const { proposal, plans } = result;
+  const saved = memory?.proposalId === proposal.id ? memory : undefined;
   const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>(
-    proposal.recommendedPlanId ?? plans.find((p) => p.validations.ok)?.id,
+    saved ? saved.selectedPlanId : proposal.recommendedPlanId ?? plans.find((p) => p.validations.ok)?.id,
   );
-  const [phase, setPhase] = useState<DecisionPhase>('recommended');
-  const [reason, setReason] = useState('');
+  const [phase, setPhase] = useState<DecisionPhase>(saved?.phase ?? 'recommended');
+  const [reason, setReason] = useState(saved?.reason ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<DeskError | null>(null);
   // The board this proposal was made against; the live board moves on commit.
-  const [sourceBoard] = useState(board);
-  const [applied, setApplied] = useState<{ changes: string[]; version: number; plan: CandidatePlan } | null>(null);
+  const [sourceBoard] = useState(saved?.sourceBoard ?? board);
+  const [applied, setApplied] = useState<Applied | null>(saved?.applied ?? null);
+
+  useEffect(() => {
+    onMemoryChange?.({ proposalId: proposal.id, phase, selectedPlanId, reason, applied, sourceBoard });
+  }, [onMemoryChange, proposal.id, phase, selectedPlanId, reason, applied, sourceBoard]);
 
   const selected = plans.find((p) => p.id === selectedPlanId);
   const risk = riskCopy(proposal.risk);
@@ -71,6 +106,14 @@ export function ProposalPanel({
       await fn();
     } catch (e) {
       const code = e instanceof DeskApiError ? e.code : 'request_failed';
+      if (code === 'already_committed') {
+        // Already on the schedule: show it as done rather than offer the choice again.
+        const plan = plans.find((p) => p.id === selectedPlanId);
+        if (plan) setApplied((prev) => prev ?? { changes: describeChanges(sourceBoard, plan), plan });
+        setPhase('committed');
+        onAlreadyApplied?.();
+        return;
+      }
       setError({ ...refusalCopy(code), code: e instanceof DeskApiError && e.detail ? `${code} — ${e.detail}` : code });
     } finally {
       setBusy(false);
@@ -107,17 +150,18 @@ export function ProposalPanel({
 
   return (
     <Card>
-      <CardHeader>
-        {source ? (
-          <CardDescription className="flex items-center gap-2 text-warning">
-            {phase === 'recommended' || phase === 'approved' ? <LiveDot tone="warning" /> : <BellRing className="size-4" />}
-            {phase === 'recommended' || phase === 'approved' ? 'New · ' : ''}
-            {source}
-          </CardDescription>
-        ) : null}
-        <CardTitle>{title}</CardTitle>
-        {detail ? <CardDescription>{detail}</CardDescription> : null}
-        <CardAction>
+      <CardHeader className="gap-1.5">
+        {/* Status on its own line, so the title and details get the full width. */}
+        <div className="flex min-h-7 items-center justify-between gap-3 pr-8">
+          {source ? (
+            <span className="flex items-center gap-2 text-xs font-semibold tracking-wide text-warning uppercase">
+              {phase === 'recommended' || phase === 'approved' ? <LiveDot tone="warning" /> : <BellRing className="size-3.5" />}
+              {phase === 'recommended' || phase === 'approved' ? 'New · ' : ''}
+              {source}
+            </span>
+          ) : (
+            <span />
+          )}
           {phase === 'committed' ? (
             <Badge variant="success">Done</Badge>
           ) : phase === 'rejected' ? (
@@ -127,7 +171,9 @@ export function ProposalPanel({
               {risk.label}
             </Badge>
           )}
-        </CardAction>
+        </div>
+        <CardTitle className="text-[17px] leading-snug text-balance">{title}</CardTitle>
+        {detail ? <CardDescription className="leading-relaxed">{detail}</CardDescription> : null}
       </CardHeader>
 
       <CardContent className="grid gap-4">
@@ -143,7 +189,8 @@ export function ProposalPanel({
               ))}
             </ul>
             <p className="pl-7 text-xs text-muted-foreground">
-              Your reason: “{reason.trim()}” · Saved as schedule version {applied.version}.
+              {reason.trim() ? `Your reason: “${reason.trim()}” · ` : ''}
+              {applied.version !== undefined ? `Saved as schedule version ${applied.version}.` : 'Already on the schedule.'}
               {applied.plan.metrics.customersAffected > 0
                 ? ` Let ${applied.plan.metrics.customersAffected === 1 ? 'the customer' : `${applied.plan.metrics.customersAffected} customers`} know.`
                 : ''}
@@ -160,7 +207,12 @@ export function ProposalPanel({
 
         {phase === 'recommended' || phase === 'approved' ? (
           <>
-            <p className="text-sm text-muted-foreground">{risk.detail} Nothing changes until you approve.</p>
+            <p className="flex items-start gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              <ShieldCheck className="mt-px size-3.5 shrink-0" />
+              <span>
+                {risk.detail} Nothing changes until you approve.
+              </span>
+            </p>
 
             {!result.comparisonReady ? (
               <p className="flex items-center gap-2 text-sm text-warning">
@@ -178,6 +230,7 @@ export function ProposalPanel({
               recommendation={recommendationReason(
                 result.selectionBasis,
                 plans.find((p) => p.id === proposal.recommendedPlanId),
+                plans.find((p) => p.id !== proposal.recommendedPlanId),
               )}
               selectedPlanId={selectedPlanId}
               onSelect={phase === 'recommended' ? setSelectedPlanId : () => undefined}
