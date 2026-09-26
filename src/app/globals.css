@@ -1,18 +1,71 @@
-html,
-body {
-  margin: 0;
-  background: #f4f1ea;
-  color: #161410;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* The desk is dark only: shadcn zinc dark tokens sit on :root. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.18 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.623 0.214 259.815);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.623 0.214 259.815);
+  --success: oklch(0.765 0.177 163.223);
+  --warning: oklch(0.795 0.184 86.047);
+  color-scheme: dark;
 }
 
-button {
-  font: inherit;
-  padding: 0.4rem 0.8rem;
-  cursor: pointer;
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter), "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
 }
 
-a {
-  color: #16325c;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    letter-spacing: -0.01em;
+  }
 }
 
 /* Desk timeline and map motion. */
@@ -27,75 +80,238 @@ a {
 
 /* Leaflet desk map markers (MapView). */
 .leaflet-container {
-  font-family: system-ui, sans-serif;
+  font-family: inherit;
+  background: #0f0f12 !important;
+}
+
+/* OneMap's terms need their logo and the SLA credit; keep it to one small line. */
+.leaflet-control-attribution {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px !important;
+  border-radius: 6px 0 0 0;
+  background: rgb(9 9 11 / 0.6) !important;
+  color: #71717a !important;
+  font-size: 9.5px !important;
+  line-height: 1.4 !important;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.leaflet-control-attribution img {
+  display: inline-block;
+  width: 11px !important;
+  height: 11px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #a1a1aa !important;
+  text-decoration: none;
+}
+
+.leaflet-bar a {
+  background: #18181b !important;
+  color: #fafafa !important;
+  border-color: #27272a !important;
+}
+
+.leaflet-tooltip {
+  background: #18181b;
+  color: #fafafa;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.5);
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: #27272a;
 }
 
 .desk-ants {
   animation: desk-ants 0.8s linear infinite;
 }
 
-.desk-map-tech span {
+/* Numbered stop pins; the number matches the stop in the technician list. */
+.desk-pin {
+  position: relative;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.55));
+}
+
+.desk-pin svg {
   display: block;
-  height: 24px;
-  line-height: 20px;
-  padding: 0 10px;
-  border: 2px solid #fff;
-  border-radius: 12px;
-  box-sizing: border-box;
-  font-size: 13px;
-  font-weight: 700;
+  overflow: visible;
+}
+
+.desk-pin svg path {
+  stroke: rgb(0 0 0 / 0.45);
+  stroke-width: 1;
+}
+
+.desk-pin span {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 0;
   text-align: center;
-  white-space: nowrap;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.desk-pin--moved svg path {
+  stroke: #f59e0b;
+  stroke-width: 2.5;
+}
+
+.desk-pin--moved {
+  filter: drop-shadow(0 0 8px rgb(245 158 11 / 0.7));
+  animation: desk-pop 320ms ease-out;
+}
+
+.desk-pin--open span {
+  top: 6px;
+}
+
+.desk-pin__pulse {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid #ef4444;
+  animation: desk-pulse 1.6s ease-out infinite;
+}
+
+/* Technician: a dot with a soft halo, like a live location. */
+.desk-tech {
   cursor: pointer;
+}
+
+.desk-tech i,
+.desk-tech b {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.desk-tech i {
+  inset: 4px;
+  opacity: 0.2;
+  transition: inset 160ms, opacity 160ms;
+}
+
+.desk-tech b {
+  inset: 10px;
+  border: 2.5px solid #09090b;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+}
+
+.desk-tech--focus i {
+  inset: 0;
+  opacity: 0.3;
+}
+
+.desk-tech--off b {
+  border-color: #ef4444;
+}
+
+/* Direction of travel along the highlighted route. */
+.desk-arrow svg {
+  display: block;
+  filter: drop-shadow(0 0 1.5px #09090b) drop-shadow(0 0 1.5px #09090b);
+}
+
+/* The light callout beside a focused technician. */
+.leaflet-tooltip.desk-callout {
+  background: #f5f7fa;
+  color: #111827;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
+}
+
+.leaflet-tooltip.desk-callout::before {
+  border-right-color: #f5f7fa;
 }
 
 .desk-map-tag span {
   display: inline-block;
   padding: 1px 6px;
   border: 1.5px solid;
-  border-radius: 4px;
-  background: #fffdf8;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.desk-map-open__dot,
-.desk-map-open__pulse {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.desk-map-open__dot {
-  background: #fff;
-  border: 4px solid #c0392b;
-}
-
-.desk-map-open__pulse {
-  border: 3px solid #c0392b;
-  animation: desk-pulse 1.6s ease-out infinite;
-}
-
-.desk-map-open__label {
-  position: absolute;
-  left: 24px;
-  top: 16px;
-  padding: 1px 6px;
-  border: 1.5px solid #8c2f21;
-  border-radius: 4px;
-  background: #fffdf8;
-  color: #8c2f21;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 5px;
+  background: #09090b;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 650;
   white-space: nowrap;
 }
 
 @keyframes desk-pulse {
   from { transform: scale(1); opacity: 0.9; }
   to { transform: scale(3); opacity: 0; }
+}
+
+/* ---- Motion pieces (fx.tsx), in the style of 21st.dev / Magic UI ---- */
+
+/* Ambient backdrop: a soft blue glow from the top and a faint dot grid. */
+.fx-ambient {
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% -10%, oklch(0.623 0.214 259.815 / 0.14), transparent 70%),
+    radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 22px 22px;
+}
+
+@property --beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.fx-border-beam {
+  padding: 1px;
+  background: conic-gradient(
+    from var(--beam-angle),
+    transparent 0 68%,
+    var(--beam-from) 80%,
+    var(--beam-to) 92%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: fx-beam-spin var(--beam-duration, 6s) linear infinite;
+}
+
+@keyframes fx-beam-spin {
+  to { --beam-angle: 360deg; }
+}
+
+.fx-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    var(--muted-foreground) 20%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 80%
+  );
+  background-size: 220% 100%;
+  animation: fx-shimmer 2.2s linear infinite;
+}
+
+@keyframes fx-shimmer {
+  from { background-position: 110% 0; }
+  to { background-position: -110% 0; }
+}
+
+/* Glow behind a card that needs attention. */
+.fx-attention {
+  box-shadow:
+    0 0 0 1px oklch(0.795 0.184 86.047 / 0.25),
+    0 0 40px -8px oklch(0.795 0.184 86.047 / 0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {

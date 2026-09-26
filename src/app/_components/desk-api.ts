@@ -84,6 +84,8 @@ export const deskApi = {
       body: JSON.stringify({ ...body, sourceSnapshotId }),
     }),
 
+  getEvent: (eventId: string) => request<OperationalEvent>(`/api/events/${eventId}`),
+
   audit: (eventId: string) => request<AuditResult>(`/api/events/${eventId}/audit`),
 
   plan: (eventId: string, profile: PlanProfile = 'sla_first') =>

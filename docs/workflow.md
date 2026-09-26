@@ -19,7 +19,7 @@ This is how the live day is recovered. It is not the WhatsApp-intake FSM from th
 | Desk coordinator | Sees the board, raises or confirms a disruption, compares two plans, approves or rejects, inspects the trace | Coordinator desk |
 | System (matching + `propose()` + validator) | Filters illegal vans, generates candidates, scores metrics, rejects invalid plans | Server only |
 | Agent (LangGraph) | Picks the next tool: retrieve, propose, validate, classify risk, request approval, commit, audit | Server only |
-| Optimizer sidecar | Whole-board replan for technician-unavailable and overrun (and urgent once G3 is green) | Internal `POST /propose` |
+| Optimizer sidecar | Replan for all three events. Urgent jobs rebalance the day: a booked, unstarted, unlocked job beyond a 60-minute frozen horizon may change technician (never time) when that pays. Both profiles also minimise the workload gap | Internal `POST /propose` |
 | Technician | Reports status (en route, arrived, late, part required, done) | P1 after G2 |
 | Customer | Does not operate the product | Out of P0 |
 
@@ -118,7 +118,7 @@ Event types in P0:
 
 | Type | What changed | Scheduler engine |
 |---|---|---|
-| `urgent_job` | A new high-priority job must be placed today | Insertion at G1; sidecar once G3 is green |
+| `urgent_job` | A new high-priority job must be placed today | Sidecar with rolling rebalance; insertion is the 10 s fallback |
 | `technician_unavailable` | A van drops out; remaining work must move as a set | Sidecar (insertion is 10 s fallback only) |
 | `job_overrun` | A job ran ~45 minutes late; frozen horizon | Sidecar (same fallback) |
 

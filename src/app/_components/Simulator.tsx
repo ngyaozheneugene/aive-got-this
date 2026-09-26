@@ -1,63 +1,76 @@
 import { useState } from 'react';
-import type { PlanProfile } from '../../shared/types/domain';
+import { FlaskConical, Loader2, RotateCcw, Send } from 'lucide-react';
 import { DISRUPTIONS, findDisruption } from './disruptions';
-import { card, label, primaryBtn } from './ui';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
-/** Event simulator. Raises one of the three disruptions and asks for a plan. */
+/**
+ * Demo only. Stands in for the outside world — customers calling, the
+ * technician app — so a presenter can make an event happen. The coordinator
+ * never uses this in real life; events simply arrive on their desk.
+ */
 export function Simulator({
   busy,
   disabled,
   onSimulate,
+  onReset,
 }: {
   busy: boolean;
   disabled: boolean;
-  onSimulate: (disruptionKey: string, profile: PlanProfile) => void;
+  onSimulate: (disruptionKey: string) => void;
+  onReset: () => void;
 }) {
   const [disruptionKey, setDisruptionKey] = useState<string>(DISRUPTIONS[0]!.key);
-  const [profile, setProfile] = useState<PlanProfile>('sla_first');
   const disruption = findDisruption(disruptionKey);
   const inactive = busy || disabled;
 
   return (
-    <section style={{ ...card, display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
-      <div style={{ minWidth: 240 }}>
-        <span style={label}>Simulate disruption</span>
-        <select
-          value={disruptionKey}
-          onChange={(e) => setDisruptionKey(e.target.value)}
-          disabled={inactive}
-          style={{ display: 'block', font: 'inherit', padding: '4px 6px', marginTop: 4, width: '100%' }}
-        >
-          {DISRUPTIONS.map((d) => (
-            <option key={d.key} value={d.key}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-        <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b6455' }}>{disruption.detail}</p>
+    <section className="grid grid-cols-1 gap-3 rounded-xl border border-dashed border-warning/50 bg-warning/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <FlaskConical className="size-4 text-warning" />
+          Demo controls
+        </span>
+        <Badge variant="warning">Demo only</Badge>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        In real use, these events arrive on the coordinator’s desk by themselves — from customer calls and the
+        technician app. Here you play the outside world.
+      </p>
+
+      <div className="grid min-w-0 grid-cols-1 gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Make this happen</span>
+        <Select value={disruptionKey} onValueChange={setDisruptionKey} disabled={inactive}>
+          <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {DISRUPTIONS.map((d) => (
+              <SelectItem key={d.key} value={d.key}>
+                {d.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          <span className="font-medium text-foreground">{disruption.source}:</span> {disruption.headline}.{' '}
+          {disruption.detail}
+        </p>
       </div>
 
-      <label style={{ fontSize: 13 }}>
-        <span style={{ display: 'block', color: '#6b6455' }}>Preferred profile</span>
-        <select
-          value={profile}
-          onChange={(e) => setProfile(e.target.value as PlanProfile)}
-          disabled={inactive}
-          style={{ font: 'inherit', padding: '4px 6px', marginTop: 4 }}
-        >
-          <option value="sla_first">SLA first</option>
-          <option value="minimal_disruption">Minimal disruption</option>
-        </select>
-      </label>
+      <Button onClick={() => onSimulate(disruptionKey)} disabled={inactive} variant="secondary" className="w-full">
+        {busy ? <Loader2 className="animate-spin" /> : <Send />}
+        {busy ? 'Sending…' : 'Send to the coordinator'}
+      </Button>
+      {disabled && !busy ? (
+        <p className="text-xs text-muted-foreground">The coordinator has one event to handle first.</p>
+      ) : null}
 
-      <button
-        type="button"
-        onClick={() => onSimulate(disruptionKey, profile)}
-        disabled={inactive}
-        style={{ ...primaryBtn, opacity: inactive ? 0.5 : 1 }}
-      >
-        {busy ? 'Planning…' : `Raise ${disruption.label.toLowerCase()}`}
-      </button>
+      <Button variant="ghost" size="sm" onClick={onReset} disabled={busy} className="w-full text-muted-foreground">
+        <RotateCcw />
+        Reset the demo day
+      </Button>
     </section>
   );
 }
