@@ -36,7 +36,7 @@ Caddy :443
         └── optimizer :8081  (FastAPI + OR-Tools)
 ```
 
-`propose()` is the only scheduler API the app calls. G1 may implement it in TypeScript (insertion). G3 serves unavailable / overrun from the sidecar. Insertion remains the 10 s timeout fallback.
+`propose()` is the only scheduler API the app calls. The sidecar serves all three events; insertion (TypeScript) is the 10 s timeout fallback. Whichever engine answers, `measurePlan()` in `src/matching/measure.ts` computes the plan's metrics, so the desk compares like with like. See ADR 004.
 
 ---
 
@@ -59,7 +59,16 @@ Gateway calls are HTTPS with the organiser key. No AWS SDK in the app.
 | `GET /health` | Compose and Lightsail health |
 | `POST /propose` | `{ event, schedule, profile }` → candidate plans |
 
-Timeout 10 s. The TypeScript validator still runs on every candidate.
+Timeout 10 s. The TypeScript validator still runs on every candidate, and TypeScript re-measures every candidate's metrics.
+
+Objectives, per profile (`services/optimizer/app.py`):
+
+| Profile | Minimises |
+|---|---|
+| `sla_first` ("On-time first") | Lateness past window open × priority, drive minutes, and the workload gap (1 point ≈ 1.2 drive minutes) |
+| `minimal_disruption` ("Least disruption") | Moved jobs, colleagues disturbed, the receiver's load pressure, drift, waiting time for new jobs, and the workload gap |
+
+Urgent jobs may also reassign booked work around them: see ADR 004.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Team:** AI've Got This
 **Event:** Show Me Your Agents, NUS-ISS
-**Status:** v1.1. G0 contracts and Eastwind Tuesday are in the repo. Insertion `propose()` is still a stub.
+**Status:** v1.2 (27 Sep 2026). All three disruptions plan, validate, approve and commit end to end. The OR-Tools sidecar serves every event, with rolling rebalance for urgent jobs and a workload-balance objective ([ADR 004](docs/adr/004-balance-and-rolling-rebalance.md)).
 
 An agent-assisted control tower for a Singapore HVAC SME. The day is already booked. When an urgent job arrives, a technician becomes unavailable, or a repair overruns, the system produces at least two validated recoveries, shows the trade-off, and will not commit a consequential change without the desk.
 
@@ -27,7 +27,19 @@ Agents start at [`AGENTS.md`](AGENTS.md) and the board at [`docs/tasks.md`](docs
 
 Do not add a second Vite SPA, Cognito, App Runner, Bedrock as our billed model, or managed RDS. FastAPI is the optimizer only.
 
-`propose(event, schedule, profile)` is the scheduler contract. G1 implements it with weighted insertion so an urgent job can appear on the desk. G3 puts OR-Tools behind the same contract for technician-unavailable and overrun. Insertion stays as the 10-second timeout fallback. An independent validator runs on every candidate.
+`propose(event, schedule, profile)` is the scheduler contract. OR-Tools answers it for all three events; weighted insertion (TypeScript) is the 10-second timeout fallback. An independent validator runs on every candidate, and `measurePlan()` computes every candidate's metrics, whichever engine produced it.
+
+### How it answers the brief
+
+| The brief asks for | Where it lives |
+|---|---|
+| Assign by **skills** and **availability** | Stage A (`src/matching/gates/`): certificates and expiry, tier, shift, parts and tools, locks. The validator re-checks every plan. |
+| Assign by **location** | Cached cluster travel matrix; routes are costed in start order, so chained jobs pay one drive. |
+| Assign by **urgency** | Priority-weighted lateness in the solver; customer windows are hard constraints. |
+| Less **travel** | Drive minutes in both objectives. The metric is the fleet driving a plan adds, and it can be negative. |
+| Fewer **delayed appointments** | Lateness metric; windows enforced; overruns replan downstream work. |
+| Even **utilisation** | Workload gap (busiest minus idlest technician, % of their day) on every plan. Both profiles minimise it. |
+| Requests **arriving through the day** | Each event plans against the latest snapshot. An urgent job can hand booked, unstarted work to a colleague at the same time to free the right technician (UC-16). |
 
 ---
 
@@ -68,7 +80,7 @@ aive-got-this/
 ├── src/app/                 Next.js. Desk is (desk)/; API under api/
 ├── src/shared/              Zod contracts, types, config, Eastwind fixture
 ├── src/db/                  postgres/ + memory/ (same interface)
-├── src/matching/            Stage A gate, validator; insertion propose()
+├── src/matching/            Stage A gate, validator, measurePlan(); insertion propose() fallback
 ├── src/location/            postal + travel matrix
 ├── src/agent/               LangGraph, playbooks, JSON tools
 ├── src/people|catalog|dispatch
@@ -99,11 +111,11 @@ The first live demo is 30 minutes. One person drives the desk. One person narrat
 
 1. Problem and who it is for (Eastwind, day already booked).
 2. Architecture: `propose()`, validator, approval, Lightsail, gateway JSON tools.
-3. Tuesday board. Raffles Place urgent job. Two plans. Approve. New snapshot.
-4. Technician unavailable, then a 45-minute overrun.
+3. Tuesday board and its 44-point workload gap. Raffles Place urgent job. Two plans. Approve On-time first. New snapshot.
+4. Technician unavailable: the balance trade-off (gap 44 → 12 for 32 more minutes of driving). Reset, then a 90-minute overrun.
 5. Injection note, infeasible case, G/A/X, trace drawer, spend vs $100.
 
-Do not open with WhatsApp intake. Do not fill the extra time with OpenClaw or a map. Keep a short backup recording of the urgent-job spine if the box dies.
+Do not open with WhatsApp intake. Do not fill the extra time with OpenClaw or a map. The minute-by-minute rundown is plan §12.1. The backup recording script is [`docs/demo-script.md`](docs/demo-script.md).
 
 ---
 
@@ -136,5 +148,6 @@ Four streams.
 
 ## Revision
 
+- **v1.2** 27 Sep 2026 — Sidecar for all three events, rolling rebalance around urgent jobs, workload-balance metric and objective, one `measurePlan()` for every engine (ADR 004).
 - **v1.1** 9 Sep 2026 — Execution contract aligned with the control-tower plan: Lightsail, gateway Claude Sonnet 4.5, Next.js kept, FastAPI/OR-Tools sidecar.
 - **v0.4** 5 Sep 2026 — Scaffold and matching-engine proposal. Superseded.

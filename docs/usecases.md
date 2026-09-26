@@ -37,7 +37,7 @@ Each P0 case must complete `event → propose() → validate → (approval) → 
 
 1. Coordinator (or simulator) submits `urgent_job` against the current snapshot.
 2. Stage A hides the unqualified nearest van. Nearby is not eligibility.
-3. `propose()` returns two validated plans: `sla_first` and `minimal_disruption`. Metrics differ where a trade-off exists.
+3. `propose()` (sidecar; insertion as 10 s fallback) returns two validated plans: `sla_first` and `minimal_disruption`. Metrics differ where a trade-off exists, and each shows the workload gap it leaves. If the right technician is booked, the sidecar may hand their booked job to a colleague at the same time (UC-16).
 4. Agent recommends from backend metrics and explains with stored reason codes.
 5. Risk is medium (reassignment and/or window movement). Desk interrupt.
 6. Coordinator approves with a reason.
@@ -84,7 +84,7 @@ Each P0 case must complete `event → propose() → validate → (approval) → 
 1. Event `technician_unavailable` lists the technician and source snapshot.
 2. Sidecar `propose()` replans **remaining** jobs as a set. Insertion is fallback only.
 3. In-progress and completed work stay on the original technician.
-4. Two profiles still differ (who absorbs the load vs who keeps their day).
+4. Two profiles still differ. On Eastwind (Hafiz sick), On-time first splits his jobs between Jonah and Wei (workload gap 12%, more driving); Least disruption gives both to Jonah (gap 44%, less driving, one colleague disturbed).
 5. Medium risk if any promised window or reassignment moves. Coordinator approves.
 6. Commit. Load and travel update. Locked SLAs move only if the plan said so and the desk approved.
 
@@ -107,6 +107,8 @@ Each P0 case must complete `event → propose() → validate → (approval) → 
 4. Approval if a commitment moves. Commit new snapshot.
 
 **Postconditions.** Overrunning job remains in place. Downstream disruption is visible in metrics and the change set.
+
+**Demo note.** The desk simulates 90 minutes, not 45: 45 is absorbed and nothing moves. At 90, Least disruption moves Hafiz's 11:00 job; On-time first also hands his 14:00 to Wei to even out the day.
 
 ---
 
@@ -251,6 +253,28 @@ This is a use case the product **must fail closed**, not a coordinator happy pat
 
 ---
 
+## UC-16 — Rebalance the day around an urgent job
+
+**Priority:** P0 extension of UC-01 (ADR 004)
+
+**Trigger.** An urgent job arrives, and the only technician qualified for it is already booked at the time it must start.
+
+**Main flow**
+
+1. The sidecar treats booked jobs as movable when all of these hold: they have not started, are not promised or locked, their own technician is still legal for them, and they start at least 60 minutes after the board's "now".
+2. It may hand one of those jobs to another legal technician **at its booked time**. The customer's appointment does not move.
+3. The qualified technician takes the urgent job. The change set lists `assign` for the urgent job and `reassign` for the moved one. `jobsMoved` and `customersAffected` count it.
+4. Risk is medium (reassignment). The desk approves or rejects as in UC-01.
+
+**Extensions**
+
+- A move must pay for itself: in On-time first it costs about 12 minutes of driving, and it must save that in driving or workload gap. Least disruption never rebalances.
+- Sidecar down: insertion cannot rebalance, so it overlaps the booked job, and the validator refuses the plan. The desk sees no legal candidate rather than a double booking.
+
+**Postconditions.** No customer time changes. Every job has one legal technician.
+
+---
+
 ## P1 use cases (after G2; not first-demo spine)
 
 ### UC-14 — Customer cancellation
@@ -286,7 +310,7 @@ Technician reports en route, arrived, running late, part required, or completed.
 |---|---|
 | UC-01 | G insertion/sidecar + A-01 |
 | UC-02 | G empty feasible set + A-04 |
-| UC-03 | G-suite remaining-jobs + A-02 |
+| UC-03 | G-suite remaining-jobs + A-02 + G-08 balance case |
 | UC-04 | G frozen horizon + A-03 |
 | UC-05 | X-01 |
 | UC-06 | A-04 / E07 |
@@ -294,4 +318,5 @@ Technician reports en route, arrived, running late, part required, or completed.
 | UC-08 | E09 (safe behaviour) |
 | UC-09 | E10 (safe behaviour) |
 | UC-12 | X-02 |
+| UC-16 | G-08 rebalance case (real solver) |
 | Invalid tool / malformed JSON | X-04 (agent, not a coordinator story) |

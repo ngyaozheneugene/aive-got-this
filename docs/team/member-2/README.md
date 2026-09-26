@@ -6,7 +6,7 @@
 **Plan role:** A
 **Secondary reviewer:** member 1
 
-You own who may go and what a legal recovery looks like. The model never does either. Insertion unblocks G1. OR-Tools is the product engine for technician-unavailable and overrun. Product stories: [`docs/usecases.md`](../../usecases.md) UC-01–UC-04, UC-06.
+You own who may go and what a legal recovery looks like. The model never does either. Insertion unblocked G1 and is now the 10 s fallback. OR-Tools is the product engine for all three events, and urgent jobs may rebalance booked work (ADR 004). Product stories: [`docs/usecases.md`](../../usecases.md) UC-01–UC-04, UC-06.
 
 ---
 
@@ -25,7 +25,8 @@ Make every committed plan falsifiable. Exclusions have reason codes. Two profile
 | `src/matching/` validator | Independent hard-constraint check. No overlap, skills, windows, travel, locks, shifts, unique assignment. |
 | `src/location/postal/` | Postal → region / estate. |
 | `src/location/matrix/` | Travel minutes. Display may use geometry; scheduling must not. |
-| `services/optimizer/` | Python OR-Tools. `POST /propose` and `GET /health`. |
+| `src/matching/measure.ts` | `measurePlan()`: the one measurement of every plan, whichever engine made it. Travel from real routes, workload gap. |
+| `services/optimizer/` | Python OR-Tools. `POST /propose` and `GET /health`. Balance term and urgent rebalance. |
 | `evals/g-suite/` | Invariant and ranking cases. No model. |
 | `evals/fixtures/` | Travel matrix and seed cases. |
 
@@ -55,6 +56,8 @@ Member 1 wires the sidecar into Compose. You own the model inside it.
 **Done when** G1 can show two legal urgent-job plans without Python.
 
 **Week 2.** OR-Tools implements the same `propose()` for unavailable and overrun. Insertion becomes fallback. Live path uses the matrix, not a flat 20 minutes.
+
+**27 Sep (Deen, past the freeze, needs your review — PR #23).** Urgent jobs also go through the sidecar with rolling rebalance; both profiles minimise the workload gap; every plan is measured by `measurePlan()`. G-08 grew three cases. See ADR 004.
 
 **Done when** G3 replans a missing technician without assigning an in-progress job and without stranding a locked SLA unless the plan says so and the desk approves.
 
