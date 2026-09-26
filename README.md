@@ -33,6 +33,14 @@ Do not add a second Vite SPA, Cognito, App Runner, Bedrock as our billed model, 
 
 ## Local run
 
+One command — installs what's missing, creates `.env.local`, starts the optimizer and Postgres if Docker is running, then opens the desk:
+
+```bash
+npm run start:local    # or scripts/run.sh; --help for options
+```
+
+Or step by step:
+
 ```bash
 npm ci
 cp .env.example .env   # memory Eastwind by default; gateway key later

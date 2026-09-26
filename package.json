@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "start:local": "bash scripts/run.sh",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
