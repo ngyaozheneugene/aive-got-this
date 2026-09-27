@@ -22,6 +22,7 @@ export function TechList({
   onFocusTech,
   onPinTech,
   onOpenJob,
+  onFindTechnician,
 }: {
   board: DeskBoard;
   plan?: CandidatePlan;
@@ -32,6 +33,8 @@ export function TechList({
   onPinTech: (technicianId: string) => void;
   /** Opens the event behind a job that needs a technician, when there is one. */
   onOpenJob?: () => void;
+  /** Ask for options for a waiting job; absent while something else is being decided. */
+  onFindTechnician?: (row: DeskJobRow) => void;
 }) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -95,6 +98,7 @@ export function TechList({
               planned={slotByJob.get(r.job.id)}
               plannedName={board.technicians.find((t) => t.technician.id === slotByJob.get(r.job.id)?.technicianId)?.technician.name}
               onOpen={onOpenJob}
+              onFind={onFindTechnician ? () => onFindTechnician(r) : undefined}
             />
           ))
         )}
@@ -213,11 +217,15 @@ function WaitingJob({
   planned,
   plannedName,
   onOpen,
+  onFind,
 }: {
   row: DeskJobRow;
   planned?: ScheduleSlot;
   plannedName?: string;
+  /** Open the event already handling this job. */
   onOpen?: () => void;
+  /** Ask the assistant for options for this job. */
+  onFind?: () => void;
 }) {
   const ws = row.job.windowStart?.slice(11, 16);
   const we = row.job.windowEnd?.slice(11, 16);
@@ -225,8 +233,9 @@ function WaitingJob({
   return (
     <button
       type="button"
-      onClick={onOpen}
-      disabled={!onOpen}
+      onClick={onOpen ?? onFind}
+      disabled={!onOpen && !onFind}
+      title={onOpen ? 'Open the options for this job' : onFind ? 'Ask the assistant for options for this job' : undefined}
       className={cn(ROW_GRID, 'w-full items-start border-b bg-destructive/[0.06] px-2.5 py-3 text-left enabled:hover:bg-destructive/10', FOCUS)}
     >
       <span className="col-start-2 mt-0.5 justify-self-center">
@@ -240,6 +249,15 @@ function WaitingJob({
       {planned ? (
         <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-warning">
           Preview: {plannedName ?? '—'}
+        </span>
+      ) : onFind && !onOpen ? (
+        <span className="grid justify-items-end gap-1">
+          <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-destructive">
+            {urgent ? 'Urgent' : row.job.priority}
+          </span>
+          <span className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold whitespace-nowrap text-primary-foreground">
+            Find a technician
+          </span>
         </span>
       ) : (
         <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-destructive">

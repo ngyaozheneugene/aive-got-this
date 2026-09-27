@@ -13,12 +13,11 @@ import { ProposalPanel, type ProposalMemory } from '../../_components/ProposalPa
 import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
-import { findDisruption } from '../../_components/disruptions';
+import { disruptionForJob, findDisruption } from '../../_components/disruptions';
 import { TechList } from '../../_components/TechList';
 import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
 import type { MapInsets } from '../../_components/MapView';
 import { AnimatePresence, motion } from 'motion/react';
-import { toast } from 'sonner';
 import {
   Bell, ChevronDown, Clock, FlaskConical, History, List, Loader2, Maximize2, RotateCcw, Snowflake, Table2, X,
 } from 'lucide-react';
@@ -159,24 +158,18 @@ export default function DeskPage() {
       setCardOpen(true);
       setDemoOpen(false);
       const incoming = findDisruption(disruptionKey);
-      toast(`New · ${incoming.source}`, { description: incoming.headline, icon: <Bell className="size-4 text-warning" /> });
       try {
         const event = await deskApi.createEvent(incoming.body, board.snapshot.id);
         setCurrentEventId(event.id);
         setFeed((prev) => [{ eventId: event.id, disruptionKey }, ...prev.filter((i) => i.eventId !== event.id)]);
         const result = await deskApi.plan(event.id, profile);
         setProposal(result);
-        toast.success(
-          result.plans.length === 1 ? 'One option is ready' : `${result.plans.length} options are ready`,
-          { description: 'Each one is drawn on the map as you select it.' },
-        );
       } catch (e) {
         setPlanError(
           e instanceof DeskApiError
             ? { code: e.code, detail: e.detail }
             : { code: 'planning_failed', detail: 'Planning could not be completed.' },
         );
-        toast.error('The assistant couldn’t plan this one', { description: 'Details are in the event card.' });
       } finally {
         setBusy(false);
       }
@@ -206,13 +199,12 @@ export default function DeskPage() {
 
   const onAlreadyApplied = useCallback(() => {
     setDecision('committed');
-    toast('Already on the schedule', { description: 'This option was applied earlier. Nothing was changed twice.' });
     void load();
   }, [load]);
 
-  const onCommitted = useCallback((version: number) => {
+  // The event card's "Done" summary and the feed say the schedule changed; no pop-up.
+  const onCommitted = useCallback(() => {
     setDecision('committed');
-    toast.success('Schedule updated', { description: `Saved as version ${version}. Everyone sees the new plan.` });
     void load();
   }, [load]);
 
@@ -340,7 +332,8 @@ export default function DeskPage() {
             active={cardVisible}
             onClick={() => {
               if (!hasEvent) {
-                toast('Nothing needs your attention', { description: 'New events appear here as they arrive.' });
+                // Nothing to show: the feed's empty state says so, in place.
+                setFeedOpen(true);
                 return;
               }
               setCardOpen((o) => !o);
@@ -618,7 +611,8 @@ export default function DeskPage() {
             pinnedTechId={pinnedTechId}
             onFocusTech={setListHoverTechId}
             onPinTech={togglePin}
-            onOpenJob={hasEvent ? () => setCardOpen(true) : undefined}
+            onOpenJob={pending ? () => setCardOpen(true) : undefined}
+            onFindTechnician={busy || pending ? undefined : (row) => void simulate(disruptionForJob(row).key)}
           />
         </aside>
       </div>
