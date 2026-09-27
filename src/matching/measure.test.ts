@@ -115,3 +115,16 @@ describe('insertion fallbacks report measured numbers', () => {
     }
   });
 });
+
+describe('measurePlan compares instants, not strings', () => {
+  it('does not call a job moved when only the offset differs', () => {
+    const utc = live.map((s) => ({
+      ...s,
+      windowStart: new Date(Date.parse(s.windowStart!)).toISOString(),
+      windowEnd: new Date(Date.parse(s.windowEnd!)).toISOString(),
+    }));
+    const { metrics } = measurePlan(utc, event('urgent_job', { jobId: 'job_raffles' }, ['job_raffles']), schedule);
+    expect(metrics.jobsMoved).toBe(0);
+    expect(metrics.customersAffected).toBe(0);
+  });
+});

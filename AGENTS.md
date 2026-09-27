@@ -38,7 +38,7 @@ Stay in your stream’s folders. Do not “helpfully” rewrite another stream.
 - Browser never writes the board. Only commit, after validator + policy + source snapshot.
 - Untrusted text stays in `*_raw` and is quoted to the model. Injection is data.
 - Two profiles: `sla_first` and `minimal_disruption`. Metrics are backend-owned.
-- Insertion `propose()` is G1 + 10 s fallback. OR-Tools sidecar is the product engine for unavailable / overrun (G3).
+- OR-Tools sidecar is the product engine for all three events; urgent jobs may rebalance booked work around them (ADR 004). Insertion `propose()` is the 10 s fallback. Every plan is measured by `src/matching/measure.ts`, never by the engine that made it.
 - After Day 14: no new features. After Day 18: release-blocking fixes only.
 
 ## Do not build

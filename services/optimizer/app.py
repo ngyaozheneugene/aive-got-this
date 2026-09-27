@@ -410,9 +410,10 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         for travel_terms in route_travel.values():
             terms.extend(5 * term for term in travel_terms)
         # Break ties by leaving work where it is. Without this, two routes of
-        # equal travel were chosen arbitrarily, and a 90-minute overrun moved a
-        # job that could have stayed put. Weight 1 against 5 per travel minute,
-        # so a move still wins whenever it saves any driving.
+        # equal travel were chosen arbitrarily. Weight 1 against 5 per travel
+        # minute, so a move still wins whenever it saves any driving. A move can
+        # now also win on balance: after a 90-minute overrun this profile hands
+        # Hafiz's 14:00 to Wei on purpose, closing a 44-point workload gap.
         for (tech_id, job_id), chosen in assign.items():
             if moves(tech_id, job_id):
                 terms.append((REBALANCE_MOVE_COST if job_id in rebalance else 1) * chosen)

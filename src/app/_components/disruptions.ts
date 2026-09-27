@@ -1,7 +1,8 @@
 // The three disruptions the desk can simulate, with the exact event payloads
 // the platform accepts. Demo IDs come from the Eastwind fixture; the overrun is
-// 90 minutes (not 45) so it collides with Hafiz's 11:00 job and exactly one job
-// visibly moves — a 45-minute overrun is absorbed and shows nothing.
+// 90 minutes (not 45) so it collides with Hafiz's 11:00 job and work visibly
+// moves: "Least disruption" moves that one job; "On-time first" also hands his
+// 14:00 to Wei to even out the day. A 45-minute overrun is absorbed and shows nothing.
 // See docs/tasks.md G3 and handover 6.3.
 import type { EventBody } from './desk-api';
 

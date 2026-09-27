@@ -11,7 +11,7 @@ Read `docs/team/member-2/README.md`, `docs/workflow.md` §5, use cases UC-01–U
 - Nearby is not eligibility. Stage A runs first (certs, tier, shift, window, parts/tools, locks).
 - `src/matching/` is pure: no HTTP, no database client, no AWS SDK.
 - `propose(event, schedule, profile)` is the only scheduler API. Two profiles: `sla_first`, `minimal_disruption`.
-- G1 = weighted insertion + validator. G3 = OR-Tools sidecar for unavailable/overrun; insertion is 10 s fallback.
+- OR-Tools sidecar serves all three events (urgent jobs may rebalance booked work, ADR 004); insertion is the 10 s fallback. Metrics come from `measurePlan()` only, for every engine.
 - Independent validator can reject the solver. Reason codes are backend-owned; the desk must not re-score.
 - Travel minutes come from the cached matrix, not straight-line geometry.
 - Browser and LangGraph never import OR-Tools; they call `propose()`.

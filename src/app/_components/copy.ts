@@ -21,12 +21,12 @@ export interface ProfileCopy {
 export const PROFILE_COPY: Record<PlanProfile, ProfileCopy> = {
   sla_first: {
     name: 'On-time first',
-    promise: 'Gets the job done inside the promised window, even if it adds work to someone busy.',
+    promise: 'Gets the job done inside the promised window and spreads the work so nobody is overloaded, even if it means more driving.',
     pickWhen: 'Pick this when the customer is waiting or has a service agreement.',
   },
   minimal_disruption: {
     name: 'Least disruption',
-    promise: 'Uses whoever has the most free time, so everyone else’s day stays as planned.',
+    promise: 'Changes as few people’s days as possible, giving the work to whoever has room.',
     pickWhen: 'Pick this when the job can take a little longer and the team is stretched.',
   },
 };

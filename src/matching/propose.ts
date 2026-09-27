@@ -21,7 +21,7 @@ import type {
 } from '../shared/types/domain';
 import { stageA } from './gates/stage-a';
 import { validatePlan } from './validate';
-import { measurePlan, UNKNOWN_TRAVEL_MINUTES, type TechnicianWorkload } from './measure';
+import { measurePlan, slotChanged, UNKNOWN_TRAVEL_MINUTES, type TechnicianWorkload } from './measure';
 
 const OPTIMIZER_URL = process.env.OPTIMIZER_URL || 'http://localhost:8000';
 
@@ -508,9 +508,7 @@ function finishFallbackPlan(
   const changeSet = [...leadingChanges];
   const assignments = slots.map((slot) => {
     const before = live.get(slot.jobId);
-    const changed = !before || before.technicianId !== slot.technicianId ||
-      before.windowStart !== slot.windowStart || before.windowEnd !== slot.windowEnd;
-    if (!changed) return slot;
+    if (!slotChanged(slot, before)) return slot;
     if (slot.jobId !== overrunJobId) {
       changeSet.push({
         action: !before ? 'assign' : before.technicianId !== slot.technicianId ? 'reassign' : 'retime',

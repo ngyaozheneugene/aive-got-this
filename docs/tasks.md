@@ -153,7 +153,9 @@ Live gateway planning on 19 Sep produced two legal Raffles candidates (see G1 ag
 - [x] Snapshot backup + rollback drill (1)
   - 20 Sep: snapshot taken after the `b8bae2d` deploy and restored to a new instance. Docker was `enabled` at boot and all four containers came up on their own (`Up 7 seconds`, nothing typed), with `.env` and the Postgres volume intact. The static IP move was not attempted: the sandbox account reaps any second Lightsail instance, so the restored box is destroyed within minutes. See handover section 7.3.
 - [ ] Five timed 30-minute rehearsals (4 + 3) — rundown in plan §12
+  - 27 Sep, member 3: rundown §12.1 rewritten to the measured ADR 004 outcomes. Two rules for every rehearsal: approve On-time first (Siti) for Raffles, otherwise the sick call and the overrun that follow have no legal plan (true before ADR 004 too); and reset before the overrun beat.
 - [ ] Backup recording of urgent-job spine (4)
+  - 27 Sep, member 3: scope widened to all three events plus the balance trade-off. Shot list, narration and failure table in [`demo-script.md`](demo-script.md). Record after PR #23 is deployed with the optimizer image rebuilt.
   - 20 Sep, member 1: raise the priority of this. The lease takes the instance, the URL and the TLS certificate together on ~28 Sep, and the sandbox account has now been observed shutting down and deleting compute on its own schedule without warning. The recording is the only artefact that survives either. See [handover 7.3](team/member-1/handover.md).
 - [ ] Desk polish: loading / empty / failure, keyboard path (4)
 - [ ] Technician status page only if G2 stayed green and time remains (4) — UC-15, P1
