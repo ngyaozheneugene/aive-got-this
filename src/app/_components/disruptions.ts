@@ -4,6 +4,7 @@
 // moves: "Least disruption" moves that one job; "On-time first" also hands his
 // 14:00 to Wei to even out the day. A 45-minute overrun is absorbed and shows nothing.
 // See docs/tasks.md G3 and handover 6.3.
+import type { DeskJobRow } from '../../shared/types/domain';
 import type { EventBody } from './desk-api';
 
 export interface Disruption {
@@ -45,6 +46,40 @@ export const DISRUPTIONS: readonly Disruption[] = [
   },
 ];
 
+// Requests the coordinator raised from a job on the board, by key, for the
+// lifetime of the page.
+const fromBoard = new Map<string, Disruption>();
+
 export function findDisruption(key: string): Disruption {
-  return DISRUPTIONS.find((d) => d.key === key) ?? DISRUPTIONS[0]!;
+  const known = DISRUPTIONS.find((d) => d.key === key) ?? fromBoard.get(key);
+  if (known) return known;
+  if (key.startsWith('job:')) {
+    // Raised from the board before a reload; the job's details are gone with the page.
+    return { key, label: 'Find a technician', source: 'Your request', headline: 'Find a technician', detail: '', body: { type: 'urgent_job', payload: { jobId: key.slice(4) } } };
+  }
+  return DISRUPTIONS[0]!;
+}
+
+/**
+ * The event for a coordinator asking for options on a job already on the
+ * board. A job the demo already tells a story about keeps that story (the
+ * Raffles Place job came in by phone); any other job gets a plain request.
+ */
+export function disruptionForJob(row: DeskJobRow): Disruption {
+  const scripted = DISRUPTIONS.find(
+    (d) => d.body.type === 'urgent_job' && d.body.payload.jobId === row.job.id,
+  );
+  if (scripted) return scripted;
+  const ws = row.job.windowStart?.slice(11, 16);
+  const we = row.job.windowEnd?.slice(11, 16);
+  const d: Disruption = {
+    key: `job:${row.job.id}`,
+    label: 'Find a technician',
+    source: 'Your request',
+    headline: `Find a technician: ${row.customer.name}`,
+    detail: `${row.site.addressLine1}${ws && we ? `. Window ${ws}–${we}.` : '.'}`,
+    body: { type: 'urgent_job', payload: { jobId: row.job.id } },
+  };
+  fromBoard.set(d.key, d);
+  return d;
 }
