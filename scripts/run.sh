@@ -2,7 +2,7 @@
 # Runs the Dispatch Coordinator desk locally, end to end.
 #
 #   scripts/run.sh               deps, env, optimizer + Postgres (if Docker is up), desk, browser
-#   scripts/run.sh --no-docker   skip the containers (urgent job still works; sick/late replans need the optimizer)
+#   scripts/run.sh --no-docker   skip the containers (plans then come from the quick fallback; the demo needs the optimizer)
 #   scripts/run.sh --no-open     don't open the browser
 #   scripts/run.sh --port 3001   serve on another port
 #
@@ -59,7 +59,7 @@ if [ "$USE_DOCKER" -eq 1 ]; then
     say "Starting optimizer + Postgres containers…"
     npm run --silent db:up
   else
-    warn "Docker isn't running, so the optimizer is off. Urgent jobs work; 'technician sick' and 'job runs late' will time out."
+    warn "Docker isn't running, so the optimizer is off. Every event falls back to a quick estimate; the demo numbers need the optimizer."
     warn "Start Docker Desktop and re-run, or pass --no-docker to hide this."
   fi
 fi
@@ -69,7 +69,7 @@ report_health() {
   local h
   h="$(curl -fsS "http://localhost:${PORT}/health" 2>/dev/null)" || return 0
   if printf '%s' "$h" | grep -q '"optimizer":{"ok":true'; then say "Optimizer: connected"
-  else warn "Optimizer: not reachable (technician sick / job runs late will time out)"; fi
+  else warn "Optimizer: not reachable (plans fall back to a quick estimate)"; fi
   printf '%s' "$h" | grep -q '"gatewayConfigured":true' || warn "Gateway: no API key configured"
 }
 
