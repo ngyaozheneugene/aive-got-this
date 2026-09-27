@@ -39,6 +39,27 @@ export interface PlanMeasurement {
 
 type Schedule = ProposeInput['schedule'];
 
+/**
+ * Same instant, whatever the offset. The solver answers in +08:00 and a board
+ * read from Postgres may carry UTC, so string equality would call every job moved.
+ */
+export function sameInstant(a?: string, b?: string): boolean {
+  if (a === b) return true;
+  const x = Date.parse(a ?? '');
+  const y = Date.parse(b ?? '');
+  return Number.isFinite(x) && x === y;
+}
+
+/** Whether a slot differs from its booking: new, another technician, or another time. */
+export function slotChanged(slot: PlannedSlot, before: PlannedSlot | undefined): boolean {
+  return (
+    !before ||
+    before.technicianId !== slot.technicianId ||
+    !sameInstant(before.windowStart, slot.windowStart) ||
+    !sameInstant(before.windowEnd, slot.windowEnd)
+  );
+}
+
 function isLive(a: Pick<Assignment, 'status'>): boolean {
   return a.status === 'accepted' || a.status === 'offered';
 }
@@ -188,15 +209,7 @@ export function measurePlan(
   const overrunJob =
     event.type === 'job_overrun' ? ((event.normalizedPayload?.jobId as string) || event.affectedIds[0]) : undefined;
 
-  const changed = slots.filter((slot) => {
-    const before = liveByJob.get(slot.jobId);
-    return (
-      !before ||
-      before.technicianId !== slot.technicianId ||
-      before.windowStart !== slot.windowStart ||
-      before.windowEnd !== slot.windowEnd
-    );
-  });
+  const changed = slots.filter((slot) => slotChanged(slot, liveByJob.get(slot.jobId)));
   const moved = changed.filter((s) => liveByJob.has(s.jobId) && s.jobId !== overrunJob);
   const customers = new Set(
     changed.map((s) => jobs.get(s.jobId)?.customerId).filter((c): c is string => Boolean(c)),
