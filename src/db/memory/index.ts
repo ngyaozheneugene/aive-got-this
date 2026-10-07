@@ -27,7 +27,27 @@ import type {
   TechnicianCert,
   TravelMatrix,
 } from '../../shared/types/domain';
-import type { IDatabase } from '../interface';
+import { StaleSnapshotError, type IDatabase } from '../interface';
+
+// List order matches the Postgres adapter's ORDER BY exactly, so planning sees
+// the same input whichever adapter is behind it: by id, and assignments by job
+// then booking time. postgres.contract.test.ts compares the two.
+// Code-point order, as Postgres sorts with COLLATE "C" (localeCompare is not).
+function codePoint(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function byId<T extends { id: string }>(rows: T[]): T[] {
+  return rows.sort((a, b) => codePoint(a.id, b.id));
+}
+
+function byBooking(a: Assignment, b: Assignment): number {
+  return Date.parse(a.offeredAt) - Date.parse(b.offeredAt) || codePoint(a.id, b.id);
+}
+
+function byJobThenBooking(a: Assignment, b: Assignment): number {
+  return codePoint(a.jobId, b.jobId) || byBooking(a, b);
+}
 
 export class InMemoryDatabase implements IDatabase {
   private usersMap = new Map<string, AppUser>();
@@ -121,6 +141,10 @@ export class InMemoryDatabase implements IDatabase {
     this.hydrate();
   }
 
+  public async transaction<T>(fn: (db: IDatabase) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
+
   users = {
     getById: async (id: string) => this.usersMap.get(id) ?? null,
     getByCognitoSub: async (sub: string) =>
@@ -136,10 +160,10 @@ export class InMemoryDatabase implements IDatabase {
 
   technicians = {
     getById: async (id: string) => this.techniciansMap.get(id) ?? null,
-    listAll: async () => Array.from(this.techniciansMap.values()),
-    listActive: async () => Array.from(this.techniciansMap.values()).filter((t) => t.isActive),
+    listAll: async () => byId(Array.from(this.techniciansMap.values())),
+    listActive: async () => byId(Array.from(this.techniciansMap.values()).filter((t) => t.isActive)),
     getCerts: async (technicianId: string) =>
-      Array.from(this.certsMap.values()).filter((c) => c.technicianId === technicianId),
+      byId(Array.from(this.certsMap.values()).filter((c) => c.technicianId === technicianId)),
     certValidOn: async (technicianId: string, certType: string, dateStr: string) => {
       const target = new Date(dateStr);
       return Array.from(this.certsMap.values()).some((c) => {
@@ -203,7 +227,9 @@ export class InMemoryDatabase implements IDatabase {
       return updated;
     },
     listByDate: async (dateStr: string) =>
-      Array.from(this.shiftsMap.values()).filter((s) => s.shiftDate === dateStr),
+      Array.from(this.shiftsMap.values())
+        .filter((s) => s.shiftDate === dateStr)
+        .sort((a, b) => codePoint(a.technicianId, b.technicianId)),
   };
 
   customers = {
@@ -220,7 +246,7 @@ export class InMemoryDatabase implements IDatabase {
   sites = {
     getById: async (id: string) => this.sitesMap.get(id) ?? null,
     getByCustomerId: async (customerId: string) =>
-      Array.from(this.sitesMap.values()).filter((s) => s.customerId === customerId),
+      byId(Array.from(this.sitesMap.values()).filter((s) => s.customerId === customerId)),
     getByPostalCode: async (postalCode: string) =>
       Array.from(this.sitesMap.values()).find((s) => s.postalCode === postalCode) ?? null,
     create: async (site: Omit<Site, 'id' | 'createdAt'>) => {
@@ -242,9 +268,9 @@ export class InMemoryDatabase implements IDatabase {
 
   jobTypes = {
     getById: async (id: string) => this.jobTypesMap.get(id) ?? null,
-    listAll: async () => Array.from(this.jobTypesMap.values()),
+    listAll: async () => byId(Array.from(this.jobTypesMap.values())),
     getCerts: async (jobTypeId: string) =>
-      Array.from(this.jobTypeCertsMap.values()).filter((c) => c.jobTypeId === jobTypeId),
+      byId(Array.from(this.jobTypeCertsMap.values()).filter((c) => c.jobTypeId === jobTypeId)),
   };
 
   jobs = {
@@ -274,9 +300,9 @@ export class InMemoryDatabase implements IDatabase {
       return updated;
     },
     listUnassigned: async () =>
-      Array.from(this.jobsMap.values()).filter((j) => j.status === 'unassigned' || j.status === 'received'),
+      byId(Array.from(this.jobsMap.values()).filter((j) => j.status === 'unassigned' || j.status === 'received')),
     listByScheduledDate: async (dateStr: string) =>
-      Array.from(this.jobsMap.values()).filter((j) => j.scheduledDate === dateStr),
+      byId(Array.from(this.jobsMap.values()).filter((j) => j.scheduledDate === dateStr)),
   };
 
   jobRequirements = {
@@ -292,8 +318,8 @@ export class InMemoryDatabase implements IDatabase {
   assignments = {
     getById: async (id: string) => this.assignmentsMap.get(id) ?? null,
     getByJobId: async (jobId: string) =>
-      Array.from(this.assignmentsMap.values()).filter((a) => a.jobId === jobId),
-    listAll: async () => Array.from(this.assignmentsMap.values()),
+      Array.from(this.assignmentsMap.values()).filter((a) => a.jobId === jobId).sort(byBooking),
+    listAll: async () => Array.from(this.assignmentsMap.values()).sort(byJobThenBooking),
     getActiveForTechnician: async (technicianId: string, dateStr: string) => {
       const jobIds = new Set(
         Array.from(this.jobsMap.values()).filter((j) => j.scheduledDate === dateStr).map((j) => j.id),
@@ -397,7 +423,10 @@ export class InMemoryDatabase implements IDatabase {
       }
       return isPeak ? entry.peakMinutes : entry.minutes;
     },
-    listAll: async () => Array.from(this.travelMatrixMap.values()),
+    listAll: async () =>
+      Array.from(this.travelMatrixMap.values()).sort(
+        (a, b) => codePoint(a.fromCluster, b.fromCluster) || codePoint(a.toCluster, b.toCluster),
+      ),
     setMatrix: async (
       entries: Array<{ fromCluster: string; toCluster: string; minutes: number; peakMinutes: number }>,
     ) => {
@@ -428,7 +457,11 @@ export class InMemoryDatabase implements IDatabase {
     getSnapshot: async (version: number) =>
       this.boardSnapshotRows.find((s) => s.version === version) ?? null,
     createSnapshot: async (data: Record<string, unknown>, extra?: { sourceSnapshotId?: string; triggerEventId?: string }) => {
-      const nextVersion = (await this.boardSnapshots.getLatestVersion()) + 1;
+      const latest = await this.boardSnapshots.getLatest();
+      if (extra?.sourceSnapshotId && latest && latest.id !== extra.sourceSnapshotId) {
+        throw new StaleSnapshotError(extra.sourceSnapshotId);
+      }
+      const nextVersion = (latest?.version ?? 0) + 1;
       const snapshot: BoardSnapshot = {
         id: this.generateId('snp'),
         version: nextVersion,

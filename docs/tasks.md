@@ -178,7 +178,14 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 
 **Foundations**
 - [ ] F1 Hosting decided for the finals (lease ends mid-Oct); backup recording of the current loop made before it goes
-- [ ] F2 Product runs on Postgres; one contract test suite passes on both adapters; migrations in `db/migrations/`; reset reseeds Postgres
+- [x] F2 Product runs on Postgres; one contract test suite passes on both adapters; migrations in `db/migrations/`; reset reseeds Postgres
+  - 7 Oct: the Postgres adapter had never run against a database. It did not read assignment times back, returned dates as `Date` objects where callers compare strings, and `seed()` was empty, so a reset wiped the board. Rewritten in `src/db/postgres/index.ts`: Singapore-time strings, nulls dropped like the memory adapter, scenario seeding, reset reseeds, and it migrates and seeds itself on first use.
+  - `db/migrations/0001_baseline.sql` (was `db/schema/schema.sql`) and `0002_free_text_actors.sql` (the desk's `desk_coordinator` actor is not an `app_user` row, so the old foreign key refused every approval). Applied by `src/db/postgres/migrate.ts`; the Docker image copies the folder.
+  - Commits run in one transaction (`IDatabase.transaction`). The snapshot insert checks the source is still the latest in the same statement, so a lost race is `stale_snapshot` 409, not a 500 or a half-applied board.
+  - Both adapters list rows in the same order, so planning sees identical input. The desk's technician list is now alphabetical.
+  - Evidence: `npm run test:pg` 12/12 against Postgres 16 (every read path equal to memory on both boards, identical planning schedule and desk board, write round trip, rollback, stale refusal, a real race, the commit loop, self-seeding). Offline suite 303 passed; real solver G-suite 36/36 after the ordering change. Desk on Postgres (`desk-dev-postgres` launch config): planned and committed Raffles to v2, restarted the server, still v2; reset back to v1.
+  - Not done here: the Lightsail `.env` still has to set `USE_MEMORY_DB=false` at the next deploy.
+  - Known flake, not from this change: the gateway-outage X tests wait 9 s of real retry back-off and can time out when the whole suite runs in parallel. Same on `main`.
 - [x] F3 Board date is today-relative (no fixed `EASTWIND_DATE`); `?date=` on schedule API; date switcher on desk
 - [x] F4 Larger dataset (~15 techs, ~45 jobs, two days); solver stays inside the 10 s fallback at that size
   - 6 Oct: `src/shared/fixtures/scenario.ts` builds the finals board from a date: 15 technicians, 41 jobs today and 18 tomorrow, every job with a requirement row from its type. The live desk seeds it for today in Singapore (`DEMO_SCENARIO=eastwind` keeps the 12-job fixture; tests always use it). Board day comes from the latest snapshot (`src/dispatch/board-date.ts`); board builders now ignore other days' assignments. `GET /api/schedule/current?date=` plus a Today / Tomorrow switch on the desk (tomorrow is read only).

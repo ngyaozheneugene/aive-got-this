@@ -35,7 +35,7 @@ Agents start at [`AGENTS.md`](AGENTS.md) and the board at [`docs/tasks.md`](docs
 | App | Next.js 16 App Router, React 19, Tailwind 4; OneMap tiles via Leaflet |
 | Agent | LangGraph (JavaScript) + Zod |
 | Model | Organiser gateway, Claude Sonnet 4.5, native tool calls (strict JSON kept as a diagnostic mode) |
-| Database | One interface, two adapters: in-memory (the live demo, reset in one call) and Postgres 16 in Compose |
+| Database | One interface, two adapters held to the same results by a contract test: Postgres 16 in Compose (migrated and seeded on first use, commits in one transaction) and in-memory for tests and zero-setup runs |
 | Eligibility | TypeScript in `src/matching` |
 | Solver | FastAPI + OR-Tools sidecar (`services/optimizer`) |
 
@@ -69,21 +69,26 @@ Or step by step:
 
 ```bash
 npm ci
-cp .env.example .env   # memory Eastwind by default; gateway key later
+cp .env.example .env   # in-memory board by default; gateway key later
 npm run dev            # http://localhost:3000/desk
 # optional:
 npm run db:up          # Postgres 16 + optimizer sidecar
 ```
 
+**On Postgres.** With `npm run db:up` running, set `USE_MEMORY_DB=false`. On first use the app applies `db/migrations/*.sql` and seeds an empty database with today's board, so commits survive a restart. `POST /api/demo/reset` reseeds it.
+
 ```bash
 npm run typecheck
 npm run test:unit
 npm run test:g         # no model
+npm run test:pg        # Postgres adapter vs the in-memory one; needs a dispatch_test database
 ```
+
+Create the test database once: `docker exec aive-postgres psql -U dispatch -c "CREATE DATABASE dispatch_test"`. Every `test:pg` run truncates it.
 
 `npm run test:a` and `npm run test:x` need the gateway; they run on a schedule in CI, not on every push.
 
-Open http://localhost:3000/desk for the Eastwind Tuesday board. `POST /api/demo/reset` restores it. `GET /health` reports app + optimizer.
+Open http://localhost:3000/desk for today's board. `POST /api/demo/reset` restores it. `GET /health` reports the app, a real database read (`databaseOk`, `boardVersion`) and the optimizer.
 
 ---
 
@@ -99,7 +104,7 @@ aive-got-this/
 ├── src/agent/               LangGraph, playbooks, typed tools, risk policy
 ├── src/people|catalog|dispatch
 ├── services/optimizer/      OR-Tools sidecar
-├── db/schema/schema.sql     product schema
+├── db/migrations/           product schema, applied in order on startup
 ├── seed/                    Eastwind Aircon Tuesday
 ├── evals/                   g-suite, a-suite, x-suite
 ├── AGENTS.md                session playbook for coding agents

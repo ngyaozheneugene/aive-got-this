@@ -21,6 +21,8 @@ RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Read at startup by src/db/postgres/migrate.ts; standalone output does not include them.
+COPY --from=builder --chown=nextjs:nodejs /app/db/migrations ./db/migrations
 USER nextjs
 EXPOSE 8080
 # No secrets baked in. Gateway key and DATABASE_URL come from the environment.

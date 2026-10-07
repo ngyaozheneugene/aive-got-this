@@ -11,8 +11,20 @@ on:
 
 jobs:
   gate:
-    name: typecheck and G suite
+    name: typecheck, G suite and Postgres
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dispatch
+          POSTGRES_PASSWORD: dispatch
+          POSTGRES_DB: dispatch_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dispatch -d dispatch_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +35,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run test:g
+      # The Postgres adapter, held row for row to the in-memory one.
+      - run: npm run test:pg
+        env:
+          DATABASE_URL_TEST: postgres://dispatch:dispatch@localhost:5432/dispatch_test
 
   agent:
     name: A and X suites

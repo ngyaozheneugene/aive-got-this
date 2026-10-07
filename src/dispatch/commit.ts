@@ -7,7 +7,7 @@
 import { checkCommit } from './commit-policy';
 import { nextSequence } from './audit-sequence';
 import { getCurrentBoard } from './current-board';
-import type { IDatabase } from '../db/interface';
+import { isStaleSnapshotError, type IDatabase } from '../db/interface';
 import type {
   BoardSnapshot,
   CandidatePlan,
@@ -45,7 +45,29 @@ function resultingSlots(
   return Array.from(byJob.values());
 }
 
+/**
+ * Every write a commit makes lands together: on Postgres in one transaction,
+ * so a failure part-way leaves the board as it was rather than half-moved.
+ * A commit that loses a race to another one, after both passed checkCommit,
+ * is refused as stale by the snapshot write itself.
+ */
 export async function commitPlan(db: IDatabase, input: CommitInput): Promise<CommitResult> {
+  try {
+    return await db.transaction((tx) => commitWithin(tx, input));
+  } catch (e) {
+    if (isStaleSnapshotError(e)) {
+      return {
+        ok: false,
+        code: 'stale_snapshot',
+        httpStatus: 409,
+        detail: `Another change was committed first; plan ${input.planId} was made against an older board.`,
+      };
+    }
+    throw e;
+  }
+}
+
+async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitResult> {
   const proposal = await db.proposals.getById(input.proposalId);
   const plan = await db.candidatePlans.getById(input.planId);
   const approval = proposal ? await db.approvals.getByProposal(proposal.id) : null;

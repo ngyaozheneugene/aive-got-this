@@ -1,6 +1,6 @@
--- Dispatch Coordinator v1.1
--- Postgres 16. Product database on the Lightsail Compose box.
--- People / catalog / dispatch from v0.4 are kept. Control-tower tables are additive.
+-- 0001 baseline: the v1.1 schema as it stood before migrations existed
+-- (formerly db/schema/schema.sql). Idempotent, so a volume that already
+-- applied it by hand records it as applied without changing anything.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
