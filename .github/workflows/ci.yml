@@ -11,7 +11,7 @@ on:
 
 jobs:
   gate:
-    name: typecheck, G suite and Postgres
+    name: typecheck and G suite
     runs-on: ubuntu-latest
     services:
       postgres:
