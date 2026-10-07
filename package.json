@@ -18,6 +18,7 @@
     "test:a": "vitest run --dir evals/a-suite",
     "test:x": "vitest run --dir evals/x-suite",
     "test:unit": "vitest run --dir src",
+    "test:pg": "RUN_POSTGRES_TESTS=1 vitest run src/db/postgres",
     "db:up": "docker compose up -d postgres optimizer",
     "db:down": "docker compose down",
     "deploy:up": "docker compose up -d --build",

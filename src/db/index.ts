@@ -26,9 +26,10 @@ export function getDatabase(): IDatabase {
   if (!globalForDb.__dispatchDb) {
     const useMemory =
       process.env.NODE_ENV === 'test' || process.env.USE_MEMORY_DB !== 'false';
+    // Postgres migrates and, on an empty database, seeds itself on first use.
     globalForDb.__dispatchDb = useMemory
       ? new InMemoryDatabase({ scenario: liveScenario() })
-      : (new PostgresDatabase() as IDatabase);
+      : new PostgresDatabase({ scenario: liveScenario() });
   }
   return globalForDb.__dispatchDb;
 }

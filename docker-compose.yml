@@ -1,6 +1,6 @@
 # Product data on this box. Next.js runs with `npm run dev` locally and in
-# Compose on Lightsail. After a schema change, recreate the volume:
-#   docker compose down -v && docker compose up -d postgres
+# Compose on Lightsail. The app applies db/migrations/*.sql itself and seeds an
+# empty database, so a schema change is a new migration, not a new volume.
 #
 # Local dev:  npm run db:up      (postgres + optimizer only; app via npm run dev)
 #
@@ -20,8 +20,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Read-only so you can apply them by hand once they exist:
-      #   docker compose exec postgres psql -U dispatch -d dispatch -f /sql/schema/schema.sql
+      # Migrations run from the app on first use (src/db/postgres/migrate.ts).
+      # Read-only here only for inspection.
       - ./db:/sql:ro
       - ./seed:/seed:ro
     healthcheck:

@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "desk-dev-postgres",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "USE_MEMORY_DB=false exec npx next dev -p 3001"],
+      "port": 3001
     }
   ]
 }

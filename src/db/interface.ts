@@ -29,10 +29,35 @@ import {
   CandidatePlan,
 } from '../shared/types/domain';
 
+/**
+ * A snapshot was written against a board that is no longer the latest. Both
+ * adapters throw it from `createSnapshot` when `sourceSnapshotId` is given and
+ * is not the latest version, including when another commit wins a race to the
+ * same version number. The commit path turns it into `stale_snapshot`.
+ */
+export class StaleSnapshotError extends Error {
+  constructor(public readonly sourceSnapshotId: string) {
+    super(`Board moved on from snapshot ${sourceSnapshotId}.`);
+    this.name = 'StaleSnapshotError';
+  }
+}
+
+/** By name, not instanceof: Next.js bundles each route with its own copy of this module. */
+export function isStaleSnapshotError(e: unknown): e is StaleSnapshotError {
+  return (e as { name?: unknown } | null)?.name === 'StaleSnapshotError';
+}
+
 export interface IDatabase {
   // Reset / Seeding
   seed(data?: Record<string, unknown>): Promise<void>;
   reset(): Promise<void>;
+
+  /**
+   * Run `fn` against a database whose writes land together or not at all.
+   * Postgres runs it in one transaction. The in-memory adapter is
+   * single-threaded and just calls `fn`; it does not roll back.
+   */
+  transaction<T>(fn: (db: IDatabase) => Promise<T>): Promise<T>;
 
   // Users
   users: {
@@ -154,6 +179,7 @@ export interface IDatabase {
     getLatestVersion(): Promise<number>;
     getLatest(): Promise<BoardSnapshot | null>;
     getSnapshot(version: number): Promise<BoardSnapshot | null>;
+    /** Throws StaleSnapshotError when `extra.sourceSnapshotId` is not the latest. */
     createSnapshot(
       data: Record<string, unknown>,
       extra?: { sourceSnapshotId?: string; triggerEventId?: string },
