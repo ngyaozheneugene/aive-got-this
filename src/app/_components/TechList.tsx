@@ -1,9 +1,10 @@
 'use client';
 
-import { ChevronRight, Lock, Search } from 'lucide-react';
+import { ChevronRight, Clock, Lock, Search, UserX } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { CandidatePlan, DeskBoard, DeskJobRow } from '../../shared/types/domain';
-import { clock, techColor } from './geo';
+import type { CandidatePlan, DeskBoard, DeskJobRow, Shift } from '../../shared/types/domain';
+import type { Availability } from './disruptions';
+import { clock, minutesOfDay, techColor } from './geo';
 import { cn } from './lib/utils';
 import { buildScheduleView, type ScheduleSlot } from './schedule-view';
 
@@ -23,6 +24,8 @@ export function TechList({
   onPinTech,
   onOpenJob,
   onFindTechnician,
+  onMarkUnavailable,
+  onReportLate,
 }: {
   board: DeskBoard;
   plan?: CandidatePlan;
@@ -35,9 +38,15 @@ export function TechList({
   onOpenJob?: () => void;
   /** Ask for options for a waiting job; absent while something else is being decided. */
   onFindTechnician?: (row: DeskJobRow) => void;
+  /** Report a technician away for some or all of the day; absent when reporting is not possible. */
+  onMarkUnavailable?: (technicianId: string, availability: Availability) => void;
+  /** Report a booked job running late; absent when reporting is not possible. */
+  onReportLate?: (row: DeskJobRow, minutes: number) => void;
 }) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // One report form open at a time: away for a technician, or late for a job.
+  const [form, setForm] = useState<{ kind: 'away'; id: string } | { kind: 'late'; id: string } | null>(null);
   const view = useMemo(() => buildScheduleView(board, plan), [board, plan]);
   const techIds = board.technicians.map((t) => t.technician.id);
   const q = query.trim().toLowerCase();
@@ -104,12 +113,14 @@ export function TechList({
         )}
 
         <SectionHead title="Eastwind Aircon · field team" note={`${board.technicians.length} on duty`} />
-        {board.technicians.map(({ technician, loadMinutes }) => {
+        {board.technicians.map(({ technician, loadMinutes, shift }) => {
           const stops = view.slots.filter((s) => s.technicianId === technician.id);
           const leaving = view.slots.filter((s) => s.previous?.technicianId === technician.id && s.technicianId !== technician.id);
           if (!matches(technician.name, technician.currentCluster, ...stops.flatMap((s) => [s.row.customer.name, s.row.site.addressLine1]))) return null;
           const color = techColor(techIds, technician.id);
-          const off = technician.id === unavailableTechId;
+          const sick = shift?.status === 'mc' || shift?.status === 'no_show';
+          const off = technician.id === unavailableTechId || sick;
+          const hours = shiftNote(shift);
           const changed = stops.filter((s) => s.change !== 'unchanged').length;
           const open = expanded.has(technician.id) || Boolean(q);
           const dim = focusTechId !== undefined && focusTechId !== technician.id;
@@ -158,8 +169,9 @@ export function TechList({
                     {technician.name}
                   </span>
                   <span className={cn('block truncate text-[11.5px]', off ? 'text-destructive' : 'text-muted-foreground')}>
-                    {off ? 'Unavailable today' : `${cap(technician.currentCluster)} · ${stops.length} job${stops.length === 1 ? '' : 's'} · ${loadMinutes} min booked`}
+                    {sick ? 'Off sick today' : off ? 'Unavailable today' : `${cap(technician.currentCluster)} · ${stops.length} job${stops.length === 1 ? '' : 's'} · ${loadMinutes} min booked`}
                   </span>
+                  {hours && !sick ? <span className="block truncate text-[11px] text-warning">{hours}</span> : null}
                 </span>
                 <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
                   {changed > 0 ? (
@@ -170,13 +182,21 @@ export function TechList({
                   <Pin color={color} />
                   <span className="font-mono tabular-nums">{stops.length}</span>
                 </span>
-                <DayBar stops={stops} leaving={leaving} color={color} off={off} startHour={DAY_START} endHour={DAY_END} />
+                <DayBar stops={stops} leaving={leaving} color={color} off={off} shift={shift} startHour={DAY_START} endHour={DAY_END} />
               </button>
 
               {open ? (
                 <ol className="col-span-4 grid grid-cols-subgrid pb-2.5">
                   {stops.map((s, i) => (
-                    <Stop key={s.jobId} n={i + 1} slot={s} color={color} />
+                    <Stop
+                      key={s.jobId}
+                      n={i + 1}
+                      slot={s}
+                      color={color}
+                      lateOpen={form?.kind === 'late' && form.id === s.jobId}
+                      onLate={onReportLate && !plan ? () => setForm(form?.kind === 'late' && form.id === s.jobId ? null : { kind: 'late', id: s.jobId }) : undefined}
+                      onSendLate={onReportLate ? (minutes) => { setForm(null); onReportLate(s.row, minutes); } : undefined}
+                    />
                   ))}
                   {leaving.map((s) => (
                     <li key={`away-${s.jobId}`} className="col-span-4 grid grid-cols-subgrid border-t py-1.5 text-[11.5px] text-muted-foreground">
@@ -191,6 +211,28 @@ export function TechList({
                   {stops.length === 0 && leaving.length === 0 ? (
                     <li className="col-span-4 grid grid-cols-subgrid py-1.5 text-[11.5px] text-muted-foreground">
                       <span className="col-start-3">No jobs today.</span>
+                    </li>
+                  ) : null}
+                  {onMarkUnavailable && !plan && !sick ? (
+                    <li className="col-span-4 grid grid-cols-subgrid border-t pt-2">
+                      <span className="col-span-2 col-start-2">
+                        {form?.kind === 'away' && form.id === technician.id ? (
+                          <AwayForm
+                            name={technician.name}
+                            onCancel={() => setForm(null)}
+                            onSend={(a) => { setForm(null); onMarkUnavailable(technician.id, a); }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setForm({ kind: 'away', id: technician.id })}
+                            className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] text-muted-foreground hover:bg-accent hover:text-foreground', FOCUS)}
+                          >
+                            <UserX className="size-3.5" />
+                            Mark {technician.name} unavailable
+                          </button>
+                        )}
+                      </span>
                     </li>
                   ) : null}
                 </ol>
@@ -268,7 +310,22 @@ function WaitingJob({
   );
 }
 
-function Stop({ n, slot, color }: { n: number; slot: ScheduleSlot; color: string }) {
+function Stop({
+  n,
+  slot,
+  color,
+  lateOpen,
+  onLate,
+  onSendLate,
+}: {
+  n: number;
+  slot: ScheduleSlot;
+  color: string;
+  lateOpen?: boolean;
+  /** Toggle the "running late" form; absent when reporting is off. */
+  onLate?: () => void;
+  onSendLate?: (minutes: number) => void;
+}) {
   const moved = slot.change !== 'unchanged';
   const locked = slot.row.job.lockState && slot.row.job.lockState !== 'none';
   const tag = slot.change === 'added' ? 'New' : slot.change === 'reassigned' ? 'Moved here' : slot.change === 'retimed' ? 'New time' : null;
@@ -295,14 +352,173 @@ function Stop({ n, slot, color }: { n: number; slot: ScheduleSlot; color: string
           {moved && slot.travelBeforeMinutes ? <span> · {slot.travelBeforeMinutes} min drive</span> : null}
         </span>
       </span>
-      <span className="text-right font-mono text-[11px] leading-tight text-muted-foreground">
-        {clock(slot.start)}
-        <br />
-        {clock(slot.end)}
+      <span className="flex items-start justify-end gap-1">
+        <span className="text-right font-mono text-[11px] leading-tight text-muted-foreground">
+          {clock(slot.start)}
+          <br />
+          {clock(slot.end)}
+        </span>
+        {onLate ? (
+          <button
+            type="button"
+            onClick={onLate}
+            aria-expanded={lateOpen}
+            title="This job is running late"
+            aria-label={`${slot.row.site.addressLine1} is running late`}
+            className={cn('grid size-5 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground', lateOpen && 'bg-accent text-foreground', FOCUS)}
+          >
+            <Clock className="size-3" />
+          </button>
+        ) : null}
       </span>
+      {lateOpen && onSendLate ? (
+        <span className="col-span-2 col-start-3 pt-1.5">
+          <LateForm onSend={onSendLate} onCancel={onLate!} />
+        </span>
+      ) : null}
     </li>
   );
 }
+
+const LATE_CHOICES = [15, 30, 45, 60, 90, 120];
+
+/** How late: one tap for the usual amounts, or any number of minutes. */
+function LateForm({ onSend, onCancel }: { onSend: (minutes: number) => void; onCancel: () => void }) {
+  const [custom, setCustom] = useState('');
+  const minutes = Number(custom);
+  const valid = Number.isInteger(minutes) && minutes > 0 && minutes <= 480;
+  return (
+    <span className="grid gap-1.5 rounded-md border bg-background/60 p-2">
+      <span className="text-[11.5px] font-medium">Running late by</span>
+      <span className="flex flex-wrap gap-1">
+        {LATE_CHOICES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onSend(m)}
+            className={cn('rounded-md border px-1.5 py-0.5 font-mono text-[11px] hover:bg-accent', FOCUS)}
+          >
+            {m}m
+          </button>
+        ))}
+      </span>
+      <span className="flex items-center gap-1">
+        <input
+          type="number"
+          min={1}
+          max={480}
+          inputMode="numeric"
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && valid) onSend(minutes);
+            if (e.key === 'Escape') onCancel();
+          }}
+          placeholder="Other"
+          aria-label="Minutes late"
+          className="w-16 rounded-md border bg-transparent px-1.5 py-0.5 font-mono text-[11px] outline-none focus:border-ring"
+        />
+        <span className="text-[11px] text-muted-foreground">min</span>
+        <button
+          type="button"
+          disabled={!valid}
+          onClick={() => onSend(minutes)}
+          className={cn('ml-auto rounded-md bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-40', FOCUS)}
+        >
+          Send
+        </button>
+      </span>
+    </span>
+  );
+}
+
+/** Away for the rest of today, until a time, or from a time. */
+function AwayForm({
+  name,
+  onSend,
+  onCancel,
+}: {
+  name: string;
+  onSend: (a: Availability) => void;
+  onCancel: () => void;
+}) {
+  const [mode, setMode] = useState<Availability['mode']>('until');
+  const [time, setTime] = useState('12:00');
+  const timed = mode !== 'day';
+  const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+  const send = () => onSend(mode === 'day' ? { mode } : { mode, time });
+  const choices: Array<[Availability['mode'], string]> = [
+    ['day', 'Rest of today'],
+    ['until', 'Out until'],
+    ['from', 'Leaving at'],
+  ];
+  return (
+    <span
+      className="grid gap-1.5 rounded-md border bg-background/60 p-2"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel();
+      }}
+    >
+      <span className="text-[11.5px] font-medium">{name} is unavailable</span>
+      <span role="radiogroup" aria-label="When" className="flex flex-wrap gap-1">
+        {choices.map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={mode === m}
+            onClick={() => setMode(m)}
+            className={cn('rounded-md border px-1.5 py-0.5 text-[11px] hover:bg-accent', mode === m && 'border-primary bg-primary/10 text-foreground', FOCUS)}
+          >
+            {label}
+          </button>
+        ))}
+      </span>
+      <span className="flex items-center gap-1">
+        {timed ? (
+          <input
+            type="time"
+            step={900}
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && validTime) send();
+            }}
+            aria-label={mode === 'until' ? 'Back at' : 'Leaving at'}
+            className="rounded-md border bg-transparent px-1.5 py-0.5 font-mono text-[11px] outline-none focus:border-ring [color-scheme:dark]"
+          />
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Jobs not yet started move.</span>
+        )}
+        <button type="button" onClick={onCancel} className={cn('ml-auto rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground', FOCUS)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={timed && !validTime}
+          onClick={send}
+          className={cn('rounded-md bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-40', FOCUS)}
+        >
+          Send
+        </button>
+      </span>
+    </span>
+  );
+}
+
+/** Hours that differ from a normal day: a late start or an early finish. */
+export function shiftNote(shift: Shift | undefined): string | null {
+  if (!shift) return null;
+  const start = minutesOfDay(shift.clockInAt);
+  const end = minutesOfDay(shift.clockOutAt);
+  const parts: string[] = [];
+  if (start !== null && start > NORMAL_START) parts.push(`In from ${clock(start)}`);
+  if (end !== null) parts.push(`Leaves ${clock(end)}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+// The seeded day starts at 07:45; a clock-in after 09:00 is a late start worth showing.
+const NORMAL_START = 9 * 60;
 
 // Every row shares these columns: chevron or stop number, dot or pin, text,
 // and count or time. The stops and the day bar sit in the same columns, so
@@ -324,6 +540,7 @@ function DayBar({
   leaving,
   color,
   off,
+  shift,
   startHour,
   endHour,
 }: {
@@ -331,9 +548,15 @@ function DayBar({
   leaving: ScheduleSlot[];
   color: string;
   off: boolean;
+  shift?: Shift;
   startHour: number;
   endHour: number;
 }) {
+  const away: Array<[number, number]> = [];
+  const clockIn = minutesOfDay(shift?.clockInAt);
+  const clockOut = minutesOfDay(shift?.clockOutAt);
+  if (clockIn !== null && clockIn > NORMAL_START) away.push([startHour * 60, clockIn]);
+  if (clockOut !== null) away.push([clockOut, endHour * 60]);
   const span = (endHour - startHour) * 60;
   const x = (m: number) => `${Math.max(0, Math.min(100, ((m - startHour * 60) / span) * 100))}%`;
   const w = (a: number, b: number) => `${Math.max(0.8, ((Math.min(b, endHour * 60) - Math.max(a, startHour * 60)) / span) * 100)}%`;
@@ -346,6 +569,16 @@ function DayBar({
       {off ? (
         <span className="absolute inset-0 rounded-[4px] bg-[repeating-linear-gradient(135deg,rgb(239_68_68/0.14)_0_5px,transparent_5px_10px)]" />
       ) : null}
+      {!off
+        ? away.map(([a, b]) => (
+            <span
+              key={`away-${a}`}
+              title="Not working"
+              className="absolute inset-y-0 bg-[repeating-linear-gradient(135deg,rgb(245_158_11/0.16)_0_5px,transparent_5px_10px)]"
+              style={{ left: x(a), width: w(a, b) }}
+            />
+          ))
+        : null}
       {TICKS.map((h) => (
         <span key={h} className="absolute inset-y-0 border-l border-white/[0.07]" style={{ left: x(h * 60) }}>
           <span className="absolute top-full mt-0.5 -translate-x-1/2 font-mono text-[9px] text-muted-foreground/70">

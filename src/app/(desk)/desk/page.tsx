@@ -13,7 +13,9 @@ import { ProposalPanel, type ProposalMemory } from '../../_components/ProposalPa
 import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
-import { disruptionForJob, findDisruption } from '../../_components/disruptions';
+import {
+  disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption,
+} from '../../_components/disruptions';
 import { TechList } from '../../_components/TechList';
 import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
 import type { MapInsets } from '../../_components/MapView';
@@ -245,10 +247,13 @@ export default function DeskPage() {
   }
 
   const lastBody = lastAttempt ? findDisruption(lastAttempt.disruptionKey).body : undefined;
-  const unavailableTechId =
+  // Greyed out for the whole day only; a part-day absence still has working hours.
+  const unavailablePayload =
     lastBody?.type === 'technician_unavailable' && proposal
-      ? (lastBody.payload as { technicianId?: string }).technicianId
+      ? (lastBody.payload as { technicianId?: string; from?: string; until?: string })
       : undefined;
+  const unavailableTechId =
+    unavailablePayload && !unavailablePayload.from && !unavailablePayload.until ? unavailablePayload.technicianId : undefined;
   const unassigned = board.jobs.filter((j) => !j.technician).length;
   const today = board.today;
   const lookingAhead = Boolean(today) && board.date !== today;
@@ -623,6 +628,17 @@ export default function DeskPage() {
             onOpenJob={pending ? () => setCardOpen(true) : undefined}
             onFindTechnician={
               busy || pending || lookingAhead ? undefined : (row) => void simulate(disruptionForJob(row).key)
+            }
+            onMarkUnavailable={
+              busy || pending || lookingAhead
+                ? undefined
+                : (technicianId, availability) => {
+                    const tech = board.technicians.find((t) => t.technician.id === technicianId)?.technician;
+                    if (tech) void simulate(disruptionForUnavailable(tech, board.date, availability).key);
+                  }
+            }
+            onReportLate={
+              busy || pending || lookingAhead ? undefined : (row, minutes) => void simulate(disruptionForOverrun(row, minutes).key)
             }
           />
         </aside>

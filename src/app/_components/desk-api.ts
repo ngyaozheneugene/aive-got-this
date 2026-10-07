@@ -61,7 +61,7 @@ export interface CommitResult {
 /** The disruption event bodies the platform accepts (see createEventBodySchema). */
 export type EventBody =
   | { type: 'urgent_job'; payload: { jobId: string } }
-  | { type: 'technician_unavailable'; payload: { technicianId: string } }
+  | { type: 'technician_unavailable'; payload: { technicianId: string; from?: string; until?: string } }
   | { type: 'job_overrun'; payload: { jobId: string; overrunMinutes: number } };
 
 const ACTOR = 'desk_coordinator';

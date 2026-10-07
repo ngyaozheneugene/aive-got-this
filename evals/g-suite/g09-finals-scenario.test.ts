@@ -10,7 +10,7 @@
  *
  *   RUN_SIDECAR_ACCEPTANCE=1 OPTIMIZER_URL=http://localhost:8081 npx vitest run evals/g-suite/g09-finals-scenario.test.ts
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { InMemoryDatabase } from '../../src/db/memory';
 import { buildBoardSchedule } from '../../src/dispatch/board-schedule';
 import { commitPlan } from '../../src/dispatch/commit';
@@ -98,6 +98,9 @@ function signature(plan: CandidatePlan) {
     .sort()
     .join('|');
 }
+
+// Each plan has a 10 s budget (asserted above); two profiles plus setup need headroom.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe('G-09 finals board', () => {
   it('plans against its own day and ignores tomorrow', async () => {

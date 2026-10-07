@@ -24,7 +24,10 @@ validator re-checks every plan independently and remains the final gate.
 
 Scope per event
 ---------------
-  technician_unavailable  their jobs that have not started are reassigned
+  technician_unavailable  all day: their jobs that have not started are
+                          reassigned. Part of the day (`until` / `from`, the
+                          shift already cut by the caller): only the jobs
+                          outside their new hours, and they stay a candidate
   job_overrun             the job's end moves; that technician's later jobs
                           may be retimed or reassigned if the overrun collides
   urgent_job              the unassigned job is inserted, and the day is
@@ -192,7 +195,27 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         unavailable = payload.get("technicianId") or (affected[0] if affected else None)
         if unavailable not in techs:
             return _empty("unavailable_technician_unknown")
-        in_scope = [j for j, s in live.items() if s["tech"] == unavailable and not in_progress(j)]
+        # The caller has already cut the shift (src/matching/disruption.ts).
+        # All day: every unstarted job moves and they take nothing new. Part of
+        # the day: only the jobs outside their new hours are in play, and they
+        # stay a candidate, so a job can wait for them if its window allows.
+        whole_day = not (payload.get("from") or payload.get("until"))
+        cut = shifts.get(unavailable) or {}
+        cut_in, cut_out = _to_minutes(cut.get("clockInAt")), _to_minutes(cut.get("clockOutAt"))
+
+        def outside_hours(s: Dict[str, Any]) -> bool:
+            return (
+                whole_day
+                or (cut_in is not None and s["start"] < cut_in)
+                or (cut_out is not None and s["end"] > cut_out)
+            )
+
+        in_scope = [
+            j for j, s in live.items()
+            if s["tech"] == unavailable and not in_progress(j) and outside_hours(s)
+        ]
+        if not whole_day:
+            unavailable = None
     elif event_type == "job_overrun":
         overrun_job = payload.get("jobId") or (affected[0] if affected else None)
         overrun_by = int(payload.get("overrunMinutes") or 0)
@@ -273,9 +296,13 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         for tech_id in candidates:
             chosen = model.NewBoolVar(f"assign_{tech_id}_{job_id}")
             assign[tech_id, job_id] = chosen
-            clock_in = _to_minutes((shifts.get(tech_id) or {}).get("clockInAt"))
+            shift = shifts.get(tech_id) or {}
+            clock_in = _to_minutes(shift.get("clockInAt"))
             if clock_in is not None:
                 model.Add(start[job_id] >= clock_in).OnlyEnforceIf(chosen)
+            clock_out = _to_minutes(shift.get("clockOutAt"))
+            if clock_out is not None:
+                model.Add(start[job_id] + dur <= clock_out).OnlyEnforceIf(chosen)
         model.AddExactlyOne(assign[t, job_id] for t in candidates)
 
     if unplaceable:

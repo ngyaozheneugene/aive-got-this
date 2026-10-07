@@ -283,9 +283,10 @@ const TODAY: JobRow[] = [
   { id: 'job_ravi_2', site: 'site_sengkang', type: 'WATER_LEAK', tech: 'tech_ravi', start: '11:00', window: ['10:30', '13:00'] },
   { id: 'job_ravi_3', site: 'site_pasir_ris', type: 'GAS_TOPUP', tech: 'tech_ravi', start: '13:30', window: ['13:00', '15:00'] },
   { id: 'job_ravi_4', site: 'site_punggol', type: 'GENERAL_SERVICE', tech: 'tech_ravi', start: '15:00', window: ['14:00', '17:00'] },
-  // Daniel, south, tier 1 apprentice
-  { id: 'job_daniel_1', site: 'site_vivo', type: 'GENERAL_SERVICE', tech: 'tech_daniel', start: '09:00', window: ['09:00', '11:00'] },
-  { id: 'job_daniel_2', site: 'site_bukit_merah', type: 'CHEMICAL_WASH', tech: 'tech_daniel', start: '10:30', window: ['10:00', '13:00'] },
+  // Daniel, south, tier 1 apprentice. Kept free in the morning as the floater,
+  // so a morning disruption has someone to call on without moving bookings.
+  { id: 'job_daniel_1', site: 'site_vivo', type: 'GENERAL_SERVICE', tech: 'tech_daniel', start: '11:00', window: ['11:00', '13:00'] },
+  { id: 'job_daniel_2', site: 'site_bukit_merah', type: 'CHEMICAL_WASH', tech: 'tech_daniel', start: '13:00', window: ['13:00', '16:00'] },
   // Farah, central, tier 2
   { id: 'job_farah_1', site: 'site_bishan_2', type: 'INSTALLATION', tech: 'tech_farah', start: '09:00', window: ['09:00', '12:30'] },
   { id: 'job_farah_2', site: 'site_novena', type: 'GENERAL_SERVICE', tech: 'tech_farah', start: '14:00', window: ['13:00', '16:00'] },

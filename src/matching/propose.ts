@@ -2,6 +2,7 @@ import { travelMinutes } from '../location/matrix';
 import { PLAN_WEIGHTS } from '../shared/config/weights';
 import { SOLVER_TIMEOUT_MS } from '../shared/config/timeouts';
 import { EASTWIND_DATE } from '../shared/config/demo';
+import { applyDisruption, withinShift } from './disruption';
 import { EASTWIND } from '../shared/fixtures/eastwind';
 import type {
   Assignment,
@@ -30,7 +31,8 @@ const OPTIMIZER_URL = process.env.OPTIMIZER_URL || 'http://localhost:8000';
  * For urgent_job: runs TypeScript weighted insertion directly.
  * For technician_unavailable / job_overrun: attempts Python OR-Tools sidecar with 10s fallback to insertion.
  */
-export function propose(input: ProposeInput): ProposeOutput {
+export function propose(rawInput: ProposeInput): ProposeOutput {
+  const input = withDisruption(rawInput);
   const { event } = input;
 
   // G3 sidecar routing: technician_unavailable and job_overrun delegate to sidecar if active
@@ -86,7 +88,16 @@ function eligibilityFor(schedule: ProposeInput['schedule']): Record<string, stri
   return verdict;
 }
 
-export async function proposeWithSidecar(input: ProposeInput): Promise<ProposeOutput> {
+/**
+ * The board as it is once the event has happened: an unavailable technician's
+ * shift is cut. Idempotent, so a caller that already applied it loses nothing.
+ */
+function withDisruption(input: ProposeInput): ProposeInput {
+  return { ...input, schedule: applyDisruption(input.schedule, input.event) };
+}
+
+export async function proposeWithSidecar(rawInput: ProposeInput): Promise<ProposeOutput> {
+  const input = withDisruption(rawInput);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SOLVER_TIMEOUT_MS);
 
@@ -287,7 +298,7 @@ function fits(
   const shift = (schedule.shifts ?? EASTWIND.shifts).find(
     (s) => s.technicianId === tech.id && s.shiftDate === schedule.date,
   );
-  if (shift?.clockInAt && begins < Date.parse(shift.clockInAt)) return false;
+  if (shift && !withinShift(shift, start, end)) return false;
 
   const mine = slots.filter((s) => s.technicianId === tech.id && s.jobId !== jobId);
   for (const other of mine) {
@@ -337,11 +348,21 @@ function reassignSlot(
   const disturbed = new Set(
     slots.filter((s) => live.has(s.jobId) && live.get(s.jobId) !== s.technicianId).map((s) => s.technicianId),
   );
+  const job = (input.schedule.jobs ?? []).find((j) => j.id === slot.jobId);
   const options = eligible
     .filter((t) => t.id !== slot.technicianId)
-    .filter((t) => fits(t, slot.jobId, slot.windowStart ?? '', slot.windowEnd ?? '', slots, input.schedule))
     .map((t) => {
-      const next = slots.map((s, i) => (i === index ? { ...s, technicianId: t.id } : s));
+      // The customer's booked time if this technician is free then; otherwise
+      // the earliest time inside their window that fits.
+      if (fits(t, slot.jobId, slot.windowStart ?? '', slot.windowEnd ?? '', slots, input.schedule)) {
+        return { t, windowStart: slot.windowStart, windowEnd: slot.windowEnd };
+      }
+      const later = job ? earliestFit(t, job, slots, input.schedule) : null;
+      return later ? { t, ...later } : null;
+    })
+    .filter((o): o is { t: Technician; windowStart: string | undefined; windowEnd: string | undefined } => o !== null)
+    .map(({ t, windowStart, windowEnd }) => {
+      const next = slots.map((s, i) => (i === index ? { ...s, technicianId: t.id, windowStart, windowEnd } : s));
       const { metrics } = measurePlan(next, input.event, input.schedule);
       const booked = slots
         .filter((s) => s.technicianId === t.id)
@@ -391,8 +412,14 @@ function unavailableFallback(
   const jobs = new Map((schedule.jobs ?? []).map((j) => [j.id, j]));
   let slots = liveSlots(schedule);
 
+  // All day: every unstarted job. Part of the day: only the ones the cut
+  // shift no longer covers; the rest stay where they are.
+  const shift = (schedule.shifts ?? []).find(
+    (s) => s.technicianId === unavailableTechId && s.shiftDate === schedule.date,
+  );
   const toReplan = slots
     .filter((s) => s.technicianId === unavailableTechId && !isStarted(jobs.get(s.jobId)))
+    .filter((s) => !shift || !withinShift(shift, s.windowStart ?? '', s.windowEnd ?? ''))
     .sort((a, b) => Date.parse(a.windowStart ?? '') - Date.parse(b.windowStart ?? ''))
     .map((s) => s.jobId);
 
