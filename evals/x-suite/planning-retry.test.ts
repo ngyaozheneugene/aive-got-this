@@ -9,8 +9,16 @@
 vi.mock('../../src/db', () => ({ getDatabase: vi.fn() }));
 vi.mock('../../src/matching/propose', () => ({ propose: vi.fn() }));
 vi.mock('../../src/matching/validate', () => ({ validatePlan: vi.fn() }));
+// Real retry count, zero back-off: the outage tests below would otherwise sleep
+// 3 s + 6 s of wall-clock time per run and time out under full-suite load.
+vi.mock('../../src/agent/runtime/gateway', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/agent/runtime/gateway')>();
+  return { ...actual, createGatewayClient: (...[config, options]: Parameters<typeof actual.createGatewayClient>) =>
+    actual.createGatewayClient(config, { ...options, backoffMs: 0 }) };
+});
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { GATEWAY_RETRIES } from '../../src/shared/config/timeouts';
 import { restorePlanningTest, setupPlanningEndpoint } from '../a-suite/planning-endpoint-fixture';
 
 afterEach(restorePlanningTest);
@@ -25,9 +33,10 @@ describe('X-20 planning survives a dependency outage', () => {
     const body = await planned.json();
     expect(body.agent.protocol).toBe('structured_fallback');
     expect(body.plans.length).toBeGreaterThan(0);
+    expect(h.fetcher).toHaveBeenCalledTimes(GATEWAY_RETRIES + 1);
     expect(h.scheduler.propose).toHaveBeenCalled();
     expect(await h.db.assignments.listAll()).toEqual(h.before);
-  }, 60_000);
+  });
 
   it('hands the event back when both the gateway and structured propose() fail', async () => {
     const h = await setupPlanningEndpoint();
@@ -37,10 +46,11 @@ describe('X-20 planning survives a dependency outage', () => {
     const failed = await h.run();
     expect(failed.status).toBe(503);
     expect((await failed.json()).error).toBe('gateway_unavailable');
+    expect(h.fetcher).toHaveBeenCalledTimes(GATEWAY_RETRIES + 1);
     expect((await h.db.events.getById(h.event.id))?.status).toBe('RECEIVED');
     expect(await h.db.proposals.getByEventId(h.event.id)).toBeNull();
     expect(await h.db.assignments.listAll()).toEqual(h.before);
-  }, 60_000);
+  });
 
   it('keeps an event terminal when the agent itself misbehaves', async () => {
     // A model that asks to commit is not a dependency that will recover. The

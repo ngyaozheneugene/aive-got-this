@@ -2,11 +2,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../src/db', () => ({ getDatabase: vi.fn() }));
 vi.mock('../../src/matching/propose', () => ({ propose: vi.fn() }));
 vi.mock('../../src/matching/validate', () => ({ validatePlan: vi.fn() }));
+// Real retry count, zero back-off: the outage tests below would otherwise sleep
+// 3 s + 6 s of wall-clock time per run and time out under full-suite load.
+vi.mock('../../src/agent/runtime/gateway', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/agent/runtime/gateway')>();
+  return { ...actual, createGatewayClient: (...[config, options]: Parameters<typeof actual.createGatewayClient>) =>
+    actual.createGatewayClient(config, { ...options, backoffMs: 0 }) };
+});
 import { NextRequest } from 'next/server';
 import { propose } from '../../src/matching/propose';
 import { validatePlan } from '../../src/matching/validate';
 import { POST } from '../../src/app/api/events/[id]/plan/route';
 import { checkCommit } from '../../src/dispatch/commit-policy';
+import { GATEWAY_RETRIES } from '../../src/shared/config/timeouts';
 import { setupPlanningEndpoint, restorePlanningTest } from '../a-suite/planning-endpoint-fixture';
 
 afterEach(restorePlanningTest);
@@ -99,13 +107,14 @@ describe('X: planning endpoint cannot publish failed or stale agent runs', () =>
     const body = await response.json();
     expect(body.agent.protocol).toBe('structured_fallback');
     expect(body.agent.status).toBe('candidates_ready');
+    expect(h.fetcher).toHaveBeenCalledTimes(GATEWAY_RETRIES + 1);
     expect(h.scheduler.propose).toHaveBeenCalled();
     const summary = JSON.stringify(await h.db.decisionLogs.listByEvent(h.event.id));
     expect(summary).toContain('structured_fallback');
     expect(summary).toContain('The model did not produce this plan');
     expect(summary).not.toContain('unit-test-key');
     expect(await h.db.assignments.listAll()).toEqual(h.before);
-  }, 60_000);
+  });
   it('handles missing server configuration without exposing it or creating a proposal', async () => {
     const h = await setupPlanningEndpoint();
     vi.stubEnv('LLM_GATEWAY_API_KEY', '');
