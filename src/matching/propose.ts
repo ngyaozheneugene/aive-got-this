@@ -539,7 +539,7 @@ function finishFallbackPlan(
     timedOut: false,
     durationMs: 15,
     status: 'VALIDATED',
-    createdAt: `${EASTWIND_DATE}T08:00:00+08:00`,
+    createdAt: `${schedule.date || EASTWIND_DATE}T08:00:00+08:00`,
   };
   plan.validations = validatePlan(plan, schedule);
   return plan;
@@ -627,6 +627,8 @@ function rank(profile: PlanProfile, a: ScoredCandidate, b: ScoredCandidate): num
     if (a.metrics.slaLatenessMinutes !== b.metrics.slaLatenessMinutes) {
       return a.metrics.slaLatenessMinutes - b.metrics.slaLatenessMinutes;
     }
+    const onSite = (c: ScoredCandidate) => Date.parse(c.slot.windowStart ?? '') || 0;
+    if (onSite(a) !== onSite(b)) return onSite(a) - onSite(b);
     if (a.metrics.travelMinutes !== b.metrics.travelMinutes) {
       return a.metrics.travelMinutes - b.metrics.travelMinutes;
     }
@@ -640,6 +642,27 @@ function rank(profile: PlanProfile, a: ScoredCandidate, b: ScoredCandidate): num
   }
   if (a.blended !== b.blended) return a.blended - b.blended;
   return a.technician.id.localeCompare(b.technician.id);
+}
+
+/** Step between start times tried inside a customer's window. */
+const START_STEP_MINUTES = 15;
+
+function earliestFit(
+  tech: Technician,
+  job: Job,
+  slots: readonly PlannedSlot[],
+  schedule: ProposeInput['schedule'],
+): { windowStart: string; windowEnd: string } | null {
+  const opens = Date.parse(job.windowStart ?? '');
+  if (!Number.isFinite(opens)) return null;
+  const durationMs = (job.durationMinutes || 90) * 60000;
+  const closes = job.windowEnd ? Date.parse(job.windowEnd) : opens + durationMs;
+  for (let start = opens; start + durationMs <= closes; start += START_STEP_MINUTES * 60000) {
+    const windowStart = start === opens ? job.windowStart! : toSgIso(start);
+    const windowEnd = toSgIso(start + durationMs);
+    if (fits(tech, job.id, windowStart, windowEnd, slots, schedule)) return { windowStart, windowEnd };
+  }
+  return null;
 }
 
 function generateCandidateForProfile(
@@ -664,18 +687,22 @@ function generateCandidateForProfile(
     let windowEnd = targetJob.windowEnd;
 
     if (targetJob.windowStart) {
-      const startMs = Date.parse(targetJob.windowStart);
-      const durationMs = (targetJob.durationMinutes || 90) * 60 * 1000;
-      windowStart = targetJob.windowStart;
-      windowEnd = toSgIso(startMs + durationMs);
+      // The earliest start inside the customer's window at which this
+      // technician is actually free, after the drive from their previous job.
+      // Placing every candidate at the window's opening offered a technician
+      // still busy on another job, which the validator then refused.
+      const slot = earliestFit(tech, targetJob, live, schedule);
+      if (!slot) continue;
+      windowStart = slot.windowStart;
+      windowEnd = slot.windowEnd;
     } else {
       let startHour = 9;
       if (techAssignments.length > 0) {
         startHour = Math.min(17, 9 + techAssignments.length * 2);
       }
-      windowStart = `${EASTWIND_DATE}T${String(startHour).padStart(2, '0')}:00:00+08:00`;
+      windowStart = `${schedule.date || EASTWIND_DATE}T${String(startHour).padStart(2, '0')}:00:00+08:00`;
       const endHour = Math.min(18, startHour + 1);
-      windowEnd = `${EASTWIND_DATE}T${String(endHour).padStart(2, '0')}:30:00+08:00`;
+      windowEnd = `${schedule.date || EASTWIND_DATE}T${String(endHour).padStart(2, '0')}:30:00+08:00`;
     }
 
     // Measured as a whole plan: the drive into the job is from wherever this
@@ -734,7 +761,7 @@ function generateCandidateForProfile(
     timedOut: false,
     durationMs: 15,
     status: 'VALIDATED',
-    createdAt: `${EASTWIND_DATE}T08:00:00+08:00`,
+    createdAt: `${schedule.date || EASTWIND_DATE}T08:00:00+08:00`,
   };
 
   // Run independent hard-constraint validator

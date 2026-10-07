@@ -11,7 +11,7 @@
 //
 // current-board.ts projects the same rows for the desk. Same source, two shapes.
 
-import { EASTWIND_DATE } from '../shared/config/demo';
+import { boardDate } from './board-date';
 import type { IDatabase } from '../db/interface';
 import type {
   BoardSchedule,
@@ -47,18 +47,21 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
     throw new Error('NO_BOARD_SNAPSHOT');
   }
 
+  const date = await boardDate(db);
   const [technicians, jobs, allAssignments, shifts, travel] = await Promise.all([
     db.technicians.listActive(),
-    db.jobs.listByScheduledDate(EASTWIND_DATE),
+    db.jobs.listByScheduledDate(date),
     db.assignments.listAll(),
-    db.shifts.listByDate(EASTWIND_DATE),
+    db.shifts.listByDate(date),
     db.travelMatrix.listAll(),
   ]);
 
   // Only live rows are the board. Superseded and cancelled rows stay in the
-  // table for the audit trail but must not be planned around.
+  // table for the audit trail but must not be planned around. Other days'
+  // bookings are not this board either.
+  const jobIds = new Set(jobs.map((j) => j.id));
   const assignments = allAssignments.filter(
-    (a) => a.status === 'accepted' || a.status === 'offered',
+    (a) => (a.status === 'accepted' || a.status === 'offered') && jobIds.has(a.jobId),
   );
 
   const certs: TechnicianCert[] = [];
@@ -76,7 +79,7 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
   }
 
   return {
-    date: EASTWIND_DATE,
+    date,
     snapshotId: snapshot.id,
     snapshotVersion: snapshot.version,
     technicians,

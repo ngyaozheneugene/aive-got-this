@@ -1,6 +1,6 @@
 # Task board
 
-**Current gate:** G3 closing, G4 next (G2 still needs member 4’s click-through tick)
+**Current gate:** G6 — Finals (single owner: Deen). G0–G5 below are the submission-round audit trail; open boxes there are superseded by G6 unless restated.
 **Kickoff:** 9 Sep 2026 (Day 1)  
 **Today:** 23 Sep 2026 — Day 15. Past the Day 14 feature freeze: fixes only, no new features (`AGENTS.md`). Five days to the wall.
 **Hard wall:** the AWS lease and the submission both land ~28 Sep 2026. Confirm the exact
@@ -172,9 +172,58 @@ Live gateway planning on 19 Sep produced two legal Raffles candidates (see G1 ag
 
 ---
 
+## G6 — Finals (one owner)
+
+Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). Build in the order listed; the cut line is after **Surfaces**.
+
+**Foundations**
+- [ ] F1 Hosting decided for the finals (lease ends mid-Oct); backup recording of the current loop made before it goes
+- [ ] F2 Product runs on Postgres; one contract test suite passes on both adapters; migrations in `db/migrations/`; reset reseeds Postgres
+- [x] F3 Board date is today-relative (no fixed `EASTWIND_DATE`); `?date=` on schedule API; date switcher on desk
+- [x] F4 Larger dataset (~15 techs, ~45 jobs, two days); solver stays inside the 10 s fallback at that size
+  - 6 Oct: `src/shared/fixtures/scenario.ts` builds the finals board from a date: 15 technicians, 41 jobs today and 18 tomorrow, every job with a requirement row from its type. The live desk seeds it for today in Singapore (`DEMO_SCENARIO=eastwind` keeps the 12-job fixture; tests always use it). Board day comes from the latest snapshot (`src/dispatch/board-date.ts`); board builders now ignore other days' assignments. `GET /api/schedule/current?date=` plus a Today / Tomorrow switch on the desk (tomorrow is read only).
+  - Fixed on the way: the urgent insertion fallback placed every candidate at the window opening without checking they were free, so a busy technician produced an `OVERLAP` plan. It now takes the earliest start in the window that fits (`propose.test.ts`).
+  - Evidence: offline 296 passed; with OR-Tools 9.15 (`RUN_SIDECAR_ACCEPTANCE=1 RUN_SCHEDULER_ACCEPTANCE=1`) G-suite 36/36, including G-09: all three demo events plan legally on both profiles in ~2 s each, the profiles differ on every event, and the sick call still plans after either Raffles option is committed. Desk click-through: urgent job planned (25.7 s with the model) and committed to v2.
+  - Demo outcomes on the finals board: Raffles: `sla_first` Jonah + Ravi's 13:30 Pasir Ris to Siti (24 min less driving), `minimal_disruption` Jonah, nobody else moves. Hafiz sick: Ben + Siti (gap 38%) vs Ben takes both (50%). Overrun 90: Ben takes the 11:00 vs Hafiz pushed to 11:08. The old rule "approve On-time first or the sick call fails" no longer applies; rewrite the rehearsal script under Q4.
+- [ ] F5 Postal code → travel cluster in `src/location/postal/`
+
+**Remove the restrictions**
+- [ ] R2 Unavailable for any technician with `from`/`until`; overrun for any job and any minutes; actions from the board, not only the simulator
+- [ ] R1 New job intake (`urgent_job` accepts `newJob`), find-or-create customer/site; desk form; ADR 005
+- [ ] R3 Partial coverage: plans may leave jobs unassigned with a reason; `unassignedJobs` metric; commit can un-assign; "Needs attention" lane
+- [ ] R5 Several events at once; stale proposal offers one-click Replan
+
+**Agent**
+- [ ] A4 Rename `urgent*` runtime to `recovery*`; one playbook per event
+- [ ] A1 Natural-language intake: read-only lookup tools + `draft_event`; confirmation card; X-suite injection cases; A-suite phrasing cases
+
+**Surfaces**
+- [ ] P1 Technician field page `/tech/[id]`; *Running late* / *Can't make it* raise events
+- [ ] P2 Desk picks up new events and status without a refresh
+
+**Polish and proof**
+- [ ] Q1 Loading / empty / failure states, keyboard path, phone width
+- [ ] Q2 Playwright end-to-end: each event, NL intake, technician page, commit to new version
+- [ ] Q4 ADRs for contract changes; README and demo script rewritten for the finals flow
+- [ ] Q5 Five timed rehearsals on the hosted box after reset; backup recording of the finals flow
+
+**Stretch (in order of value)**
+- [ ] R4 `job_cancelled` event (needs R3)
+- [ ] R6 Manual override through the same validate → commit path
+- [ ] A2 Ask about a plan ("why not Kumar?", "what if 3pm?") from stored evidence
+- [ ] A3 Draft customer/technician messages after commit (not sent)
+- [ ] P3 Demo sign-in and roles
+- [ ] P4 Technician / job type / customer management pages
+- [ ] P5 Snapshot history with diffs; rollback as a proposal
+- [ ] Q3 Ops metrics page from `decision_log`
+
+**G6 exit:** the finals story in `finals-plan.md` runs end to end on the hosted box, five times after reset, with a backup recording.
+
+---
+
 ## Parking (not this gate)
 
-Cancellation (UC-14 / E05), customer `(customer)/` routes, live GIS, WhatsApp intake, Cognito, App Runner, RDS, OpenClaw, Hermes, RRULE.
+Customer `(customer)/` routes, live GIS, WhatsApp intake, Cognito, App Runner, RDS, OpenClaw, Hermes, RRULE.
 
 ---
 

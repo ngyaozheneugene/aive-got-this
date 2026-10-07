@@ -74,4 +74,37 @@ describe('Weighted Insertion Propose Engine', () => {
       expect(plan.validations.violations).toHaveLength(0);
     }
   });
+
+  it('starts an urgent job when the technician is actually free, not at the window opening', () => {
+    // Siti and Jonah are the only legal technicians for Raffles Place. Book
+    // both 12:45-13:30 in the west, so nobody is free at 13:00 when it opens.
+    const busy = (id: string, tech: string) => ({
+      ...EASTWIND.assignments[0]!,
+      id,
+      jobId: id,
+      technicianId: tech,
+      windowStart: `${EASTWIND_DATE}T12:45:00+08:00`,
+      windowEnd: `${EASTWIND_DATE}T13:30:00+08:00`,
+    });
+    const filler = (id: string) => ({
+      ...EASTWIND.jobs.find((j) => j.id === 'job_jonah_1')!,
+      id,
+      windowStart: `${EASTWIND_DATE}T12:45:00+08:00`,
+      windowEnd: `${EASTWIND_DATE}T13:30:00+08:00`,
+    });
+    const schedule: BoardSchedule = {
+      ...mockSchedule,
+      jobs: [...EASTWIND.jobs, filler('job_busy_siti'), filler('job_busy_jonah')],
+      assignments: [...EASTWIND.assignments, busy('job_busy_siti', 'tech_siti'), busy('job_busy_jonah', 'tech_jonah')],
+    };
+
+    const result = propose({ event: urgentEvent, schedule, profile: 'sla_first' });
+    expect(result.plans).toHaveLength(2);
+    for (const plan of result.plans) {
+      const slot = plan.assignments.find((a) => a.jobId === 'job_raffles')!;
+      // Clementi (west) to Raffles Place is 30 minutes, so 14:00 at the earliest.
+      expect(slot.windowStart).toBe(`${EASTWIND_DATE}T14:00:00+08:00`);
+      expect(plan.validations.violations).toEqual([]);
+    }
+  });
 });

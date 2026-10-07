@@ -73,7 +73,9 @@ export interface AuditResult {
 }
 
 export const deskApi = {
-  getBoard: () => request<DeskBoard>('/api/schedule/current'),
+  /** The board's own day, or another day to look ahead (read only). */
+  getBoard: (date?: string) =>
+    request<DeskBoard>(`/api/schedule/current${date ? `?date=${encodeURIComponent(date)}` : ''}`),
 
   reset: () => request<unknown>('/api/demo/reset', { method: 'POST' }),
 

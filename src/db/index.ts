@@ -4,6 +4,9 @@
 import { IDatabase } from './interface';
 import { InMemoryDatabase } from './memory';
 import { PostgresDatabase } from './postgres';
+import { isIsoDate, singaporeToday } from '../shared/config/demo';
+import { EASTWIND, type Scenario } from '../shared/fixtures/eastwind';
+import { buildScenario } from '../shared/fixtures/scenario';
 
 export * from './interface';
 export * from './memory';
@@ -24,8 +27,19 @@ export function getDatabase(): IDatabase {
     const useMemory =
       process.env.NODE_ENV === 'test' || process.env.USE_MEMORY_DB !== 'false';
     globalForDb.__dispatchDb = useMemory
-      ? new InMemoryDatabase()
+      ? new InMemoryDatabase({ scenario: liveScenario() })
       : (new PostgresDatabase() as IDatabase);
   }
   return globalForDb.__dispatchDb;
+}
+
+/**
+ * The seed the running app uses. Tests always get the fixed Eastwind fixture.
+ * Otherwise `DEMO_SCENARIO=eastwind` keeps the 12-job board, and the default is
+ * the finals board dated today in Singapore (or `BOARD_DATE`, for rehearsing a
+ * specific day). Re-evaluated on every reset, so a reset re-dates the board.
+ */
+export function liveScenario(env: Record<string, string | undefined> = process.env): () => Scenario {
+  if (env.NODE_ENV === 'test' || env.DEMO_SCENARIO === 'eastwind') return () => EASTWIND;
+  return () => buildScenario(isIsoDate(env.BOARD_DATE) ? env.BOARD_DATE : singaporeToday());
 }

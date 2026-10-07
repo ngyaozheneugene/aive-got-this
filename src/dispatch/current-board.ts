@@ -1,19 +1,27 @@
-import { EASTWIND_DATE } from '../shared/config/demo';
+import { boardDate } from './board-date';
 import type { DeskBoard, DeskJobRow, DeskTechnicianRow } from '../shared/types/domain';
 import type { IDatabase } from '../db/interface';
 
-export async function getCurrentBoard(db: IDatabase): Promise<DeskBoard> {
+/**
+ * The desk's view of one day. Defaults to the board's own day; `date` shows
+ * another (tomorrow's bookings) without changing what gets planned.
+ */
+export async function getCurrentBoard(db: IDatabase, date?: string): Promise<DeskBoard> {
   const snapshot = await db.boardSnapshots.getLatest();
   if (!snapshot) {
     throw new Error('NO_BOARD_SNAPSHOT');
   }
 
-  const [technicians, jobs, assignments, shifts] = await Promise.all([
+  const today = await boardDate(db);
+  const day = date ?? today;
+  const [technicians, jobs, allAssignments, shifts] = await Promise.all([
     db.technicians.listActive(),
-    db.jobs.listByScheduledDate(EASTWIND_DATE),
+    db.jobs.listByScheduledDate(day),
     db.assignments.listAll(),
-    db.shifts.listByDate(EASTWIND_DATE),
+    db.shifts.listByDate(day),
   ]);
+  const jobIds = new Set(jobs.map((j) => j.id));
+  const assignments = allAssignments.filter((a) => jobIds.has(a.jobId));
 
   const technicianRows: DeskTechnicianRow[] = [];
   for (const technician of technicians) {
@@ -47,7 +55,8 @@ export async function getCurrentBoard(db: IDatabase): Promise<DeskBoard> {
   }
 
   return {
-    date: EASTWIND_DATE,
+    date: day,
+    today,
     snapshot,
     technicians: technicianRows,
     jobs: jobRows,
