@@ -18,6 +18,8 @@ An agent-assisted control tower for a Singapore HVAC SME. The day is already boo
 | Available until | The AWS lease ends, mid-October 2026 |
 | Spend | US$9.11 of the US$100 lease budget, as of 27 Sep 2026 |
 
+**Redeploy after a merge:** one line on the box, see [`docs/deploy.md`](docs/deploy.md).
+
 **Try it.** Open the desk, then use **Demo controls** (bottom left) to raise an urgent job, a technician calling in sick, or a job running late. Two validated plans appear in about 12 seconds. Pick one, choose a reason, and approve: the schedule becomes a new version. **Reset the demo day** restores Eastwind Aircon's Tuesday. Approve *On-time first* for the urgent job before the sick call: if Jonah takes Raffles Place, nobody can reach Hafiz's 11:00 job and the sick call is correctly refused.
 
 **Verified on 27 Sep 2026.** The full demonstration sequence was replayed against the live URL: every plan validated clean, every commit was refused before approval and accepted after it, and every audit trail read in order. 275 automated tests pass, the real-solver acceptance gate passes 7 of 7, and the scheduler legality gate passes 4 of 4.
