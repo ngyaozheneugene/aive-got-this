@@ -4,7 +4,7 @@
 // moves: "Least disruption" moves that one job; "On-time first" also hands his
 // 14:00 to Wei to even out the day. A 45-minute overrun is absorbed and shows nothing.
 // See docs/tasks.md G3 and handover 6.3.
-import type { DeskJobRow } from '../../shared/types/domain';
+import type { DeskJobRow, Technician } from '../../shared/types/domain';
 import type { EventBody } from './desk-api';
 
 export interface Disruption {
@@ -53,11 +53,71 @@ const fromBoard = new Map<string, Disruption>();
 export function findDisruption(key: string): Disruption {
   const known = DISRUPTIONS.find((d) => d.key === key) ?? fromBoard.get(key);
   if (known) return known;
+  // Raised from the board before a reload: the names are gone with the page,
+  // but the key still says what was sent.
   if (key.startsWith('job:')) {
-    // Raised from the board before a reload; the job's details are gone with the page.
     return { key, label: 'Find a technician', source: 'Your request', headline: 'Find a technician', detail: '', body: { type: 'urgent_job', payload: { jobId: key.slice(4) } } };
   }
+  const off = /^off:([^:]+):(day|until|from)(?::(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2}))?$/.exec(key);
+  if (off) {
+    const [, technicianId, mode, date, time] = off;
+    const availability: Availability = mode === 'day' ? { mode: 'day' } : { mode: mode as 'until' | 'from', time: time! };
+    return disruptionForUnavailable({ id: technicianId!, name: 'A technician' }, date ?? '', availability);
+  }
+  const late = /^late:([^:]+):(\d+)$/.exec(key);
+  if (late) {
+    const minutes = Number(late[2]);
+    return { key, label: 'A job runs late', source: 'Your report', headline: `A job is running ${minutes} min late`, detail: '', body: { type: 'job_overrun', payload: { jobId: late[1]!, overrunMinutes: minutes } } };
+  }
   return DISRUPTIONS[0]!;
+}
+
+/** When a technician is away: the rest of today, until a time, or from a time. */
+export type Availability = { mode: 'day' } | { mode: 'until' | 'from'; time: string };
+
+/** A coordinator marking someone unavailable from the board. `time` is HH:MM on `date`. */
+export function disruptionForUnavailable(
+  tech: Pick<Technician, 'id' | 'name'>,
+  date: string,
+  availability: Availability,
+): Disruption {
+  const at = availability.mode === 'day' ? '' : `${date}T${availability.time}:00+08:00`;
+  const key = availability.mode === 'day' ? `off:${tech.id}:day` : `off:${tech.id}:${availability.mode}:${date}:${availability.time}`;
+  const copy = {
+    day: { headline: `${tech.name} is off for the rest of today`, detail: 'Their jobs that have not started need someone else.' },
+    until: { headline: `${tech.name} is out until ${availability.mode === 'day' ? '' : availability.time}`, detail: 'Jobs before then need someone else or a later slot.' },
+    from: { headline: `${tech.name} is leaving at ${availability.mode === 'day' ? '' : availability.time}`, detail: 'Jobs after then need someone else.' },
+  }[availability.mode];
+  const d: Disruption = {
+    key,
+    label: 'A technician is unavailable',
+    source: 'Your report',
+    ...copy,
+    body: {
+      type: 'technician_unavailable',
+      payload: {
+        technicianId: tech.id,
+        ...(availability.mode === 'until' ? { until: at } : {}),
+        ...(availability.mode === 'from' ? { from: at } : {}),
+      },
+    },
+  };
+  fromBoard.set(d.key, d);
+  return d;
+}
+
+/** A coordinator reporting that a booked job is running late, by any amount. */
+export function disruptionForOverrun(row: DeskJobRow, minutes: number): Disruption {
+  const d: Disruption = {
+    key: `late:${row.job.id}:${minutes}`,
+    label: 'A job runs late',
+    source: 'Your report',
+    headline: `${row.technician ? `${row.technician.name}’s job at ` : 'The job at '}${row.site.addressLine1} is running ${minutes} min late`,
+    detail: `${row.customer.name}. Later jobs may need to move.`,
+    body: { type: 'job_overrun', payload: { jobId: row.job.id, overrunMinutes: minutes } },
+  };
+  fromBoard.set(d.key, d);
+  return d;
 }
 
 /**

@@ -195,7 +195,11 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [ ] F5 Postal code → travel cluster in `src/location/postal/`
 
 **Remove the restrictions**
-- [ ] R2 Unavailable for any technician with `from`/`until`; overrun for any job and any minutes; actions from the board, not only the simulator
+- [x] R2 Unavailable for any technician with `from`/`until`; overrun for any job and any minutes; actions from the board, not only the simulator
+  - 7 Oct: [ADR 005](adr/005-part-day-unavailability.md). Unavailability is a shift change (`src/matching/disruption.ts`): all day → `mc`, `until` → later clock-in, `from` → earlier clock-out, applied identically for both engines and the validator. The validator now checks clock-out and exempts started work. Commit persists the shift (`shifts.patch`), which also fixes a committed sick call being forgotten by the next event. The desk has "Mark … unavailable" on each technician and "running late" on each stop; shift changes show on the row and day bar.
+  - Daniel is now a morning floater (jobs at 11:00 and 13:00): every technician was booked at 09:00, so no morning absence could be covered without moving other bookings. Original demo outcomes unchanged.
+  - Evidence: offline 322 passed; real solver G-suite 41/41 (G-10: out until 14:00, leaving at 15:00, 20/150-minute overruns, committed absences respected by the next event); `test:pg` 13/13. Desk on Postgres: "Kumar leaving at 15:00" moved only his 15:30 to Jonah, committed to v2 with clock-out 15:00 stored and shown; a 50-minute overrun raised from the stop was absorbed.
+  - The local optimizer container was refreshed with `docker cp` because Docker Hub is unreachable from this machine; rebuild it properly (`docker compose build optimizer`) when the network allows, and on the box at deploy.
 - [ ] R1 New job intake (`urgent_job` accepts `newJob`), find-or-create customer/site; desk form; ADR 005
 - [ ] R3 Partial coverage: plans may leave jobs unassigned with a reason; `unassignedJobs` metric; commit can un-assign; "Needs attention" lane
 - [ ] R5 Several events at once; stale proposal offers one-click Replan

@@ -191,6 +191,21 @@ describe.skipIf(!enabled)('Postgres adapter', () => {
       expect({ ...a, event: { ...a.event } }).toEqual({ ...b, event: { ...b.event } });
     });
 
+    it('patches a shift the same way: only the fields given change', async () => {
+      const { pg, mem } = await pair(() => buildScenario(FINALS_DATE));
+      track(pg);
+      const steps = async (db: IDatabase) => {
+        const day = FINALS_DATE;
+        const until = await db.shifts.patch('tech_kumar', day, { clockInAt: `${day}T14:00:00+08:00` });
+        const leaves = await db.shifts.patch('tech_kumar', day, { clockOutAt: `${day}T17:00:00+08:00` });
+        const sick = await db.shifts.patch('tech_hafiz', day, { status: 'mc' });
+        const fresh = await db.shifts.patch('tech_kumar', addDays(day, 2), { status: 'scheduled' });
+        const strip = ({ id: _i, createdAt: _c, ...rest }: Record<string, unknown>) => rest;
+        return [until, leaves, sick, fresh].map((row) => strip(row as unknown as Record<string, unknown>));
+      };
+      expect(await steps(pg)).toEqual(await steps(mem));
+    });
+
     it('rolls a transaction back when it throws', async () => {
       const pg = track(new PostgresDatabase({ url: URL }));
       await pg.reset();

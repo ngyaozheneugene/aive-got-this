@@ -226,6 +226,25 @@ export class InMemoryDatabase implements IDatabase {
       this.shiftsMap.set(key, updated);
       return updated;
     },
+    patch: async (
+      technicianId: string,
+      dateStr: string,
+      patch: { status?: ShiftStatus; clockInAt?: string; clockOutAt?: string },
+    ) => {
+      const key = `${technicianId}_${dateStr}`;
+      const existing = this.shiftsMap.get(key);
+      const updated: Shift = {
+        id: existing?.id ?? this.generateId('shf'),
+        technicianId,
+        shiftDate: dateStr,
+        status: patch.status ?? existing?.status ?? 'scheduled',
+        clockInAt: patch.clockInAt ?? existing?.clockInAt,
+        clockOutAt: patch.clockOutAt ?? existing?.clockOutAt,
+        createdAt: existing?.createdAt ?? this.nowIso(),
+      };
+      this.shiftsMap.set(key, updated);
+      return updated;
+    },
     listByDate: async (dateStr: string) =>
       Array.from(this.shiftsMap.values())
         .filter((s) => s.shiftDate === dateStr)

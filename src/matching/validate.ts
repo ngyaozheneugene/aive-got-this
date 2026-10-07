@@ -7,6 +7,7 @@ import type {
 } from '../shared/types/domain';
 import { VALIDATION_VIOLATIONS } from '../shared/config/reason-codes';
 import { EASTWIND } from '../shared/fixtures/eastwind';
+import { withinShift } from './disruption';
 import { travelMinutes } from '../location/matrix';
 
 /**
@@ -151,14 +152,19 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
 
     const tech = (schedule.technicians || []).find((t) => t.id === slot.technicianId);
 
-    // Shift check
+    // Shift check: on shift, after clock-in, before clock-out. Work already
+    // started is exempt: a technician who goes off sick, or leaves early,
+    // part-way through a job is still the one finishing it.
     const techShift = shifts.find(
       (s) => s.technicianId === slot.technicianId && s.shiftDate === schedule.date,
     );
-    if (!techShift || techShift.status === 'mc' || techShift.status === 'no_show') {
-      violations.push(violation('OUTSIDE_SHIFT', `tech=${slot.technicianId}:job=${job.id}`));
-    } else if (techShift.clockInAt && slot.windowStart) {
-      if (Date.parse(slot.windowStart) < Date.parse(techShift.clockInAt)) {
+    const started = job.lockState === 'in_progress' || job.status === 'on_site';
+    if (!started) {
+      const onShift =
+        slot.windowStart && slot.windowEnd
+          ? withinShift(techShift, slot.windowStart, slot.windowEnd)
+          : Boolean(techShift) && techShift!.status !== 'mc' && techShift!.status !== 'no_show';
+      if (!onShift) {
         violations.push(violation('OUTSIDE_SHIFT', `tech=${slot.technicianId}:job=${job.id}`));
       }
     }

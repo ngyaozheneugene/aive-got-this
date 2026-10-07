@@ -24,16 +24,38 @@ export const urgentJobPayloadSchema = z.object({
   jobId: z.string().min(1),
 });
 
+/** An instant with its offset, e.g. 2026-10-07T14:00:00+08:00. */
+const instantSchema = z.string().datetime({ offset: true });
+
+/**
+ * With neither bound the technician is out for the rest of the day. `until`
+ * alone: out now, back at that time ("stuck in Jurong till 2pm"). `from`
+ * alone: leaving at that time. Both together is a gap mid-day, which the
+ * shift model cannot express yet; unavailabilityIssue() refuses it. ADR 005.
+ */
 export const technicianUnavailablePayloadSchema = z.object({
   technicianId: z.string().min(1),
+  from: instantSchema.optional(),
+  until: instantSchema.optional(),
 });
+
+export type TechnicianUnavailablePayload = z.infer<typeof technicianUnavailablePayloadSchema>;
+
+/** Why an unavailability payload cannot be planned, or null. */
+export function unavailabilityIssue(payload: TechnicianUnavailablePayload): string | null {
+  if (payload.from && payload.until) return 'unavailable_window_both_bounds';
+  return null;
+}
+
+/** A job runs on by at most a working day. */
+export const MAX_OVERRUN_MINUTES = 480;
 
 export const jobOverrunPayloadSchema = z.object({
   jobId: z.string().min(1),
-  overrunMinutes: z.number().int().positive(),
+  overrunMinutes: z.number().int().positive().max(MAX_OVERRUN_MINUTES),
 });
 
-export const createEventBodySchema = z.discriminatedUnion('type', [
+const eventBodySchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('urgent_job'),
     rawText: z.string().optional().default(''),
@@ -53,6 +75,12 @@ export const createEventBodySchema = z.discriminatedUnion('type', [
     payload: jobOverrunPayloadSchema,
   }),
 ]);
+
+export const createEventBodySchema = eventBodySchema.superRefine((body, ctx) => {
+  if (body.type !== 'technician_unavailable') return;
+  const issue = unavailabilityIssue(body.payload);
+  if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: issue });
+});
 
 export const operationalEventSchema = z.object({
   id: z.string(),

@@ -5,6 +5,7 @@
 // (I/O, no decisions). Neither re-derives what the other owns.
 
 import { checkCommit } from './commit-policy';
+import { parseUnavailability, unavailabilityPatch } from '../matching/disruption';
 import { nextSequence } from './audit-sequence';
 import { getCurrentBoard } from './current-board';
 import { isStaleSnapshotError, type IDatabase } from '../db/interface';
@@ -152,6 +153,15 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
       metrics: plan.metrics,
     });
     applied.push(slot);
+  }
+
+  // An unavailability changes the technician's shift as well as their jobs, so
+  // the next event plans around the cut day instead of handing work back.
+  const event = await db.events.getById(proposal.eventId);
+  const unavailability = event ? parseUnavailability(event) : null;
+  if (unavailability) {
+    const shift = await db.shifts.getByTechAndDate(unavailability.technicianId, board.date);
+    await db.shifts.patch(unavailability.technicianId, board.date, unavailabilityPatch(shift ?? undefined, unavailability));
   }
 
   const committed = await db.proposals.updateStatus(proposal.id, 'COMMITTED', plan.id);

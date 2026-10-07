@@ -84,6 +84,12 @@ export interface IDatabase {
     clockIn(technicianId: string, dateStr: string): Promise<Shift>;
     clockOut(technicianId: string, dateStr: string): Promise<Shift>;
     updateStatus(technicianId: string, dateStr: string, status: ShiftStatus): Promise<Shift>;
+    /** Change any of status, clock-in and clock-out; fields left out keep their value. */
+    patch(
+      technicianId: string,
+      dateStr: string,
+      patch: { status?: ShiftStatus; clockInAt?: string; clockOutAt?: string },
+    ): Promise<Shift>;
     listByDate(dateStr: string): Promise<Shift[]>;
   };
 

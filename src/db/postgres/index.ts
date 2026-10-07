@@ -323,6 +323,19 @@ export class PostgresDatabase implements IDatabase {
         VALUES (${technicianId}, ${dateStr}::date, ${status})
         ON CONFLICT (technician_id, shift_date) DO UPDATE SET status = ${status}
         RETURNING ${this.cols(SHIFT_COLS)}`)!,
+    patch: async (
+      technicianId: string,
+      dateStr: string,
+      patch: { status?: ShiftStatus; clockInAt?: string; clockOutAt?: string },
+    ) =>
+      (await this.one<Shift>`
+        INSERT INTO shift (technician_id, shift_date, status, clock_in_at, clock_out_at)
+        VALUES (${technicianId}, ${dateStr}::date, ${patch.status ?? 'scheduled'}, ${patch.clockInAt ?? null}, ${patch.clockOutAt ?? null})
+        ON CONFLICT (technician_id, shift_date) DO UPDATE SET
+          status = COALESCE(${patch.status ?? null}, shift.status),
+          clock_in_at = COALESCE(${patch.clockInAt ?? null}::timestamptz, shift.clock_in_at),
+          clock_out_at = COALESCE(${patch.clockOutAt ?? null}::timestamptz, shift.clock_out_at)
+        RETURNING ${this.cols(SHIFT_COLS)}`)!,
     listByDate: (dateStr: string) =>
       this.q<Shift>`SELECT ${this.cols(SHIFT_COLS)} FROM shift WHERE shift_date = ${dateStr}::date ORDER BY technician_id COLLATE "C"`,
   };

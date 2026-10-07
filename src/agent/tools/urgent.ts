@@ -4,8 +4,10 @@ import type { PlanningSchedule } from '../../dispatch/board-schedule';
 import { propose, proposeWithSidecar } from '../../matching/propose';
 import { validatePlan } from '../../matching/validate';
 import {
-  jobOverrunPayloadSchema, operationalEventSchema, technicianUnavailablePayloadSchema, urgentJobPayloadSchema,
+  jobOverrunPayloadSchema, operationalEventSchema, technicianUnavailablePayloadSchema, unavailabilityIssue,
+  urgentJobPayloadSchema,
 } from '../../shared/contracts/events';
+import { applyDisruption, parseUnavailability, unavailabilityOnDay } from '../../matching/disruption';
 import { planValidationSchema } from '../../shared/contracts/propose';
 import type {
   BoardSchedule, CandidatePlan, OperationalEvent, PlanValidation, ProposeInput, ProposeOutput,
@@ -87,8 +89,14 @@ export function createUrgentTools(
       }
       if ((expectedSnapshotId && snapshot.id !== expectedSnapshotId) ||
           (event.sourceSnapshotId && snapshot.id !== event.sourceSnapshotId)) throw new AgentError('STALE_SNAPSHOT');
-      const schedule = await buildBoardSchedule(db);
-      if (schedule.snapshotId !== snapshot.id) throw new AgentError('STALE_SNAPSHOT');
+      const board = await buildBoardSchedule(db);
+      if (board.snapshotId !== snapshot.id) throw new AgentError('STALE_SNAPSHOT');
+      const unavailability = parseUnavailability(event);
+      if (unavailability && (unavailabilityIssue(unavailability) || !unavailabilityOnDay(unavailability, board.date))) {
+        throw new AgentError('INVALID_EVENT_PAYLOAD');
+      }
+      // The board once the event has happened: both engines and the validator plan on this.
+      const schedule = applyDisruption(board, event);
       const job = ids.jobId ? schedule.jobs.find((row) => row.id === ids.jobId) : undefined;
       if (ids.jobId && !job) throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
       if (ids.technicianId && !schedule.technicians.some((row) => row.id === ids.technicianId)) {
