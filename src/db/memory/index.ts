@@ -1,4 +1,4 @@
-import { EASTWIND } from '../../shared/fixtures/eastwind';
+import { EASTWIND, type Scenario } from '../../shared/fixtures/eastwind';
 import { emptyPlanMetrics } from '../../shared/types/domain';
 import type {
   AppUser,
@@ -52,8 +52,16 @@ export class InMemoryDatabase implements IDatabase {
   private candidatePlansMap = new Map<string, CandidatePlan>();
   private idCounter = 1;
 
-  constructor() {
-    this.hydrateEastwind();
+  /**
+   * What a reset restores. A builder rather than data, so a scenario dated
+   * "today" is re-dated by every reset. Defaults to the fixed Eastwind fixture
+   * the tests are written against.
+   */
+  private readonly scenario: () => Scenario;
+
+  constructor(options: { scenario?: () => Scenario } = {}) {
+    this.scenario = options.scenario ?? (() => EASTWIND);
+    this.hydrate();
   }
 
   private generateId(prefix: string): string {
@@ -87,29 +95,30 @@ export class InMemoryDatabase implements IDatabase {
     this.candidatePlansMap.clear();
   }
 
-  private hydrateEastwind(): void {
+  private hydrate(): void {
+    const data = this.scenario();
     this.clearAll();
-    EASTWIND.users.forEach((u) => this.usersMap.set(u.id, u));
-    EASTWIND.technicians.forEach((t) => this.techniciansMap.set(t.id, t));
-    EASTWIND.certs.forEach((c) => this.certsMap.set(c.id, c));
-    EASTWIND.shifts.forEach((s) => this.shiftsMap.set(`${s.technicianId}_${s.shiftDate}`, s));
-    EASTWIND.customers.forEach((c) => this.customersMap.set(c.id, c));
-    EASTWIND.sites.forEach((s) => this.sitesMap.set(s.id, s));
-    EASTWIND.jobTypes.forEach((j) => this.jobTypesMap.set(j.id, j));
-    EASTWIND.jobTypeCerts.forEach((j) => this.jobTypeCertsMap.set(j.id, j));
-    EASTWIND.jobs.forEach((j) => this.jobsMap.set(j.id, j));
-    EASTWIND.jobRequirements.forEach((j) => this.jobRequirementsMap.set(j.id, j));
-    EASTWIND.assignments.forEach((a) => this.assignmentsMap.set(a.id, a));
-    EASTWIND.travel.forEach((t) => this.travelMatrixMap.set(`${t.fromCluster}_${t.toCluster}`, t));
-    this.boardSnapshotRows = [EASTWIND.snapshot];
+    data.users.forEach((u) => this.usersMap.set(u.id, u));
+    data.technicians.forEach((t) => this.techniciansMap.set(t.id, t));
+    data.certs.forEach((c) => this.certsMap.set(c.id, c));
+    data.shifts.forEach((s) => this.shiftsMap.set(`${s.technicianId}_${s.shiftDate}`, s));
+    data.customers.forEach((c) => this.customersMap.set(c.id, c));
+    data.sites.forEach((s) => this.sitesMap.set(s.id, s));
+    data.jobTypes.forEach((j) => this.jobTypesMap.set(j.id, j));
+    data.jobTypeCerts.forEach((j) => this.jobTypeCertsMap.set(j.id, j));
+    data.jobs.forEach((j) => this.jobsMap.set(j.id, j));
+    data.jobRequirements.forEach((j) => this.jobRequirementsMap.set(j.id, j));
+    data.assignments.forEach((a) => this.assignmentsMap.set(a.id, a));
+    data.travel.forEach((t) => this.travelMatrixMap.set(`${t.fromCluster}_${t.toCluster}`, t));
+    this.boardSnapshotRows = [data.snapshot];
   }
 
   public async reset(): Promise<void> {
-    this.hydrateEastwind();
+    this.hydrate();
   }
 
   public async seed(): Promise<void> {
-    this.hydrateEastwind();
+    this.hydrate();
   }
 
   users = {

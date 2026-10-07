@@ -482,7 +482,10 @@ export interface DeskJobRow {
 }
 
 export interface DeskBoard {
+  /** The day shown. */
   date: string;
+  /** The board's own day: what disruptions plan against. Differs from `date` when viewing ahead. */
+  today?: string;
   snapshot: BoardSnapshot;
   technicians: DeskTechnicianRow[];
   jobs: DeskJobRow[];

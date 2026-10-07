@@ -24,6 +24,7 @@ import {
 import { BorderBeam, LiveDot, NumberTicker, ShimmerText } from '../../_components/fx';
 import { PROFILE_COPY, eventStatusCopy } from '../../_components/copy';
 import { cn } from '../../_components/lib/utils';
+import { addDays } from '../../../shared/config/demo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../_components/ui/select';
 import { Badge } from '../../_components/ui/badge';
 import { Button } from '../../_components/ui/button';
@@ -131,14 +132,18 @@ export default function DeskPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Which day is on screen. Undefined is the board's own day, the one
+  // disruptions plan against; any other day is a read-only look ahead.
+  const [viewDate, setViewDate] = useState<string | undefined>(undefined);
+
   const load = useCallback(async () => {
     setLoadError(null);
     try {
-      setBoard(await deskApi.getBoard());
+      setBoard(await deskApi.getBoard(viewDate));
     } catch (e) {
       setLoadError(e instanceof DeskApiError ? e.message : 'Could not load the board.');
     }
-  }, []);
+  }, [viewDate]);
 
   useEffect(() => {
     void load();
@@ -146,7 +151,7 @@ export default function DeskPage() {
 
   const simulate = useCallback(
     async (disruptionKey: string, profile: PlanProfile = priority) => {
-      if (!board) return;
+      if (!board || (board.today && board.date !== board.today)) return;
       setBusy(true);
       setPlanError(null);
       setProposal(null);
@@ -189,6 +194,7 @@ export default function DeskPage() {
     setCardOpen(false);
     setFeed([]);
     setCurrentEventId(undefined);
+    setViewDate(undefined);
     try {
       await deskApi.reset();
       await load();
@@ -244,6 +250,8 @@ export default function DeskPage() {
       ? (lastBody.payload as { technicianId?: string }).technicianId
       : undefined;
   const unassigned = board.jobs.filter((j) => !j.technician).length;
+  const today = board.today;
+  const lookingAhead = Boolean(today) && board.date !== today;
   const incoming = lastAttempt ? findDisruption(lastAttempt.disruptionKey) : undefined;
   const headerStatus: { label: string; tone: 'warning' | 'success' } =
     busy && incoming && !proposal
@@ -585,7 +593,8 @@ export default function DeskPage() {
               >
                 <Simulator
                   busy={busy}
-                  disabled={Boolean(proposal) && decision === null}
+                  disabled={lookingAhead || (Boolean(proposal) && decision === null)}
+                  disabledNote={lookingAhead ? 'Switch back to today to send events.' : undefined}
                   onSimulate={(k) => void simulate(k)}
                   onReset={() => void reset()}
                 />
@@ -612,7 +621,9 @@ export default function DeskPage() {
             onFocusTech={setListHoverTechId}
             onPinTech={togglePin}
             onOpenJob={pending ? () => setCardOpen(true) : undefined}
-            onFindTechnician={busy || pending ? undefined : (row) => void simulate(disruptionForJob(row).key)}
+            onFindTechnician={
+              busy || pending || lookingAhead ? undefined : (row) => void simulate(disruptionForJob(row).key)
+            }
           />
         </aside>
       </div>
@@ -621,7 +632,28 @@ export default function DeskPage() {
       <footer className="z-20 flex items-center gap-1 overflow-x-auto border-t bg-background px-2 text-xs whitespace-nowrap [scrollbar-width:none]">
         <span className="flex items-center gap-1.5 px-2 text-muted-foreground">
           <Clock className="size-3.5" />
-          <span className="font-medium text-foreground">{formatDay(board.date)}</span>
+          {today ? (
+            <span role="group" aria-label="Day shown" className="flex items-center rounded-md border p-0.5">
+              {[today, addDays(today, 1)].map((day, i) => (
+                <button
+                  key={day}
+                  type="button"
+                  aria-pressed={board.date === day}
+                  disabled={busy || (pending && day !== today)}
+                  onClick={() => setViewDate(day === today ? undefined : day)}
+                  className={cn(
+                    'rounded px-2 py-0.5 font-medium transition-colors disabled:opacity-50',
+                    board.date === day ? 'bg-muted text-foreground' : 'hover:text-foreground',
+                  )}
+                >
+                  {i === 0 ? 'Today' : 'Tomorrow'} · {formatDay(day)}
+                </button>
+              ))}
+            </span>
+          ) : (
+            <span className="font-medium text-foreground">{formatDay(board.date)}</span>
+          )}
+          {lookingAhead ? <Badge variant="outline">Looking ahead · read only</Badge> : null}
         </span>
         <span className="px-2 text-muted-foreground">
           Schedule version{' '}

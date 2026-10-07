@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CandidatePlan, DeskBoard, DeskJobRow } from '../../shared/types/domain';
-import { SITE_COORDS, minutesOfDay } from './geo';
+import { CLUSTER_COORDS, MAP_BOUNDS, SITE_COORDS, minutesOfDay, techColor } from './geo';
+import { buildScenario } from '../../shared/fixtures/scenario';
 import { buildScheduleView } from './schedule-view';
 import { EASTWIND } from '../../shared/fixtures/eastwind';
 
@@ -81,5 +82,23 @@ describe('SITE_COORDS', () => {
   it('has a pin for every Eastwind site', () => {
     const missing = EASTWIND.sites.filter((s) => !SITE_COORDS[s.postalCode]).map((s) => s.postalCode);
     expect(missing).toEqual([]);
+  });
+
+  it('has a pin for every finals site and a start point for every cluster', () => {
+    const finals = buildScenario('2026-10-20');
+    expect(finals.sites.filter((s) => !SITE_COORDS[s.postalCode]).map((s) => s.postalCode)).toEqual([]);
+    const clusters = new Set([...finals.sites.map((s) => s.estateCluster), ...finals.technicians.map((t) => t.currentCluster)]);
+    expect([...clusters].filter((c) => !c || !CLUSTER_COORDS[c])).toEqual([]);
+    for (const c of Object.values(SITE_COORDS)) {
+      expect(c.lat).toBeGreaterThan(MAP_BOUNDS.south);
+      expect(c.lat).toBeLessThan(MAP_BOUNDS.north);
+      expect(c.lng).toBeGreaterThan(MAP_BOUNDS.west);
+      expect(c.lng).toBeLessThan(MAP_BOUNDS.east);
+    }
+  });
+
+  it('gives each of the fifteen technicians their own colour', () => {
+    const ids = buildScenario('2026-10-20').technicians.map((t) => t.id);
+    expect(new Set(ids.map((id) => techColor(ids, id))).size).toBe(ids.length);
   });
 });

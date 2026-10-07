@@ -1,4 +1,12 @@
-export { EASTWIND_DATE, EASTWIND_TZ, SNAPSHOT_V1_ID } from './demo';
+export {
+  EASTWIND_DATE,
+  EASTWIND_TZ,
+  SNAPSHOT_V1_ID,
+  addDays,
+  isIsoDate,
+  singaporeToday,
+  type ScenarioName,
+} from './demo';
 export {
   COMMIT_REJECTIONS,
   EXCLUSION_REASONS,

@@ -589,3 +589,6 @@ export const EASTWIND = {
   assignments,
   travel: buildTravel(),
 };
+
+/** The shape every seed takes: the Eastwind fixture and the finals scenario alike. */
+export type Scenario = typeof EASTWIND;

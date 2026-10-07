@@ -13,11 +13,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 export function Simulator({
   busy,
   disabled,
+  disabledNote = 'The coordinator has one event to handle first.',
   onSimulate,
   onReset,
 }: {
   busy: boolean;
   disabled: boolean;
+  /** Why sending is off right now. */
+  disabledNote?: string;
   onSimulate: (disruptionKey: string) => void;
   onReset: () => void;
 }) {
@@ -64,7 +67,7 @@ export function Simulator({
         {busy ? 'Sending…' : 'Send to the coordinator'}
       </Button>
       {disabled && !busy ? (
-        <p className="text-xs text-muted-foreground">The coordinator has one event to handle first.</p>
+        <p className="text-xs text-muted-foreground">{disabledNote}</p>
       ) : null}
 
       <Button variant="ghost" size="sm" onClick={onReset} disabled={busy} className="w-full text-muted-foreground">

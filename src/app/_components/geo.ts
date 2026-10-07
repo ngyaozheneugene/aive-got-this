@@ -23,6 +23,36 @@ export const SITE_COORDS: Record<string, LatLng> = {
   '609601': { lat: 1.325230, lng: 103.748957 }, // International Business Park
   '120440': { lat: 1.316232, lng: 103.763939 }, // Clementi Ave 3
   '048619': { lat: 1.281085, lng: 103.847820 }, // Telok Ayer St
+  // Finals board (src/shared/fixtures/scenario.ts). Placed by hand at the
+  // street each site names, to roughly street accuracy: OneMap's search rate
+  // limit stopped a scripted pass. Display only, like everything in this file.
+  '018983': { lat: 1.279900, lng: 103.854300 }, // 8 Marina Blvd
+  '058357': { lat: 1.283600, lng: 103.844500 }, // Pagoda St
+  '068809': { lat: 1.276600, lng: 103.847800 }, // Shenton Way
+  '098585': { lat: 1.264400, lng: 103.822200 }, // 1 HarbourFront Walk
+  '150123': { lat: 1.285300, lng: 103.809000 }, // Bukit Merah View
+  '168732': { lat: 1.284600, lng: 103.831700 }, // Seng Poh Rd
+  '099253': { lat: 1.270800, lng: 103.816800 }, // Telok Blangah Rd
+  '310123': { lat: 1.338300, lng: 103.845800 }, // Toa Payoh Lor 1
+  '307683': { lat: 1.320400, lng: 103.843800 }, // Thomson Rd, Novena
+  '570123': { lat: 1.347400, lng: 103.852600 }, // Bishan St 13
+  '570456': { lat: 1.359200, lng: 103.846200 }, // Bishan St 22
+  '518123': { lat: 1.374500, lng: 103.949300 }, // Pasir Ris Rd
+  '520123': { lat: 1.344600, lng: 103.953200 }, // Simei St 1
+  '519456': { lat: 1.378000, lng: 103.942000 }, // Pasir Ris Dr 3
+  '521789': { lat: 1.356700, lng: 103.951200 }, // Tampines St 21
+  '467360': { lat: 1.324800, lng: 103.929300 }, // New Upper Changi Rd
+  '530123': { lat: 1.355400, lng: 103.888800 }, // Hougang Ave 1
+  '545078': { lat: 1.383600, lng: 103.891500 }, // Compassvale St
+  '828123': { lat: 1.402200, lng: 103.905600 }, // Punggol Field
+  '538456': { lat: 1.370000, lng: 103.892000 }, // Hougang St 51
+  '540789': { lat: 1.391700, lng: 103.899600 }, // Sengkang East Way
+  '738099': { lat: 1.436000, lng: 103.786300 }, // Woodlands Square
+  '730123': { lat: 1.431400, lng: 103.774500 }, // Woodlands Dr 14
+  '769098': { lat: 1.430700, lng: 103.844300 }, // Yishun Ave 11
+  '608549': { lat: 1.333100, lng: 103.742200 }, // Jurong Gateway Rd
+  '640789': { lat: 1.339800, lng: 103.687800 }, // Jurong West St 91
+  '129588': { lat: 1.308000, lng: 103.772000 }, // Clementi Rd
 };
 
 /** Where a technician starts the day, by the cluster the backend reports. */
@@ -33,6 +63,8 @@ export const CLUSTER_COORDS: Record<string, LatLng> = {
   north: { lat: 1.4185, lng: 103.8395 },
   bedok: { lat: 1.3190, lng: 103.9440 },
   northeast: { lat: 1.3868, lng: 103.8914 },
+  south: { lat: 1.2760, lng: 103.8200 },
+  central: { lat: 1.3420, lng: 103.8480 },
 };
 
 /** Map window: all of the island the Eastwind day touches, with a margin. */
@@ -63,7 +95,13 @@ export function clock(minutes: number): string {
 }
 
 /** One colour per technician, stable across the timeline and the map. */
-const TECH_PALETTE = ['#3b82f6', '#14b8a6', '#a855f7', '#f59e0b', '#ec4899', '#22c55e'];
+// Fifteen hues, one per technician on the finals board. Red is kept for
+// unassigned work, so nothing here is close to #ef4444.
+const TECH_PALETTE = [
+  '#3b82f6', '#14b8a6', '#a855f7', '#f59e0b', '#ec4899',
+  '#22c55e', '#06b6d4', '#f97316', '#6366f1', '#84cc16',
+  '#d946ef', '#eab308', '#0ea5e9', '#10b981', '#c084fc',
+];
 
 export function techColor(technicianIds: string[], technicianId: string | undefined): string {
   if (!technicianId) return '#ef4444';
