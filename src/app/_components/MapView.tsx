@@ -7,7 +7,7 @@ import L, { type LatLngBoundsExpression, type LatLngTuple } from 'leaflet';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import type { CandidatePlan, DeskBoard, DeskJobRow } from '../../shared/types/domain';
-import { CLUSTER_COORDS, MAP_BOUNDS, SITE_COORDS, TILE_ATTRIBUTION, TILE_URL, clock, techColor } from './geo';
+import { CLUSTER_COORDS, MAP_BOUNDS, TILE_ATTRIBUTION, TILE_URL, clock, siteCoords, techColor } from './geo';
 import { buildScheduleView } from './schedule-view';
 import { urgent as URGENT, warn } from './tokens';
 
@@ -23,7 +23,7 @@ const LIMIT: LatLngBoundsExpression = [
 ];
 
 function sitePoint(row: DeskJobRow): LatLngTuple | null {
-  const c = SITE_COORDS[row.site.postalCode];
+  const c = siteCoords(row.site.postalCode, row.site.estateCluster);
   return c ? [c.lat, c.lng] : null;
 }
 

@@ -52,7 +52,7 @@ v0.4 proposal doc is historical. Do not implement it.
 ## Branches and APIs
 
 - Branch: `member-N/<short-topic>` off `main`.
-- Desk APIs: `/api/schedule/current`, `/api/events`, `/api/proposals/{id}`, decision, commit, audit, `/api/demo/reset`.
+- Desk APIs: `/api/schedule/current`, `/api/events`, `/api/proposals/{id}`, decision, commit, audit, `/api/demo/reset`, `/api/jobs` (booking, ADR 006), `/api/job-types`.
 - Do not recreate `src/app/api/intake|coordinator|webhooks`.
 - Optimizer `POST /propose` is internal. Browser does not call it.
 

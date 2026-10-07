@@ -1,7 +1,7 @@
 'use client';
 
-import { ChevronRight, Clock, Lock, Search, UserX } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ChevronRight, Clock, Lock, Plus, Search, UserX } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CandidatePlan, DeskBoard, DeskJobRow, Shift } from '../../shared/types/domain';
 import type { Availability } from './disruptions';
 import { clock, minutesOfDay, techColor } from './geo';
@@ -26,6 +26,8 @@ export function TechList({
   onFindTechnician,
   onMarkUnavailable,
   onReportLate,
+  onNewJob,
+  newJobForm,
 }: {
   board: DeskBoard;
   plan?: CandidatePlan;
@@ -42,6 +44,10 @@ export function TechList({
   onMarkUnavailable?: (technicianId: string, availability: Availability) => void;
   /** Report a booked job running late; absent when reporting is not possible. */
   onReportLate?: (row: DeskJobRow, minutes: number) => void;
+  /** Open the new-job form; absent when booking is not possible. */
+  onNewJob?: () => void;
+  /** The open new-job form, shown above the waiting jobs. */
+  newJobForm?: ReactNode;
 }) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -94,7 +100,23 @@ export function TechList({
       </label>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <SectionHead title="Needs a technician" note={waiting.length === 0 ? 'None' : `${waiting.length} job${waiting.length === 1 ? '' : 's'}`} />
+        <SectionHead
+          title="Needs a technician"
+          note={waiting.length === 0 ? 'None' : `${waiting.length} job${waiting.length === 1 ? '' : 's'}`}
+          action={
+            onNewJob && !newJobForm ? (
+              <button
+                type="button"
+                onClick={onNewJob}
+                className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
+              >
+                <Plus className="size-3" />
+                New job
+              </button>
+            ) : null
+          }
+        />
+        {newJobForm}
         {shownWaiting.length === 0 ? (
           <p className="border-b px-3.5 py-3 text-xs text-muted-foreground">
             {waiting.length === 0 ? 'Every job has a technician.' : 'No matches.'}
@@ -245,11 +267,14 @@ export function TechList({
   );
 }
 
-function SectionHead({ title, note }: { title: string; note: string }) {
+function SectionHead({ title, note, action }: { title: string; note: string; action?: ReactNode }) {
   return (
-    <div className="sticky top-0 z-[1] flex items-baseline justify-between border-b bg-card px-3.5 py-2">
+    <div className="sticky top-0 z-[1] flex items-center justify-between gap-2 border-b bg-card px-3.5 py-2">
       <span className="text-xs font-semibold">{title}</span>
-      <span className="text-[11.5px] text-muted-foreground">{note}</span>
+      <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+        {note}
+        {action}
+      </span>
     </div>
   );
 }

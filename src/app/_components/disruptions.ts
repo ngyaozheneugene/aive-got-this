@@ -72,6 +72,22 @@ export function findDisruption(key: string): Disruption {
   return DISRUPTIONS[0]!;
 }
 
+/** A job just booked from the desk, sent for options straight away. */
+export function disruptionForBooking(row: DeskJobRow, jobTypeName: string, customerIsNew: boolean): Disruption {
+  const ws = row.job.windowStart?.slice(11, 16);
+  const we = row.job.windowEnd?.slice(11, 16);
+  const d: Disruption = {
+    key: `job:${row.job.id}`,
+    label: 'New job',
+    source: customerIsNew ? 'New customer' : 'Returning customer',
+    headline: `New job: ${row.customer.name}`,
+    detail: `${jobTypeName} at ${row.site.addressLine1}${ws && we ? `, ${ws}–${we}` : ''}.`,
+    body: { type: 'urgent_job', payload: { jobId: row.job.id } },
+  };
+  fromBoard.set(d.key, d);
+  return d;
+}
+
 /** When a technician is away: the rest of today, until a time, or from a time. */
 export type Availability = { mode: 'day' } | { mode: 'until' | 'from'; time: string };
 
