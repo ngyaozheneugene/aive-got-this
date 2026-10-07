@@ -238,7 +238,14 @@ export function measurePlan(
   }
 
   const placed = new Set(slots.map((s) => s.jobId));
-  const unassignedCount = jobsInPlay(event, live).filter((id) => !placed.has(id)).length;
+  const notPlaced = jobsInPlay(event, live).filter((id) => !placed.has(id));
+  const unassignedCount = notPlaced.length;
+  // A customer whose booking is left for a call is affected too. (An urgent
+  // job not yet placed had no booking to lose.)
+  for (const id of notPlaced.filter((j) => liveByJob.has(j))) {
+    const customer = jobs.get(id)?.customerId;
+    if (customer) customers.add(customer);
+  }
   const { workload, spreadPct } = workloadOf(slots, event, schedule);
 
   return {

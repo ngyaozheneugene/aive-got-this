@@ -46,11 +46,21 @@ export function parseUnavailability(event: OperationalEvent): TechnicianUnavaila
 }
 
 /**
- * The board as it is once the event has happened. Returns a copy; events
- * other than an unavailability leave it as it was (an overrun is applied by
- * the engines, which own how far the knock-on goes).
+ * The board as it is once the event has happened. Returns a copy. An
+ * unavailability cuts the shift; an overrun marks its job as under way (how
+ * far it runs on, and the knock-on, stay with the engines).
  */
 export function applyDisruption<S extends BoardSchedule>(schedule: S, event: OperationalEvent): S {
+  // A job reported running late has, by definition, started: it is the
+  // technician's to finish, and may run past its window. Without this only a
+  // job seeded as on site could overrun legally.
+  const overrunJobId = event.type === 'job_overrun' ? (event.normalizedPayload?.jobId as string | undefined) : undefined;
+  if (overrunJobId) {
+    return {
+      ...schedule,
+      jobs: (schedule.jobs ?? []).map((j) => (j.id === overrunJobId && j.status !== 'on_site' ? { ...j, status: 'on_site' as const } : j)),
+    };
+  }
   const payload = parseUnavailability(event);
   if (!payload || !schedule.shifts) return schedule;
   const shifts = schedule.shifts.map((s) =>

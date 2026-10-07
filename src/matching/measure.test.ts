@@ -91,10 +91,19 @@ describe('insertion fallbacks report measured numbers', () => {
     expect(holders(quiet)).toBe(1);
   });
 
-  it('technician_unavailable: no plan when nobody legal can cover, rather than an illegal one', () => {
+  it('technician_unavailable: covers what it legally can and leaves the rest for a call, never an illegal plan', () => {
     const out = propose({ event: event('technician_unavailable', { technicianId: 'tech_kumar' }, ['tech_kumar']), schedule, profile: 'sla_first' });
-    expect(out.plans).toEqual([]);
-    expect(out.message).toBe('no_legal_technician');
+    expect(out.plans).toHaveLength(2);
+    for (const plan of out.plans) {
+      expect(plan.validations.violations).toEqual([]);
+      // Nothing stays with Kumar; whatever nobody can take is named, not dropped silently.
+      expect(plan.assignments.filter((a) => a.technicianId === 'tech_kumar')).toEqual([]);
+      const left = plan.changeSet.filter((c) => c.action === 'unassign').map((c) => c.jobId);
+      const placed = plan.assignments.map((a) => a.jobId);
+      for (const job of ['job_kumar_1', 'job_kumar_2']) expect(placed.includes(job) || left.includes(job), job).toBe(true);
+      expect(plan.metrics.unassignedCount).toBe(left.length);
+      expect(left.length).toBeGreaterThan(0);
+    }
   });
 
   it('job_overrun 45: absorbed, nothing else moves', () => {

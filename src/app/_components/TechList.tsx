@@ -117,6 +117,26 @@ export function TechList({
           }
         />
         {newJobForm}
+        {view.leftForCall.map(({ row, previous }) => (
+          <div key={`call-${row.job.id}`} className={cn(ROW_GRID, 'items-start border-b bg-warning/[0.07] px-2.5 py-3')}>
+            <span className="col-start-2 mt-0.5 justify-self-center">
+              <Pin color="var(--warning)" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-semibold">{row.customer.name}</span>
+              <span className="block truncate text-[11.5px] text-muted-foreground">{row.site.addressLine1}</span>
+              {previous ? (
+                <span className="block font-mono text-[11px] text-muted-foreground">
+                  Was {clock(previous.start)}–{clock(previous.end)} with{' '}
+                  {board.technicians.find((t) => t.technician.id === previous.technicianId)?.technician.name ?? '—'}
+                </span>
+              ) : null}
+            </span>
+            <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-warning">
+              Preview: call customer
+            </span>
+          </div>
+        ))}
         {shownWaiting.length === 0 ? (
           <p className="border-b px-3.5 py-3 text-xs text-muted-foreground">
             {waiting.length === 0 ? 'Every job has a technician.' : 'No matches.'}

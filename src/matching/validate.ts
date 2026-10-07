@@ -8,6 +8,7 @@ import type {
 import { VALIDATION_VIOLATIONS } from '../shared/config/reason-codes';
 import { EASTWIND } from '../shared/fixtures/eastwind';
 import { withinShift } from './disruption';
+import { unassignedOf } from './unassigned';
 import { travelMinutes } from '../location/matrix';
 
 /**
@@ -46,6 +47,18 @@ export function validatePlan(plan: CandidatePlan, schedule: BoardSchedule): Plan
       violations.push(violation('DUPLICATE_ASSIGNMENT', slot.jobId));
     }
     assignedJobIds.add(slot.jobId);
+  }
+
+  // 1b. Partial coverage. A job left for a call cannot also be placed, and work
+  // already started cannot be taken off the technician doing it.
+  for (const left of unassignedOf(plan)) {
+    if (assignedJobIds.has(left.jobId)) {
+      violations.push(violation('DUPLICATE_ASSIGNMENT', `${left.jobId}:unassigned_and_placed`));
+    }
+    const job = (schedule.jobs || []).find((j) => j.id === left.jobId);
+    if (job && (job.lockState === 'in_progress' || job.status === 'on_site')) {
+      violations.push(violation('IN_PROGRESS_MOVED', `${left.jobId}:unassigned`));
+    }
   }
 
   // 2. Group slots by technician to evaluate time overlap, travel feasibility, and overtime

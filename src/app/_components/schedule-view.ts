@@ -4,6 +4,7 @@
 // only the slots it touches (urgent); a job it does not list is unchanged.
 import type { CandidatePlan, DeskBoard, DeskJobRow } from '../../shared/types/domain';
 import { minutesOfDay } from './geo';
+import { unassignedOf, type UnassignReason } from '../../matching/unassigned';
 
 export type SlotChange = 'unchanged' | 'added' | 'reassigned' | 'retimed';
 
@@ -23,6 +24,8 @@ export interface ScheduleView {
   slots: ScheduleSlot[];
   /** Jobs with no slot on the board or in the plan. */
   unassigned: DeskJobRow[];
+  /** Booked jobs the plan takes off the day for a call (partial coverage). */
+  leftForCall: Array<{ row: DeskJobRow; reason: UnassignReason; previous?: { technicianId: string; start: number; end: number } }>;
   /** Visible hour range, whole hours. */
   startHour: number;
   endHour: number;
@@ -74,6 +77,21 @@ export function buildScheduleView(board: DeskBoard, plan?: CandidatePlan): Sched
     });
   }
 
+  // Partial coverage: these come off the day; nobody does them under this plan.
+  const leftForCall: ScheduleView['leftForCall'] = [];
+  for (const left of plan ? unassignedOf(plan) : []) {
+    const row = rowByJob.get(left.jobId);
+    const before = base.get(left.jobId);
+    slots.delete(left.jobId);
+    if (row) {
+      leftForCall.push({
+        row,
+        reason: left.reason,
+        previous: before ? { technicianId: before.technicianId, start: before.start, end: before.end } : undefined,
+      });
+    }
+  }
+
   const all = [...slots.values()].sort((a, b) => a.start - b.start);
   const unassigned = board.jobs.filter((r) => !slots.has(r.job.id));
 
@@ -87,6 +105,7 @@ export function buildScheduleView(board: DeskBoard, plan?: CandidatePlan): Sched
   return {
     slots: all,
     unassigned,
+    leftForCall,
     startHour: Math.floor(lo / 60),
     endHour: Math.ceil(hi / 60),
   };

@@ -102,3 +102,29 @@ describe('SITE_COORDS', () => {
     expect(new Set(ids.map((id) => techColor(ids, id))).size).toBe(ids.length);
   });
 });
+
+describe('partial coverage on the desk', () => {
+  it('takes a job left for a call off the day and says why', async () => {
+    const { InMemoryDatabase } = await import('../../db/memory');
+    const { getCurrentBoard } = await import('../../dispatch/current-board');
+    const { describeLeftForCall } = await import('./copy');
+    const board = await getCurrentBoard(new InMemoryDatabase());
+    const live = board.jobs.filter((r) => r.assignment).map((r) => ({
+      jobId: r.job.id, technicianId: r.assignment!.technicianId, windowStart: r.assignment!.windowStart, windowEnd: r.assignment!.windowEnd,
+    }));
+    const plan = {
+      profile: 'sla_first',
+      assignments: live.filter((s) => s.jobId !== 'job_mei_sla'),
+      changeSet: [{ action: 'unassign', jobId: 'job_mei_sla', fromTechnicianId: 'tech_mei', reason: 'promised' }],
+    } as unknown as CandidatePlan;
+
+    const view = buildScheduleView(board, plan);
+    expect(view.slots.some((s) => s.jobId === 'job_mei_sla')).toBe(false);
+    expect(view.leftForCall).toEqual([
+      expect.objectContaining({ reason: 'promised', previous: { technicianId: 'tech_mei', start: 14 * 60, end: 16 * 60 } }),
+    ]);
+    expect(describeLeftForCall(board, plan)).toEqual([
+      'Call Northpoint Medical: 14:00–16:00 has no technician (its window was promised to Mei)',
+    ]);
+  });
+});

@@ -6,6 +6,7 @@
 
 import { checkCommit } from './commit-policy';
 import { parseUnavailability, unavailabilityPatch } from '../matching/disruption';
+import { unassignedOf } from '../matching/unassigned';
 import { nextSequence } from './audit-sequence';
 import { getCurrentBoard } from './current-board';
 import { isStaleSnapshotError, type IDatabase } from '../db/interface';
@@ -103,7 +104,10 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
       travelBeforeMinutes: row.assignment!.travelBeforeMinutes,
     }));
 
-  const slots = resultingSlots(liveSlots, plan.assignments);
+  // Partial coverage: jobs the plan leaves for a call come off the board.
+  const unassigned = unassignedOf(plan);
+  const leaving = new Set(unassigned.map((u) => u.jobId));
+  const slots = resultingSlots(liveSlots, plan.assignments).filter((s) => !leaving.has(s.jobId));
 
   // The snapshot is written first because assignment rows reference its id.
   // It carries the full resulting slot set, so G4's rollback has something to
@@ -155,6 +159,15 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
     applied.push(slot);
   }
 
+  // Their booking is cancelled, not reassigned, and the job waits again: it
+  // shows under "Needs a technician" until someone calls the customer.
+  for (const left of unassigned) {
+    for (const row of await db.assignments.getByJobId(left.jobId)) {
+      if (row.status === 'accepted' || row.status === 'offered') await db.assignments.supersede(row.id, 'cancelled');
+    }
+    await db.jobs.updateStatus(left.jobId, 'unassigned', input.actorId, 'desk', `partial_coverage:${left.reason}`);
+  }
+
   // An unavailability changes the technician's shift as well as their jobs, so
   // the next event plans around the cut day instead of handing work back.
   const event = await db.events.getById(proposal.eventId);
@@ -162,6 +175,13 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
   if (unavailability) {
     const shift = await db.shifts.getByTechAndDate(unavailability.technicianId, board.date);
     await db.shifts.patch(unavailability.technicianId, board.date, unavailabilityPatch(shift ?? undefined, unavailability));
+  }
+
+  // An overrun means the job is under way; record it, so later plans let it run past its window.
+  const overrunJobId = event?.type === 'job_overrun' ? (event.normalizedPayload?.jobId as string | undefined) : undefined;
+  if (overrunJobId) {
+    const job = await db.jobs.getById(overrunJobId);
+    if (job && job.status !== 'on_site') await db.jobs.updateStatus(overrunJobId, 'on_site', input.actorId, 'desk', 'job_overrun');
   }
 
   const committed = await db.proposals.updateStatus(proposal.id, 'COMMITTED', plan.id);
@@ -174,7 +194,7 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
     playbook: 'commit',
     stage: 'commit',
     toolCalls: [],
-    summary: `Committed plan ${plan.id} (${plan.profile}) as snapshot v${snapshot.version}. ${applied.length} assignment(s) written by ${input.actorId}.`,
+    summary: `Committed plan ${plan.id} (${plan.profile}) as snapshot v${snapshot.version}. ${applied.length} assignment(s) written${unassigned.length ? `, ${unassigned.length} job(s) left for a call` : ''} by ${input.actorId}.`,
     reasonCodes: [verdict.mode],
     result: 'committed',
     approvalId: approval?.id,
