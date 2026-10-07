@@ -55,6 +55,23 @@ export const SITE_COORDS: Record<string, LatLng> = {
   '129588': { lat: 1.308000, lng: 103.772000 }, // Clementi Rd
 };
 
+/**
+ * Where to pin a site: its own coordinates when we have them, otherwise near
+ * the centre of its cluster. A booked address has no hand-placed pin, so the
+ * offset, derived from the postal code, keeps two new jobs in one area apart
+ * and puts the same address in the same place every time.
+ */
+export function siteCoords(postalCode: string, cluster: string | undefined): LatLng | null {
+  const known = SITE_COORDS[postalCode];
+  if (known) return known;
+  const centre = cluster ? CLUSTER_COORDS[cluster] : undefined;
+  if (!centre) return null;
+  const n = Number(postalCode.slice(2)) || 0;
+  const angle = (n % 360) * (Math.PI / 180);
+  const radius = 0.004 + (n % 7) * 0.0015;
+  return { lat: centre.lat + radius * Math.sin(angle), lng: centre.lng + radius * Math.cos(angle) };
+}
+
 /** Where a technician starts the day, by the cluster the backend reports. */
 export const CLUSTER_COORDS: Record<string, LatLng> = {
   cbd: { lat: 1.2795, lng: 103.8385 },

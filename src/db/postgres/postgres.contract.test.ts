@@ -23,6 +23,8 @@ import { buildBoardSchedule } from '../../dispatch/board-schedule';
 import { getCurrentBoard } from '../../dispatch/current-board';
 import { commitPlan } from '../../dispatch/commit';
 import { recordDecision } from '../../dispatch/decision';
+import { createJob } from '../../dispatch/create-job';
+import { createJobBodySchema } from '../../shared/contracts/jobs';
 import { propose } from '../../matching/propose';
 import { EASTWIND, type Scenario } from '../../shared/fixtures/eastwind';
 import { buildScenario } from '../../shared/fixtures/scenario';
@@ -204,6 +206,32 @@ describe.skipIf(!enabled)('Postgres adapter', () => {
         return [until, leaves, sick, fresh].map((row) => strip(row as unknown as Record<string, unknown>));
       };
       expect(await steps(pg)).toEqual(await steps(mem));
+    });
+
+    it('books a new job the same way, and finds the returning customer', async () => {
+      const { pg, mem } = await pair(() => buildScenario(FINALS_DATE));
+      track(pg);
+      const body = createJobBodySchema.parse({
+        customerName: 'Lee Mei Ling', phone: '91234567', postalCode: '529536', address: 'Tampines Street 81',
+        jobTypeId: 'GAS_TOPUP', priority: 'urgent', windowStart: '14:00', windowEnd: '17:00', note: 'Not cooling.',
+      });
+      const strip = (row: object, ...keys: string[]) =>
+        Object.fromEntries(Object.entries(row).filter(([k]) => !['id', 'createdAt', 'updatedAt', ...keys].includes(k)));
+      const book = async (db: IDatabase) => {
+        const first = await createJob(db, body);
+        const again = await createJob(db, { ...body, windowStart: '09:00', windowEnd: '11:00' });
+        if (!first.ok || !again.ok) throw new Error('booking refused');
+        return {
+          job: strip(first.job, 'customerId', 'siteId'),
+          customer: strip(first.customer),
+          site: strip(first.site, 'customerId'),
+          requirement: strip((await db.jobRequirements.getByJobId(first.job.id))!, 'jobId'),
+          sameCustomer: again.customer.id === first.customer.id,
+          sameSite: again.site.id === first.site.id,
+          onBoard: (await getCurrentBoard(db)).jobs.some((r) => r.job.id === first.job.id),
+        };
+      };
+      expect(await book(pg)).toEqual(await book(mem));
     });
 
     it('rolls a transaction back when it throws', async () => {

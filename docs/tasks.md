@@ -192,7 +192,8 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
   - Fixed on the way: the urgent insertion fallback placed every candidate at the window opening without checking they were free, so a busy technician produced an `OVERLAP` plan. It now takes the earliest start in the window that fits (`propose.test.ts`).
   - Evidence: offline 296 passed; with OR-Tools 9.15 (`RUN_SIDECAR_ACCEPTANCE=1 RUN_SCHEDULER_ACCEPTANCE=1`) G-suite 36/36, including G-09: all three demo events plan legally on both profiles in ~2 s each, the profiles differ on every event, and the sick call still plans after either Raffles option is committed. Desk click-through: urgent job planned (25.7 s with the model) and committed to v2.
   - Demo outcomes on the finals board: Raffles: `sla_first` Jonah + Ravi's 13:30 Pasir Ris to Siti (24 min less driving), `minimal_disruption` Jonah, nobody else moves. Hafiz sick: Ben + Siti (gap 38%) vs Ben takes both (50%). Overrun 90: Ben takes the 11:00 vs Hafiz pushed to 11:08. The old rule "approve On-time first or the sick call fails" no longer applies; rewrite the rehearsal script under Q4.
-- [ ] F5 Postal code → travel cluster in `src/location/postal/`
+- [x] F5 Postal code → travel cluster in `src/location/postal/`
+  - 7 Oct: sector → URA district → cluster; agrees with all 51 seeded sites. [ADR 006](adr/006-booking-new-jobs.md).
 
 **Remove the restrictions**
 - [x] R2 Unavailable for any technician with `from`/`until`; overrun for any job and any minutes; actions from the board, not only the simulator
@@ -200,7 +201,9 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
   - Daniel is now a morning floater (jobs at 11:00 and 13:00): every technician was booked at 09:00, so no morning absence could be covered without moving other bookings. Original demo outcomes unchanged.
   - Evidence: offline 322 passed; real solver G-suite 41/41 (G-10: out until 14:00, leaving at 15:00, 20/150-minute overruns, committed absences respected by the next event); `test:pg` 13/13. Desk on Postgres: "Kumar leaving at 15:00" moved only his 15:30 to Jonah, committed to v2 with clock-out 15:00 stored and shown; a 50-minute overrun raised from the stop was absorbed.
   - The local optimizer container was refreshed with `docker cp` because Docker Hub is unreachable from this machine; rebuild it properly (`docker compose build optimizer`) when the network allows, and on the box at deploy.
-- [ ] R1 New job intake (`urgent_job` accepts `newJob`), find-or-create customer/site; desk form; ADR 005
+- [x] R1 New job intake, find-or-create customer/site; desk form; ADR
+  - 7 Oct: [ADR 006](adr/006-booking-new-jobs.md). Booking is its own step rather than a new `urgent_job` payload: `POST /api/jobs` creates an unassigned job (customer found by phone, site by postal code and street, requirements from the job type, one transaction), then the desk raises the usual `urgent_job`. Event contract and agent unchanged. "New job" form on the desk shows the detected area as you type; "Book and find options" books and plans in one go. Booked addresses get a map pin near their cluster.
+  - Evidence: offline 336 passed; `test:pg` 14/14 (booking parity); real solver G-suite 45/45 (G-11: four bookings across the island and four job types). Desk on Postgres: booked a new customer's water leak in Tampines, planned (Siti 13:00–14:30), committed to v2.
 - [ ] R3 Partial coverage: plans may leave jobs unassigned with a reason; `unassignedJobs` metric; commit can un-assign; "Needs attention" lane
 - [ ] R5 Several events at once; stale proposal offers one-click Replan
 

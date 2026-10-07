@@ -4,12 +4,17 @@ import type {
   Approval,
   BoardSnapshot,
   CandidatePlan,
+  Customer,
   DecisionLog,
   DeskBoard,
+  Job,
+  JobType,
   OperationalEvent,
   PlanProfile,
   Proposal,
+  Site,
 } from '../../shared/types/domain';
+import type { CreateJobBody } from '../../shared/contracts/jobs';
 
 /** Backend refusals arrive as { error, detail? }. Surface both, never swallow. */
 export class DeskApiError extends Error {
@@ -66,6 +71,13 @@ export type EventBody =
 
 const ACTOR = 'desk_coordinator';
 
+export interface BookedJob {
+  job: Job;
+  customer: Customer;
+  site: Site;
+  customerIsNew: boolean;
+}
+
 export interface AuditResult {
   eventId: string;
   status: string;
@@ -78,6 +90,17 @@ export const deskApi = {
     request<DeskBoard>(`/api/schedule/current${date ? `?date=${encodeURIComponent(date)}` : ''}`),
 
   reset: () => request<unknown>('/api/demo/reset', { method: 'POST' }),
+
+  /** What can be booked, with the certificates each needs. */
+  jobTypes: () => request<Array<JobType & { certs: string[] }>>('/api/job-types'),
+
+  /** Book a new job. It lands unassigned; raise an urgent_job event to place it. */
+  createJob: (body: CreateJobBody) =>
+    request<BookedJob>('/api/jobs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
 
   createEvent: (body: EventBody, sourceSnapshotId?: string) =>
     request<OperationalEvent>('/api/events', {

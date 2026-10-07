@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CandidatePlan, DeskBoard, PlanProfile } from '../../../shared/types/domain';
+import type { CandidatePlan, DeskBoard, DeskJobRow, PlanProfile } from '../../../shared/types/domain';
 import {
   DeskApiError, deskApi, type PlanResult,
 } from '../../_components/desk-api';
@@ -14,8 +14,10 @@ import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import {
-  disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption,
+  disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption,
 } from '../../_components/disruptions';
+import { NewJobForm } from '../../_components/NewJobForm';
+import type { CreateJobBody } from '../../../shared/contracts/jobs';
 import { TechList } from '../../_components/TechList';
 import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
 import type { MapInsets } from '../../_components/MapView';
@@ -184,6 +186,26 @@ export default function DeskPage() {
     [board, priority],
   );
 
+  // Booking a call for a job that is not on the board: save it as waiting, then
+  // ask for options exactly as "Find a technician" would.
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const loadJobTypes = useCallback(() => deskApi.jobTypes(), []);
+  const bookJob = useCallback(
+    async (body: CreateJobBody, typeName: string): Promise<string | null> => {
+      try {
+        const booked = await deskApi.createJob(body);
+        setBookingOpen(false);
+        await load();
+        const row = { job: booked.job, customer: booked.customer, site: booked.site } as DeskJobRow;
+        void simulate(disruptionForBooking(row, typeName, booked.customerIsNew).key);
+        return null;
+      } catch (e) {
+        return e instanceof DeskApiError ? (e.detail ?? e.code) : 'Could not book the job.';
+      }
+    },
+    [load, simulate],
+  );
+
   const reset = useCallback(async () => {
     setBusy(true);
     setProposal(null);
@@ -197,6 +219,7 @@ export default function DeskPage() {
     setFeed([]);
     setCurrentEventId(undefined);
     setViewDate(undefined);
+    setBookingOpen(false);
     try {
       await deskApi.reset();
       await load();
@@ -639,6 +662,12 @@ export default function DeskPage() {
             }
             onReportLate={
               busy || pending || lookingAhead ? undefined : (row, minutes) => void simulate(disruptionForOverrun(row, minutes).key)
+            }
+            onNewJob={busy || pending || lookingAhead ? undefined : () => setBookingOpen(true)}
+            newJobForm={
+              bookingOpen && !lookingAhead ? (
+                <NewJobForm loadTypes={loadJobTypes} onBook={bookJob} onCancel={() => setBookingOpen(false)} />
+              ) : null
             }
           />
         </aside>
