@@ -1,6 +1,6 @@
-import { ArrowDown, ArrowUp, ChevronRight, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, PhoneCall, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react';
 import type { CandidatePlan, DeskBoard } from '../../shared/types/domain';
-import { METRIC_COPY, PROFILE_COPY, compareToOther, describeChanges, profileName, violationCopy, workloadNotes } from './copy';
+import { METRIC_COPY, PROFILE_COPY, compareToOther, describeChanges, describeLeftForCall, profileName, violationCopy, workloadNotes } from './copy';
 import { cn } from './lib/utils';
 import { Badge } from './ui/badge';
 
@@ -29,6 +29,7 @@ export function PlanCard({
   const valid = plan.validations.ok && plan.status !== 'REJECTED';
   const copy = PROFILE_COPY[plan.profile];
   const changes = describeChanges(board, plan);
+  const calls = describeLeftForCall(board, plan);
   const vs = other ? compareToOther(plan, other) : { better: [], worse: [] };
 
   return (
@@ -77,6 +78,21 @@ export function PlanCard({
               </li>
             ))}
           </ul>
+        ) : null}
+
+        {calls.length > 0 ? (
+          <div className="grid gap-1 rounded-md border border-warning/40 bg-warning/10 p-2.5 text-sm">
+            <span className="flex items-center gap-1.5 font-semibold text-warning">
+              <PhoneCall className="size-3.5" />
+              {calls.length === 1 ? 'One job is left for a call' : `${calls.length} jobs are left for a call`}
+            </span>
+            <ul className="grid gap-1">
+              {calls.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+            <span className="text-xs text-muted-foreground">Nobody can legally take it today. Approving cancels the booking so you can rebook it with the customer.</span>
+          </div>
         ) : null}
 
         {workloadNotes(board, plan).map((n) => (

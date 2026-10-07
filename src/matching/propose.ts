@@ -3,6 +3,7 @@ import { PLAN_WEIGHTS } from '../shared/config/weights';
 import { SOLVER_TIMEOUT_MS } from '../shared/config/timeouts';
 import { EASTWIND_DATE } from '../shared/config/demo';
 import { applyDisruption, withinShift } from './disruption';
+import { unassignChange, type UnassignedJob } from './unassigned';
 import { EASTWIND } from '../shared/fixtures/eastwind';
 import type {
   Assignment,
@@ -423,16 +424,29 @@ function unavailableFallback(
     .sort((a, b) => Date.parse(a.windowStart ?? '') - Date.parse(b.windowStart ?? ''))
     .map((s) => s.jobId);
 
+  // Partial coverage: a job nobody can legally take leaves the day and is
+  // named for a call, rather than costing the coordinator every other move.
+  const left: UnassignedJob[] = [];
   for (const jobId of toReplan) {
     const job = jobs.get(jobId);
     if (!job) return null;
+    // A promised window belongs to this technician; it is not ours to hand on.
+    if (job.lockState === 'promised') {
+      left.push({ jobId, fromTechnicianId: unavailableTechId, reason: 'promised' });
+      slots = slots.filter((s) => s.jobId !== jobId);
+      continue;
+    }
     const eligible = stageAEligible(job, schedule, unavailableTechId, certs, shifts, requirements);
     const next = reassignSlot(input, profile, slots, slots.findIndex((s) => s.jobId === jobId), eligible);
-    if (!next) return null;
+    if (!next) {
+      left.push({ jobId, fromTechnicianId: unavailableTechId, reason: eligible.length ? 'no_time' : 'no_legal_technician' });
+      slots = slots.filter((s) => s.jobId !== jobId);
+      continue;
+    }
     slots = next;
   }
 
-  return finishFallbackPlan(input, profile, slots, `unavailable_${unavailableTechId}`, []);
+  return finishFallbackPlan(input, profile, slots, `unavailable_${unavailableTechId}`, left.map(unassignChange));
 }
 
 /**
@@ -465,6 +479,7 @@ function overrunFallback(
   const owner = overrun.technicianId;
   slots[overrunIndex] = { ...overrun, windowEnd: toSgIso(Date.parse(overrun.windowEnd) + overrunMinutes * 60000) };
 
+  const left: UnassignedJob[] = [];
   let cursor = Date.parse(slots[overrunIndex]!.windowEnd!);
   let cursorCluster = clusterForJob(jobs.get(overrunJobId)!, sites);
   const later = slots
@@ -503,7 +518,12 @@ function overrunFallback(
       profile === 'sla_first'
         ? reassign() ?? (retimeOk ? retime() : null)
         : (retimeOk ? retime() : null) ?? reassign();
-    if (!next) return null;
+    if (!next) {
+      // Neither later nor someone else: leave it for a call (partial coverage).
+      left.push({ jobId: booked.jobId, fromTechnicianId: owner, reason: job.lockState === 'promised' ? 'promised' : 'no_time' });
+      slots = slots.filter((s) => s.jobId !== booked.jobId);
+      continue;
+    }
     slots = next;
     const kept = slots[index]!;
     if (kept.technicianId === owner) {
@@ -514,6 +534,7 @@ function overrunFallback(
 
   return finishFallbackPlan(input, profile, slots, `overrun_${overrunJobId}`, [
     { action: 'extend_duration', jobId: overrunJobId, overrunMinutes },
+    ...left.map(unassignChange),
   ]);
 }
 

@@ -19,6 +19,7 @@ export const RISK_REASONS = [
   'new_assignment',
   'overtime',
   'jobs_moved',
+  'unassigned_jobs',
 ] as const;
 
 export type RiskReason = (typeof RISK_REASONS)[number];
@@ -109,6 +110,8 @@ export function classifyProposalRisk(input: RiskInput): RiskClassification {
       const action = typeof change.action === 'string' ? change.action : '';
       if (action === 'reassign') reasons.add('reassignment');
       if (action === 'assign') reasons.add('new_assignment');
+      // Partial coverage: a customer loses their booking until someone calls.
+      if (action === 'unassign') reasons.add('unassigned_jobs');
     }
   }
 

@@ -87,6 +87,25 @@ export function describeChanges(board: DeskBoard, plan: CandidatePlan): string[]
     });
 }
 
+const CALL_REASON = {
+  promised: 'its window was promised to',
+  no_legal_technician: 'nobody else is qualified to take it from',
+  no_time: 'nobody qualified has time for it instead of',
+} as const;
+
+/**
+ * Jobs the plan leaves for a call (partial coverage), one sentence each:
+ * "Call Northpoint Medical: 14:00–15:30 has no technician (its window was promised to Mei)".
+ */
+export function describeLeftForCall(board: DeskBoard, plan: CandidatePlan): string[] {
+  const names = new Map(board.technicians.map((t) => [t.technician.id, t.technician.name]));
+  return buildScheduleView(board, plan).leftForCall.map(({ row, reason, previous }) => {
+    const when = previous ? `${clock(previous.start)}–${clock(previous.end)}` : 'their booking';
+    const who = previous ? names.get(previous.technicianId) ?? 'their technician' : 'their technician';
+    return `Call ${row.customer.name}: ${when} has no technician (${CALL_REASON[reason]} ${who})`;
+  });
+}
+
 /**
  * How busy each technician the plan gives new work to already is, from the
  * board's stored load: "Jonah already has 90 min of work booked today".

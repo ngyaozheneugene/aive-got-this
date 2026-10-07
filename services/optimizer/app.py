@@ -67,6 +67,11 @@ PRIORITY_WEIGHT = {"urgent": 5, "on_demand": 2, "callback": 2, "when_available":
 # A booked job starting sooner than this after the board's "now" is frozen:
 # its technician may already be driving to it.
 FROZEN_HORIZON_MINUTES = 60
+
+# Leaving a booked job without a technician (partial coverage) costs more than
+# any legal arrangement could, so the solver only does it when nothing legal
+# exists: the plan covers what it can and names the rest for a call.
+UNASSIGN_COST = 1_000_000
 # Cost of handing a booked job to someone else while rebalancing around an
 # urgent job, in sla_first units (5 per drive minute). A move has to save about
 # 12 minutes of driving, or even out the day, to be worth a customer's update.
@@ -258,6 +263,12 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
     for job_id in in_scope:
         fixed.pop(job_id, None)
 
+    # Booked jobs this event put in play may be left unassigned when nobody can
+    # legally take them. The urgent job itself may not: a plan that does not
+    # place it is no plan.
+    droppable = {j for j in in_scope if j in live and j not in rebalance} if event_type != "urgent_job" else set()
+    unassigned: Dict[str, str] = {}
+
     model = cp_model.CpModel()
     assign: Dict[Tuple[str, str], cp_model.IntVar] = {}
     start: Dict[str, cp_model.IntVar] = {}
@@ -265,6 +276,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
     window_open: Dict[str, int] = {}
     candidates_by_job: Dict[str, List[str]] = {}
     unplaceable: List[str] = []
+    drop: Dict[str, cp_model.IntVar] = {}
 
     for job_id in in_scope:
         job = jobs[job_id]
@@ -291,6 +303,10 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             candidates = [t for t in candidates if t == booked["tech"]]
         candidates_by_job[job_id] = candidates
         if not candidates:
+            if job_id in droppable:
+                promised = job.get("lockState") == "promised"
+                unassigned[job_id] = "promised" if promised else "no_legal_technician"
+                continue
             unplaceable.append(job_id)
             continue
         for tech_id in candidates:
@@ -303,10 +319,15 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             clock_out = _to_minutes(shift.get("clockOutAt"))
             if clock_out is not None:
                 model.Add(start[job_id] + dur <= clock_out).OnlyEnforceIf(chosen)
-        model.AddExactlyOne(assign[t, job_id] for t in candidates)
+        if job_id in droppable:
+            drop[job_id] = model.NewBoolVar(f"unassign_{job_id}")
+            model.AddExactlyOne([assign[t, job_id] for t in candidates] + [drop[job_id]])
+        else:
+            model.AddExactlyOne(assign[t, job_id] for t in candidates)
 
     if unplaceable:
         return _empty("no_legal_technician:" + ",".join(sorted(unplaceable)))
+    in_scope = [j for j in in_scope if j not in unassigned]
 
     # Each technician's day is a route: a circuit from their starting point
     # through every job they hold and back. An arc between two jobs is a real
@@ -446,6 +467,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
                 terms.append((REBALANCE_MOVE_COST if job_id in rebalance else 1) * chosen)
         if working:
             terms.append(BALANCE_WEIGHT[profile] * gap)
+        terms.extend(UNASSIGN_COST * flag for flag in drop.values())
         model.Minimize(sum(terms))
     else:
         objective_name = "least_knock_on"
@@ -478,6 +500,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
                 terms.append(weight * (start[job_id] - window_open[job_id]))
         if working:
             terms.append(BALANCE_WEIGHT[profile] * gap)
+        terms.extend(UNASSIGN_COST * flag for flag in drop.values())
         model.Minimize(sum(terms))
 
     solver = cp_model.CpSolver()
@@ -492,8 +515,14 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             return _empty("cp_sat_no_solution_in_time", timed_out=True)
         return _empty("cp_sat_infeasible")
 
+    for job_id, flag in drop.items():
+        if solver.BooleanValue(flag):
+            unassigned[job_id] = "promised" if jobs[job_id].get("lockState") == "promised" else "no_time"
+
     final: Dict[str, Tuple[str, int, int]] = {j: (s["tech"], s["start"], s["end"]) for j, s in fixed.items()}
     for job_id in in_scope:
+        if job_id in unassigned:
+            continue
         chosen_tech = next(t for (t, j), var in assign.items() if j == job_id and solver.BooleanValue(var))
         begins = solver.Value(start[job_id])
         final[job_id] = (chosen_tech, begins, begins + duration[job_id])
@@ -541,7 +570,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
     overtime = sum(max(0, minutes - int(techs[t].get("maxMinutesDay") or 480)) for t, minutes in work.items())
 
     moved_jobs = sorted(j for j in changed if j in in_scope)
-    touched = set(changed)
+    touched = set(changed) | set(unassigned)
     if overrun_job:
         touched.add(overrun_job)
     customers = {jobs[j].get("customerId") for j in touched if jobs[j].get("customerId")}
@@ -561,6 +590,14 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             "windowStart": _to_iso(date, b),
             "windowEnd": _to_iso(date, e),
         })
+    # Partial coverage: what nobody can take, and why, for the coordinator to call.
+    for j in sorted(unassigned):
+        change_set.append({
+            "action": "unassign",
+            "jobId": j,
+            "fromTechnicianId": live[j]["tech"],
+            "reason": unassigned[j],
+        })
 
     plan = {
         "id": f"plan_{profile}_ortools_{event.get('id', 'evt')}",
@@ -575,7 +612,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             "overtimeMinutes": overtime,
             "jobsMoved": len(moved_jobs),
             "customersAffected": len(customers),
-            "unassignedCount": 0,
+            "unassignedCount": len(unassigned),
         },
         # Fail closed. The TypeScript validator is the authority and overwrites
         # this; if anything ever skipped it, an unchecked plan must not pass.
