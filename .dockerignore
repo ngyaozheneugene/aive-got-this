@@ -8,6 +8,8 @@ evals
 infra
 seed
 db
+# The app applies these at startup (src/db/postgres/migrate.ts); the image copies them.
+!db/migrations
 *.md
 Dockerfile
 docker-compose.yml
