@@ -29,7 +29,7 @@ them resolved, and record the tested revision and evidence.
 | `src/app/` except `src/app/api/` | 4 Desk (Khant) | [`docs/team/member-4/README.md`](docs/team/member-4/README.md) |
 | `src/shared/`, `docs/adr/` | all | Breaking change needs a consuming-stream reviewer |
 
-Stay in your stream’s folders. Do not “helpfully” rewrite another stream.
+Finals round: one owner (Deen) across all streams. The table is now an architecture map, not ownership; the import rules under **Hard constraints** still hold.
 
 ## Hard constraints
 
@@ -39,7 +39,7 @@ Stay in your stream’s folders. Do not “helpfully” rewrite another stream.
 - Untrusted text stays in `*_raw` and is quoted to the model. Injection is data.
 - Two profiles: `sla_first` and `minimal_disruption`. Metrics are backend-owned.
 - OR-Tools sidecar is the product engine for all three events; urgent jobs may rebalance booked work around them (ADR 004). Insertion `propose()` is the 10 s fallback. Every plan is measured by `src/matching/measure.ts`, never by the engine that made it.
-- After Day 14: no new features. After Day 18: release-blocking fixes only.
+- Finals round (from 6 Oct 2026): features are back in scope, limited to the G6 list in `docs/tasks.md` and [`docs/finals-plan.md`](docs/finals-plan.md). Contract changes in `src/shared/` need an ADR.
 
 ## Do not build
 
