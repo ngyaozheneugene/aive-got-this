@@ -125,4 +125,12 @@ describe('editing the team', () => {
     const team = await listTeam(db);
     expect(team).toHaveLength(0);
   });
+
+  it('refuses a bulk import with a name already on the team or repeated, adding nobody', async () => {
+    const db = dayOne();
+    await createTechnician(db, aisha);
+    expect(await createTechniciansBulk(db, [ben, { ...aisha, name: ' AISHA ' }])).toMatchObject({ ok: false, code: 'duplicate_technicians', httpStatus: 409 });
+    expect(await createTechniciansBulk(db, [ben, { ...ben }])).toMatchObject({ ok: false, code: 'duplicate_technicians' });
+    expect((await listTeam(db)).map((t) => t.name)).toEqual(['Aisha']);
+  });
 });

@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  Database,
   Download,
   FileSpreadsheet,
   FileText,
@@ -18,21 +17,28 @@ import {
   Zap,
 } from 'lucide-react';
 import React, { useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
 import {
-  CERT_TYPES,
   LEGAL_GATE_CERTS,
-  type CreateTechnicianBody,
   type ParseRosterResponse,
   type RosterCandidateRow,
+  type RosterReadBy,
 } from '../../shared/contracts/technicians';
-import { CLUSTER_LABEL, clusterForPostal } from '../../location/postal';
+import { checkRoster, toBody } from '../../dispatch/roster-check';
 import { DeskApiError, deskApi } from './desk-api';
 import { cn } from './lib/utils';
 
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/60';
 const FIELD =
   'w-full min-w-0 rounded border bg-transparent px-1.5 py-0.5 text-[11px] outline-none placeholder:text-muted-foreground focus:border-ring [color-scheme:dark]';
+
+/** Same limit as the server (ADR 012). */
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+
+const READ_BY: Record<RosterReadBy, { label: string; className: string; title: string }> = {
+  template: { label: 'Template', className: 'text-emerald-400', title: 'Read by code from the standard template.' },
+  assistant: { label: 'Assistant', className: 'text-sky-400', title: 'Read by the assistant; values not in the row were left blank.' },
+  keywords: { label: 'Keywords', className: 'text-amber-400', title: 'Read by keyword matching. Check each field.' },
+};
 
 const SAMPLE_PERFECT = `name,tier,homePostalCode,certs,parts,maxHoursDay,acceptsOt
 Tan Wei,1,048581,WSH_PASS,,8,false
@@ -79,7 +85,7 @@ export function RosterImportView({
   onImported: () => void;
 }) {
   const [candidates, setCandidates] = useState<RosterCandidateRow[] | null>(null);
-  const [parseMeta, setParseMeta] = useState<ParseRosterResponse | null>(null);
+  const [meta, setMeta] = useState<ParseRosterResponse | null>(null);
   const [filename, setFilename] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -98,53 +104,32 @@ export function RosterImportView({
     URL.revokeObjectURL(url);
   };
 
-  const processText = async (text: string, name: string) => {
+  const read = async (input: Parameters<typeof deskApi.parseRoster>[0], name: string) => {
     setLoading(true);
     setError(null);
     setFilename(name);
     try {
-      const res = await deskApi.parseRoster(text);
-      setParseMeta(res);
+      const res = await deskApi.parseRoster(input);
+      setMeta(res);
       setCandidates(res.candidates);
     } catch (e) {
-      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Failed to parse file.');
+      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Could not read the file.');
       setCandidates(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // The server reads every format; the browser only uploads the bytes.
   const handleFile = async (file: File) => {
-    setLoading(true);
-    setError(null);
-    try {
-      let text = '';
-      if (file.name.endsWith('.parquet')) {
-        const { parquetReadObjects } = await import('hyparquet');
-        const { compressors } = await import('hyparquet-compressors');
-        const { recordsToCsv } = await import('../../agent/reports/roster-reader');
-        const buffer = await file.arrayBuffer();
-        const records = await parquetReadObjects({ file: buffer, compressors });
-        if (!records || records.length === 0) {
-          throw new Error('Parquet file contains no records.');
-        }
-        text = recordsToCsv(records as Record<string, unknown>[]);
-      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const firstSheet = wb.SheetNames[0];
-        if (!firstSheet || !wb.Sheets[firstSheet]) {
-          throw new Error('No worksheets found in this Excel file.');
-        }
-        text = XLSX.utils.sheet_to_csv(wb.Sheets[firstSheet]!);
-      } else {
-        text = await file.text();
-      }
-      await processText(text, file.name);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not read file.');
-      setLoading(false);
+    if (file.size > MAX_FILE_BYTES) {
+      setError('Roster files are limited to 2 MB.');
+      return;
     }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    await read({ fileBase64: btoa(binary), filename: file.name }, file.name);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -153,88 +138,49 @@ export function RosterImportView({
     if (dropped) void handleFile(dropped);
   };
 
+  // Every edit re-runs the same checks the server ran, so a fixed field's issue clears.
+  const recheck = (rows: RosterCandidateRow[]) => setCandidates(checkRoster(rows, meta?.teamNames ?? []));
   const updateCandidate = (index: number, patch: Partial<RosterCandidateRow>) => {
-    if (!candidates) return;
-    setCandidates((prev) => {
-      if (!prev) return prev;
-      const copy = [...prev];
-      const target = { ...copy[index]!, ...patch };
-
-      // Re-validate postal cluster
-      const cluster = /^\d{6}$/.test(target.homePostalCode) ? clusterForPostal(target.homePostalCode) : null;
-      target.cluster = cluster ? CLUSTER_LABEL[cluster] : null;
-
-      const issues: string[] = [];
-      if (!target.name.trim()) issues.push('Technician name is required.');
-      if (!cluster) issues.push(`Postal code "${target.homePostalCode}" cannot be placed into a Singapore sector.`);
-
-      target.isValid = issues.length === 0;
-      target.issues = issues;
-      copy[index] = target;
-      return copy;
-    });
+    if (candidates) recheck(candidates.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   };
-
   const removeCandidate = (index: number) => {
-    setCandidates((prev) => (prev ? prev.filter((_, i) => i !== index) : null));
+    if (candidates) recheck(candidates.filter((_, i) => i !== index));
   };
 
   const handleConfirmImport = async () => {
-    if (!candidates || candidates.length === 0) return;
-    const validRows = candidates.filter((c) => c.isValid);
-    if (validRows.length === 0) {
-      setError('No valid technician rows to import. Please correct the highlighted errors.');
-      return;
-    }
-
+    const ready = (candidates ?? []).filter((c) => c.isValid);
+    if (!ready.length) return;
     setImporting(true);
     setError(null);
-
-    const bodies: CreateTechnicianBody[] = validRows.map((c) => ({
-      name: c.name.trim(),
-      tier: c.tier,
-      homePostalCode: c.homePostalCode,
-      certs: c.certs.map((cert) => ({
-        type: cert.type,
-        ...(cert.expiresAt ? { expiresAt: cert.expiresAt } : {}),
-      })),
-      parts: c.parts,
-      maxMinutesDay: c.maxMinutesDay,
-      acceptsOt: c.acceptsOt,
-    }));
-
     try {
-      await deskApi.importTechnicians(bodies);
+      await deskApi.importTechnicians(ready.map(toBody));
       onImported();
     } catch (e) {
-      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Failed to import technicians.');
+      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Could not add the technicians.');
       setImporting(false);
     }
   };
 
   const validCount = candidates?.filter((c) => c.isValid).length ?? 0;
   const invalidCount = (candidates?.length ?? 0) - validCount;
+  const byWay = (candidates ?? []).reduce<Partial<Record<RosterReadBy, number>>>((acc, c) => ({ ...acc, [c.readBy]: (acc[c.readBy] ?? 0) + 1 }), {});
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-foreground">
-      {/* Subheader */}
-      <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/20">
+      <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-2.5">
         <div>
-          <h2 className="text-xs font-semibold flex items-center gap-1.5">
+          <h2 className="flex items-center gap-1.5 text-xs font-semibold">
             <FileSpreadsheet className="size-3.5 text-primary" />
-            Import Team Roster
+            Import a team roster
           </h2>
           <p className="text-[11px] text-muted-foreground">
-            Auto-ingest employees from CSV, Excel (.xlsx), or Apache Parquet (.parquet) data lake files.
+            CSV, Excel (.xlsx) or Parquet, up to 2 MB. Nothing is added until you check the rows and confirm.
           </p>
         </div>
         <button
           type="button"
           onClick={downloadTemplate}
-          className={cn(
-            'inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium hover:bg-accent',
-            FOCUS,
-          )}
+          className={cn('inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium hover:bg-accent', FOCUS)}
         >
           <Download className="size-3 text-muted-foreground" />
           Template (.csv)
@@ -242,7 +188,7 @@ export function RosterImportView({
       </div>
 
       {error ? (
-        <div role="alert" className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center gap-2">
+        <div role="alert" className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive">
           <AlertCircle className="size-3.5 flex-none" />
           <span>{error}</span>
         </div>
@@ -251,23 +197,23 @@ export function RosterImportView({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {!candidates ? (
           <div className="grid gap-4">
-            {/* Drag & Drop Area */}
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                'grid place-items-center rounded-xl border-2 border-dashed border-border/80 bg-accent/10 p-8 text-center cursor-pointer transition hover:border-primary/60 hover:bg-accent/25',
+                'grid cursor-pointer place-items-center rounded-xl border-2 border-dashed border-border/80 bg-accent/10 p-8 text-center transition hover:border-primary/60 hover:bg-accent/25',
                 loading && 'pointer-events-none opacity-50',
               )}
             >
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv, .xlsx, .xls, .parquet"
+                accept=".csv,.xlsx,.parquet"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
+                  e.target.value = '';
                   if (f) void handleFile(f);
                 }}
               />
@@ -276,308 +222,250 @@ export function RosterImportView({
                   {loading ? <Loader2 className="size-5 animate-spin" /> : <Upload className="size-5" />}
                 </div>
                 <div>
-                  <span className="text-xs font-semibold block">
-                    {loading ? 'Reading & parsing roster...' : 'Click to upload or drag & drop'}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground block">
-                    Supports .csv, .xlsx, .xls, and .parquet data files
+                  <span className="block text-xs font-semibold">{loading ? 'Reading the roster…' : 'Click to upload, or drop a file here'}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    The standard template is read directly; any other layout is read by the assistant, a few rows at a time.
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Quick-test with sample files */}
             <div className="rounded-lg border bg-card/60 p-3">
-              <span className="text-[11px] font-semibold text-muted-foreground block mb-2">
-                Or test with sample scenarios:
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void processText(SAMPLE_PERFECT, 'technicians_perfect.csv')}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left hover:bg-accent hover:border-primary/50 transition',
-                    FOCUS,
-                  )}
-                >
-                  <span className="flex items-center gap-1 text-[11px] font-semibold">
-                    <Zap className="size-3 text-emerald-400" />
-                    Clean Template
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Standard 7-column schema</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void processText(SAMPLE_MESSY, 'technicians_messy.csv')}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left hover:bg-accent hover:border-primary/50 transition',
-                    FOCUS,
-                  )}
-                >
-                  <span className="flex items-center gap-1 text-[11px] font-semibold">
-                    <Sparkles className="size-3 text-sky-400" />
-                    Messy SME Roster
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Free-text certs, addresses, OT</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void processText(SAMPLE_DIAGONAL, 'technicians_diagonal.csv')}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left hover:bg-accent hover:border-primary/50 transition',
-                    FOCUS,
-                  )}
-                >
-                  <span className="flex items-center gap-1 text-[11px] font-semibold">
-                    <FileText className="size-3 text-amber-400" />
-                    Diagonal Layout
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Staggered step table</span>
-                </button>
+              <span className="mb-2 block text-[11px] font-semibold text-muted-foreground">Or try a sample:</span>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {[
+                  { text: SAMPLE_PERFECT, file: 'technicians_perfect.csv', icon: <Zap className="size-3 text-emerald-400" />, title: 'Standard template', note: 'Read directly, no assistant' },
+                  { text: SAMPLE_MESSY, file: 'technicians_messy.csv', icon: <Sparkles className="size-3 text-sky-400" />, title: 'Messy spreadsheet', note: 'Free-text certificates, addresses, OT' },
+                  { text: SAMPLE_DIAGONAL, file: 'technicians_diagonal.csv', icon: <FileText className="size-3 text-amber-400" />, title: 'One fact per line', note: 'A block per technician' },
+                ].map((s) => (
+                  <button
+                    key={s.file}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void read(s.text, s.file)}
+                    className={cn('flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left transition hover:border-primary/50 hover:bg-accent', FOCUS)}
+                  >
+                    <span className="flex items-center gap-1 text-[11px] font-semibold">
+                      {s.icon}
+                      {s.title}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{s.note}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         ) : (
-          /* Pre-Flight Preview & Confirmation Table */
           <div className="grid gap-3">
-            {/* Meta status bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-              <div className="flex items-center gap-2">
-                {parseMeta?.source === 'template_fast_path' ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
-                    <Zap className="size-3" /> Standard Template (Instant)
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-400 border border-sky-500/20">
-                    <Sparkles className="size-3" /> AI Assistant Structured
-                  </span>
-                )}
-                {filename.toLowerCase().endsWith('.parquet') && (
-                  <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-400 border border-purple-500/20">
-                    <Database className="size-3" /> Parquet File
-                  </span>
-                )}
-                <span className="text-[11.5px] font-medium">
-                  {candidates.length} {candidates.length === 1 ? 'technician' : 'technicians'} detected
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                <span className="font-medium">
+                  {candidates.length} {candidates.length === 1 ? 'technician' : 'technicians'} in {filename}
                 </span>
-                <span className="text-xs text-muted-foreground">({filename})</span>
+                {(Object.keys(byWay) as RosterReadBy[]).map((k) => (
+                  <span key={k} className={cn('text-[11px]', READ_BY[k].className)} title={READ_BY[k].title}>
+                    {byWay[k]} read by {READ_BY[k].label.toLowerCase()}
+                  </span>
+                ))}
               </div>
-
               <div className="flex items-center gap-2">
                 {invalidCount > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-medium">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400">
                     <AlertTriangle className="size-3" />
                     {invalidCount} {invalidCount === 1 ? 'row needs' : 'rows need'} attention
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                    <CheckCircle2 className="size-3" /> All {validCount} rows ready
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                    <CheckCircle2 className="size-3" /> All {validCount} ready
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => setCandidates(null)}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground',
-                    FOCUS,
-                  )}
+                  className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground', FOCUS)}
                 >
                   <RefreshCw className="size-3" /> Change file
                 </button>
               </div>
             </div>
 
-            {/* Candidates Table */}
+            {meta?.assistantUnavailable ? (
+              <p className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+                The assistant could not read some rows, so they were read by keyword matching. Check those rows field by field.
+              </p>
+            ) : null}
+
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-left text-[11.5px] border-collapse">
-                <thead className="bg-muted/40 text-[10.5px] font-semibold text-muted-foreground uppercase border-b">
+              <table className="w-full border-collapse text-left text-[11.5px]">
+                <thead className="border-b bg-muted/40 text-[10.5px] font-semibold text-muted-foreground uppercase">
                   <tr>
-                    <th className="px-2 py-1.5 w-8 text-center">Status</th>
-                    <th className="px-2 py-1.5 min-w-[130px]">Name</th>
-                    <th className="px-2 py-1.5 w-20">Tier</th>
-                    <th className="px-2 py-1.5 min-w-[140px]">Postal & Area</th>
-                    <th className="px-2 py-1.5 min-w-[160px]">Certificates</th>
-                    <th className="px-2 py-1.5 min-w-[130px]">Van Parts</th>
-                    <th className="px-2 py-1.5 w-16 text-center">Hours</th>
-                    <th className="px-2 py-1.5 w-14 text-center">OT</th>
-                    <th className="px-2 py-1.5 w-8"></th>
+                    <th className="w-8 px-2 py-1.5 text-center">OK</th>
+                    <th className="min-w-[150px] px-2 py-1.5">Name</th>
+                    <th className="w-24 px-2 py-1.5">Tier</th>
+                    <th className="min-w-[140px] px-2 py-1.5">Postal and area</th>
+                    <th className="min-w-[160px] px-2 py-1.5">Certificates</th>
+                    <th className="min-w-[120px] px-2 py-1.5">Van parts</th>
+                    <th className="w-20 px-2 py-1.5">Hours a day</th>
+                    <th className="w-12 px-2 py-1.5 text-center">OT</th>
+                    <th className="w-8 px-2 py-1.5"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {candidates.map((c, idx) => (
-                    <tr key={idx} className={cn(!c.isValid && 'bg-destructive/5')}>
-                      {/* Status */}
-                      <td className="px-2 py-2 text-center align-top">
-                        {c.isValid ? (
-                          <span title="Ready to import" className="grid size-4 place-items-center rounded-full bg-emerald-500/20 text-emerald-400 mx-auto">
-                            <Check className="size-2.5" />
+                    <React.Fragment key={`${c.sourceRow}-${idx}`}>
+                      <tr className={cn(!c.isValid && 'bg-destructive/5')}>
+                        <td className="px-2 pt-2 text-center align-top">
+                          {c.isValid ? (
+                            <span title="Ready to add" className="mx-auto grid size-4 place-items-center rounded-full bg-emerald-500/20 text-emerald-400">
+                              <Check className="size-2.5" />
+                            </span>
+                          ) : (
+                            <span title={c.issues.join(' ')} className="mx-auto grid size-4 place-items-center rounded-full bg-destructive/20 text-destructive">
+                              <AlertCircle className="size-2.5" />
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 pt-2 align-top">
+                          <input className={FIELD} value={c.name} onChange={(e) => updateCandidate(idx, { name: e.target.value })} placeholder="Name" aria-label={`Name, row ${c.sourceRow}`} />
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            Row {c.sourceRow} · <span className={READ_BY[c.readBy].className} title={READ_BY[c.readBy].title}>{READ_BY[c.readBy].label}</span>
                           </span>
-                        ) : (
-                          <span title={c.issues.join('; ')} className="grid size-4 place-items-center rounded-full bg-destructive/20 text-destructive mx-auto">
-                            <AlertCircle className="size-2.5" />
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Name */}
-                      <td className="px-2 py-2 align-top">
-                        <input
-                          className={FIELD}
-                          value={c.name}
-                          onChange={(e) => updateCandidate(idx, { name: e.target.value })}
-                          placeholder="Name"
-                        />
-                        {c.issues.some((i) => i.includes('name')) ? (
-                          <span className="text-[10px] text-destructive block mt-0.5">Name required</span>
-                        ) : null}
-                      </td>
-
-                      {/* Tier */}
-                      <td className="px-2 py-2 align-top">
-                        <select
-                          className={FIELD}
-                          value={c.tier}
-                          onChange={(e) => updateCandidate(idx, { tier: Number(e.target.value) as 1 | 2 | 3 | 4 })}
-                        >
-                          {[1, 2, 3, 4].map((t) => (
-                            <option key={t} value={t} className="bg-card">
-                              Tier {t}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-
-                      {/* Postal */}
-                      <td className="px-2 py-2 align-top">
-                        <div className="grid gap-0.5">
+                        </td>
+                        <td className="px-2 pt-2 align-top">
+                          <select
+                            className={cn(FIELD, c.tier === null && 'border-destructive/60')}
+                            value={c.tier ?? ''}
+                            onChange={(e) => updateCandidate(idx, { tier: e.target.value ? (Number(e.target.value) as 1 | 2 | 3 | 4) : null })}
+                            aria-label={`Tier, row ${c.sourceRow}`}
+                          >
+                            <option value="" className="bg-card">Choose…</option>
+                            {[1, 2, 3, 4].map((t) => (
+                              <option key={t} value={t} className="bg-card">Tier {t}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 pt-2 align-top">
                           <input
-                            className={cn(FIELD, 'font-mono')}
+                            className={cn(FIELD, 'font-mono', !c.cluster && 'border-destructive/60')}
                             value={c.homePostalCode}
                             maxLength={6}
+                            inputMode="numeric"
                             onChange={(e) => updateCandidate(idx, { homePostalCode: e.target.value.trim() })}
-                            placeholder="6-digit postal"
+                            placeholder="6 digits"
+                            aria-label={`Postal code, row ${c.sourceRow}`}
                           />
-                          <span className={cn('text-[10px] flex items-center gap-1', c.cluster ? 'text-muted-foreground' : 'text-destructive')}>
+                          <span className={cn('mt-0.5 flex items-center gap-1 text-[10px]', c.cluster ? 'text-muted-foreground' : 'text-destructive')}>
                             <MapPin className="size-2.5" />
-                            {c.cluster ? c.cluster : 'Unknown Singapore sector'}
+                            {c.cluster ?? 'Not placed'}
                           </span>
-                        </div>
-                      </td>
-
-                      {/* Certs */}
-                      <td className="px-2 py-2 align-top">
-                        <div className="flex flex-wrap gap-1">
-                          {c.certs.length === 0 ? (
-                            <span className="text-[10px] text-muted-foreground italic">None</span>
-                          ) : (
-                            c.certs.map((cert) => (
+                        </td>
+                        <td className="px-2 pt-2 align-top">
+                          <div className="flex flex-wrap gap-1">
+                            {c.certs.length === 0 ? <span className="text-[10px] text-muted-foreground italic">None</span> : null}
+                            {c.certs.map((cert) => (
                               <span
                                 key={cert.type}
-                                className={cn(
-                                  'rounded border px-1 py-0.2 text-[9.5px]',
-                                  LEGAL_GATE_CERTS.includes(cert.type)
-                                    ? 'border-primary/40 text-primary'
-                                    : 'border-border text-muted-foreground',
-                                )}
+                                className={cn('rounded border px-1 text-[9.5px]', LEGAL_GATE_CERTS.includes(cert.type) ? 'border-primary/40 text-primary' : 'border-border text-muted-foreground')}
                               >
                                 {cert.type.replace('_', ' ')}
                                 {cert.expiresAt ? ` (${cert.expiresAt})` : ''}
                               </span>
-                            ))
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Parts */}
-                      <td className="px-2 py-2 align-top">
-                        <div className="flex flex-wrap gap-1">
-                          {c.parts.length === 0 ? (
-                            <span className="text-[10px] text-muted-foreground italic">Standard stock</span>
-                          ) : (
-                            c.parts.map((p) => (
-                              <span key={p} className="rounded border border-dashed border-border px-1 py-0.2 text-[9.5px] text-muted-foreground">
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-2 pt-2 align-top">
+                          <div className="flex flex-wrap gap-1">
+                            {c.parts.length === 0 ? <span className="text-[10px] text-muted-foreground italic">None listed</span> : null}
+                            {c.parts.map((p) => (
+                              <span key={p} className="rounded border border-dashed border-border px-1 text-[9.5px] text-muted-foreground">
                                 {p.replace(/_/g, ' ')}
                               </span>
-                            ))
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Hours */}
-                      <td className="px-2 py-2 align-top text-center">
-                        <span className="text-[11px] font-mono">{c.maxMinutesDay / 60}h</span>
-                      </td>
-
-                      {/* OT */}
-                      <td className="px-2 py-2 align-top text-center">
-                        <input
-                          type="checkbox"
-                          checked={c.acceptsOt}
-                          onChange={(e) => updateCandidate(idx, { acceptsOt: e.target.checked })}
-                          className="size-3.5 rounded"
-                        />
-                      </td>
-
-                      {/* Remove */}
-                      <td className="px-2 py-2 align-top text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeCandidate(idx)}
-                          className="grid size-5 place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          title="Remove row"
-                        >
-                          <Trash2 className="size-3" />
-                        </button>
-                      </td>
-                    </tr>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-2 pt-2 align-top">
+                          <input
+                            className={cn(FIELD, 'font-mono', c.maxMinutesDay === null && 'border-destructive/60')}
+                            type="number"
+                            min={2}
+                            max={12}
+                            step={0.5}
+                            value={c.maxMinutesDay === null ? '' : c.maxMinutesDay / 60}
+                            onChange={(e) => updateCandidate(idx, { maxMinutesDay: e.target.value === '' ? null : Math.round(Number(e.target.value) * 60) })}
+                            aria-label={`Hours a day, row ${c.sourceRow}`}
+                          />
+                        </td>
+                        <td className="px-2 pt-2 text-center align-top">
+                          <input
+                            type="checkbox"
+                            checked={c.acceptsOt}
+                            onChange={(e) => updateCandidate(idx, { acceptsOt: e.target.checked })}
+                            className="size-3.5 rounded"
+                            aria-label={`Overtime, row ${c.sourceRow}`}
+                          />
+                        </td>
+                        <td className="px-2 pt-2 text-center align-top">
+                          <button
+                            type="button"
+                            onClick={() => removeCandidate(idx)}
+                            className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            title="Leave this row out"
+                            aria-label={`Leave out row ${c.sourceRow}`}
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </td>
+                      </tr>
+                      <tr className={cn(!c.isValid && 'bg-destructive/5')}>
+                        <td />
+                        <td colSpan={8} className="px-2 pb-2 text-[10.5px]">
+                          {c.issues.map((i) => (
+                            <span key={i} className="block text-destructive">{i}</span>
+                          ))}
+                          {c.notices.map((n) => (
+                            <span key={n} className="block text-muted-foreground">{n}</span>
+                          ))}
+                        </td>
+                      </tr>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {candidates.some((c) => c.notices.length > 0) ? (
+            {meta?.skipped.length ? (
               <div className="rounded border bg-accent/15 px-3 py-2 text-[10.5px] text-muted-foreground">
-                <span className="font-semibold block mb-0.5">Notices:</span>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {Array.from(new Set(candidates.flatMap((c) => c.notices))).map((n, i) => (
-                    <li key={i}>{n}</li>
-                  ))}
-                </ul>
+                <span className="mb-0.5 block font-semibold">Not read as technicians</span>
+                {meta.skipped.map((s) => (
+                  <span key={s.sourceRow} className="block">Row {s.sourceRow}: {s.reason}</span>
+                ))}
               </div>
             ) : null}
           </div>
         )}
       </div>
 
-      {/* Footer Controls */}
-      <footer className="flex items-center justify-between border-t px-4 py-3 bg-muted/20">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={importing}
-          className={cn('rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground', FOCUS)}
-        >
+      <footer className="flex items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+        <button type="button" onClick={onCancel} disabled={importing} className={cn('rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground', FOCUS)}>
           Cancel
         </button>
-
         {candidates ? (
-          <button
-            type="button"
-            disabled={importing || validCount === 0}
-            onClick={() => void handleConfirmImport()}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40 transition',
-              FOCUS,
-            )}
-          >
-            {importing ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-            Confirm & Import {validCount} {validCount === 1 ? 'Technician' : 'Technicians'}
-          </button>
+          <span className="flex items-center gap-3">
+            {invalidCount > 0 && validCount > 0 ? (
+              <span className="text-[11px] text-muted-foreground">
+                {invalidCount} {invalidCount === 1 ? 'row' : 'rows'} with issues won’t be added.
+              </span>
+            ) : null}
+            <button
+              type="button"
+              disabled={importing || validCount === 0}
+              onClick={() => void handleConfirmImport()}
+              className={cn('inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition disabled:opacity-40', FOCUS)}
+            >
+              {importing ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+              Add {validCount} {validCount === 1 ? 'technician' : 'technicians'}
+            </button>
+          </span>
         ) : null}
       </footer>
     </div>

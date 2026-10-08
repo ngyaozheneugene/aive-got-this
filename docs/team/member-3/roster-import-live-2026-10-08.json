@@ -1,0 +1,370 @@
+{
+ "date": "2026-10-08",
+ "test": "evals/a-suite/roster-reader.live.test.ts",
+ "result": "Tests  3 passed (3)",
+ "runs": [
+  {
+   "file": "technicians_messy.xlsx",
+   "assistantUnavailable": false,
+   "skipped": [],
+   "rows": [
+    {
+     "row": 2,
+     "by": "assistant",
+     "name": "Ah Seng",
+     "tier": 3,
+     "postal": "640512",
+     "certs": [
+      {
+       "type": "NEA_R32",
+       "expiresAt": "2027-08-15"
+      },
+      {
+       "type": "WSH_PASS"
+      }
+     ],
+     "parts": [
+      "inverter_board",
+      "copper_pipes"
+     ],
+     "minutes": 510,
+     "ot": true,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 3,
+     "by": "assistant",
+     "name": "Nurul Izzah",
+     "tier": 2,
+     "postal": "520245",
+     "certs": [
+      {
+       "type": "NITEC_HVAC"
+      },
+      {
+       "type": "BCA_STRUCTURAL",
+       "expiresAt": "2028-04-10"
+      }
+     ],
+     "parts": [
+      "spare_capacitor",
+      "drain_pipe"
+     ],
+     "minutes": 480,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 4,
+     "by": "assistant",
+     "name": "Dave Lim",
+     "tier": 1,
+     "postal": "310178",
+     "certs": [
+      {
+       "type": "WSH_PASS"
+      }
+     ],
+     "parts": [],
+     "minutes": 420,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 5,
+     "by": "assistant",
+     "name": "Venkatesh K",
+     "tier": 4,
+     "postal": "730312",
+     "certs": [
+      {
+       "type": "EMA_LEW",
+       "expiresAt": "2029-01-01"
+      },
+      {
+       "type": "NEA_R32",
+       "expiresAt": "2026-12-31"
+      }
+     ],
+     "parts": [
+      "inverter_board"
+     ],
+     "minutes": 600,
+     "ot": true,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 6,
+     "by": "assistant",
+     "name": "Marcus Chen",
+     "tier": 2,
+     "postal": "470105",
+     "certs": [],
+     "parts": [
+      "manifold_gauge"
+     ],
+     "minutes": 480,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": [
+      "No hours a day in the file; set to 8."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "technicians_mixed.xlsx",
+   "assistantUnavailable": false,
+   "skipped": [],
+   "rows": [
+    {
+     "row": 2,
+     "by": "assistant",
+     "name": "Siti Ahmad",
+     "tier": 3,
+     "postal": "520112",
+     "certs": [
+      {
+       "type": "NEA_R32",
+       "expiresAt": "2028-02-15"
+      },
+      {
+       "type": "NITEC_HVAC"
+      }
+     ],
+     "parts": [
+      "inverter_board",
+      "copper_pipe"
+     ],
+     "minutes": 480,
+     "ot": true,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 9,
+     "by": "assistant",
+     "name": "Nathan Tan",
+     "tier": 1,
+     "postal": "048624",
+     "certs": [
+      {
+       "type": "WSH_PASS"
+      }
+     ],
+     "parts": [],
+     "minutes": 450,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 16,
+     "by": "assistant",
+     "name": "Muhammad Hafiz",
+     "tier": 2,
+     "postal": "730888",
+     "certs": [
+      {
+       "type": "BCA_STRUCTURAL",
+       "expiresAt": "2027-11-20"
+      }
+     ],
+     "parts": [
+      "capacitor",
+      "compressor"
+     ],
+     "minutes": 540,
+     "ot": true,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 27,
+     "by": "assistant",
+     "name": "Ah Seng",
+     "tier": 3,
+     "postal": "640512",
+     "certs": [
+      {
+       "type": "NEA_R32",
+       "expiresAt": "2027-08-15"
+      },
+      {
+       "type": "WSH_PASS"
+      }
+     ],
+     "parts": [
+      "inverter_board",
+      "copper_pipes"
+     ],
+     "minutes": 510,
+     "ot": true,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 28,
+     "by": "assistant",
+     "name": "Nurul Izzah",
+     "tier": 2,
+     "postal": "520245",
+     "certs": [
+      {
+       "type": "NITEC_HVAC"
+      },
+      {
+       "type": "BCA_STRUCTURAL",
+       "expiresAt": "2028-04-10"
+      }
+     ],
+     "parts": [
+      "spare_capacitor",
+      "drain_pipe"
+     ],
+     "minutes": 480,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 29,
+     "by": "assistant",
+     "name": "Dave Lim",
+     "tier": 1,
+     "postal": "310178",
+     "certs": [
+      {
+       "type": "WSH_PASS"
+      }
+     ],
+     "parts": [],
+     "minutes": 420,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 30,
+     "by": "assistant",
+     "name": "Venkatesh K",
+     "tier": 4,
+     "postal": "730312",
+     "certs": [
+      {
+       "type": "EMA_LEW",
+       "expiresAt": "2029-01-01"
+      },
+      {
+       "type": "NEA_R32",
+       "expiresAt": "2026-12-31"
+      }
+     ],
+     "parts": [
+      "inverter_board"
+     ],
+     "minutes": 600,
+     "ot": true,
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 31,
+     "by": "assistant",
+     "name": "Marcus Chen",
+     "tier": 2,
+     "postal": "470105",
+     "certs": [],
+     "parts": [
+      "manifold_gauge"
+     ],
+     "minutes": 480,
+     "ot": false,
+     "valid": true,
+     "issues": [],
+     "notices": [
+      "No hours a day in the file; set to 8."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "technicians_scrambled.parquet",
+   "assistantUnavailable": false,
+   "skipped": [
+    {
+     "sourceRow": 3,
+     "reason": "The assistant did not find a technician in this row."
+    },
+    {
+     "sourceRow": 4,
+     "reason": "The assistant did not find a technician in this row."
+    },
+    {
+     "sourceRow": 5,
+     "reason": "The assistant did not find a technician in this row."
+    }
+   ],
+   "rows": [
+    {
+     "row": 2,
+     "by": "assistant",
+     "name": "Tan Wei",
+     "tier": null,
+     "postal": "640605",
+     "certs": [],
+     "parts": [],
+     "minutes": 480,
+     "ot": false,
+     "valid": false,
+     "issues": [
+      "Choose a skill tier."
+     ],
+     "notices": [
+      "Skill tier not clear in the file; choose one.",
+      "No hours a day in the file; set to 8."
+     ]
+    },
+    {
+     "row": 6,
+     "by": "assistant",
+     "name": "Anonymous Ghost Worker",
+     "tier": 4,
+     "postal": "",
+     "certs": [
+      {
+       "type": "WSH_PASS"
+      }
+     ],
+     "parts": [],
+     "minutes": null,
+     "ot": false,
+     "valid": false,
+     "issues": [
+      "Needs the postal code where their day starts.",
+      "Set hours a day (2 to 12)."
+     ],
+     "notices": [
+      "Hours \"168\" is not 2 to 12 hours a day; left blank."
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -144,7 +144,7 @@ export default function TeamPage() {
                     className="gap-1.5"
                   >
                     <Upload className="size-3.5" />
-                    Import roster (.csv, .xlsx)
+                    Import a roster file
                   </Button>
                   {!simulation ? (
                     <Button variant="outline" onClick={() => switchWorkspace('simulation')}>
