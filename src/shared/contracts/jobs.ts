@@ -31,3 +31,57 @@ export const createJobBodySchema = z
   .refine((b) => b.windowEnd > b.windowStart, { path: ['windowEnd'], message: 'window must end after it starts' });
 
 export type CreateJobBody = z.infer<typeof createJobBodySchema>;
+
+/** Booking jobs from a file, all or nothing. ADR 013. */
+export const MAX_IMPORT_JOBS = 200;
+export const bulkCreateJobsBodySchema = z.object({
+  jobs: z.array(createJobBodySchema).min(1).max(MAX_IMPORT_JOBS),
+});
+
+export type BulkCreateJobsBody = z.infer<typeof bulkCreateJobsBodySchema>;
+
+export type JobPriority = CreateJobBody['priority'];
+
+/**
+ * One row of a job import preview. `null` means the file did not say clearly
+ * and the coordinator must choose; `issues` are recomputed from the fields,
+ * so fixing a field clears its issue. `notices` explain how the row was read.
+ */
+export interface JobCandidateRow {
+  /** Row in the file where this job starts (1-based). */
+  sourceRow: number;
+  readBy: 'template' | 'assistant' | 'keywords';
+  customerName: string;
+  /** As written; checked as a Singapore number. */
+  phone: string;
+  postalCode: string;
+  address: string;
+  unitNo: string;
+  jobTypeId: string | null;
+  priority: JobPriority | null;
+  /** HH:MM */
+  windowStart: string | null;
+  windowEnd: string | null;
+  /** YYYY-MM-DD, or null for the board's day. */
+  date: string | null;
+  note: string;
+  cluster: string | null;
+  isValid: boolean;
+  issues: string[];
+  notices: string[];
+}
+
+export interface ParseJobsResponse {
+  candidates: JobCandidateRow[];
+  skipped: Array<{ sourceRow: number; reason: string }>;
+  /** What the preview checks against while it is edited. */
+  context: {
+    today: string;
+    jobTypes: Array<{ id: string; name: string; defaultMinutes: number }>;
+    /** Bookings already on today's and tomorrow's board, as duplicate keys. */
+    booked: string[];
+  };
+  assistantUnavailable: boolean;
+  totalRows: number;
+  validCount: number;
+}

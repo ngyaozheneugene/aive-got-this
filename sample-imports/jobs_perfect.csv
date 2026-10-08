@@ -1,0 +1,6 @@
+customerName,phone,postalCode,address,unitNo,jobTypeId,priority,windowStart,windowEnd,note
+Raffles Place Capital,91234567,048616,1 Raffles Place,#12-01,WATER_LEAK,urgent,09:00,12:00,Severe water leaking from ceiling fan coil in server room
+Tan Household (Simei),92345678,520123,Simei St 1,#04-12,GENERAL_SERVICE,on_demand,14:00,16:30,Routine maintenance and filter cleaning for 3 bedrooms
+Jurong Gateway Offices,83456789,608549,Jurong Gateway Rd,#09-22,CRITICAL_HVAC_ELECTRICAL,urgent,08:30,11:30,Inverter tripped with burning smell. Needs master tech with spare inverter board
+Causeway Point Clinic,94567890,738099,Woodlands Square,#02-15,GAS_TOPUP,on_demand,13:00,15:30,Aircon blowing room temperature air. R32 refrigerant low pressure detected
+Bishan Park Condo MCST,85678901,570123,Bishan St 13,#01-05,CHEMICAL_WASH,when_available,10:00,13:00,Chemical wash for management office unit before annual inspection

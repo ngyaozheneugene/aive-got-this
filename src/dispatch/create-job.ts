@@ -4,7 +4,8 @@
 
 import type { IDatabase } from '../db/interface';
 import type { CreateJobBody } from '../shared/contracts/jobs';
-import type { Customer, Job, Site } from '../shared/types/domain';
+import type { Customer, Job, JobType, Site } from '../shared/types/domain';
+import { bookingKey } from './job-import-check';
 import { addDays } from '../shared/config/demo';
 import { CLUSTER_REGION, clusterForPostal } from '../location/postal';
 import { boardDate } from './board-date';
@@ -13,9 +14,12 @@ export type CreateJobResult =
   | { ok: true; job: Job; customer: Customer; site: Site; customerIsNew: boolean }
   | { ok: false; code: string; httpStatus: number; detail: string };
 
-const refuse = (code: string, httpStatus: number, detail: string): CreateJobResult => ({ ok: false, code, httpStatus, detail });
+const refuse = (code: string, httpStatus: number, detail: string) => ({ ok: false as const, code, httpStatus, detail });
 
-export async function createJob(db: IDatabase, body: CreateJobBody): Promise<CreateJobResult> {
+type Checked = { ok: true; cluster: NonNullable<ReturnType<typeof clusterForPostal>>; jobType: JobType; date: string; windowStart: string; windowEnd: string };
+
+/** Everything that can refuse a booking, checked before anything is written. */
+export async function checkBooking(db: IDatabase, body: CreateJobBody): Promise<Checked | Extract<CreateJobResult, { ok: false }>> {
   const cluster = clusterForPostal(body.postalCode);
   if (!cluster) return refuse('unknown_postal_code', 422, `Postal code ${body.postalCode} is not one we can place on the map.`);
 
@@ -39,6 +43,13 @@ export async function createJob(db: IDatabase, body: CreateJobBody): Promise<Cre
     );
   }
 
+  return { ok: true, cluster, jobType, date, windowStart, windowEnd };
+}
+
+export async function createJob(db: IDatabase, body: CreateJobBody): Promise<CreateJobResult> {
+  const checked = await checkBooking(db, body);
+  if (!checked.ok) return checked;
+  const { cluster, jobType, date, windowStart, windowEnd } = checked;
   const certs = (await db.jobTypes.getCerts(jobType.id)).map((c) => c.certType);
 
   return db.transaction(async (tx) => {
@@ -93,4 +104,68 @@ export async function createJob(db: IDatabase, body: CreateJobBody): Promise<Cre
 
     return { ok: true as const, job, customer, site, customerIsNew: !existing };
   });
+}
+
+export type BulkJobsResult =
+  | { ok: true; created: number; jobs: Job[] }
+  | { ok: false; code: string; httpStatus: number; detail: string };
+
+/**
+ * Book a confirmed job import (ADR 013): every row is checked before anything
+ * is written, a job already booked (or listed twice) is refused, then each is
+ * booked exactly as a single booking is, in one transaction.
+ */
+export async function createJobsBulk(db: IDatabase, bodies: CreateJobBody[]): Promise<BulkJobsResult> {
+  if (bodies.length === 0) return { ok: true, created: 0, jobs: [] };
+  const today = await boardDate(db);
+  for (const [i, body] of bodies.entries()) {
+    const checked = await checkBooking(db, body);
+    if (!checked.ok) return { ...checked, detail: `Row ${i + 1} (${body.customerName}): ${checked.detail}` };
+  }
+
+  const booked = new Set(await bookedKeys(db, today));
+  const seen = new Set<string>();
+  const clashes: string[] = [];
+  for (const body of bodies) {
+    const key = bookingKey({ ...body, date: body.date ?? today });
+    if (booked.has(key) || seen.has(key)) clashes.push(`${body.customerName} ${body.windowStart}`);
+    seen.add(key);
+  }
+  if (clashes.length) {
+    return { ok: false, code: 'duplicate_jobs', httpStatus: 409, detail: `Already booked or listed twice: ${clashes.join(', ')}.` };
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      const jobs: Job[] = [];
+      for (const body of bodies) {
+        const made = await createJob(tx, body);
+        if (!made.ok) throw new BulkRefusal(made);
+        jobs.push(made.job);
+      }
+      return { ok: true as const, created: jobs.length, jobs };
+    });
+  } catch (e) {
+    if (e instanceof BulkRefusal) return e.result;
+    throw e;
+  }
+}
+
+class BulkRefusal extends Error {
+  constructor(readonly result: Extract<CreateJobResult, { ok: false }>) {
+    super(result.code);
+  }
+}
+
+/** Duplicate keys for every job booked on the board's day and the next. */
+export async function bookedKeys(db: IDatabase, today: string): Promise<string[]> {
+  const keys: string[] = [];
+  for (const day of [today, addDays(today, 1)]) {
+    for (const job of await db.jobs.listByScheduledDate(day)) {
+      const [customer, site] = await Promise.all([db.customers.getById(job.customerId), db.sites.getById(job.siteId)]);
+      if (!customer || !site || !job.windowStart) continue;
+      keys.push(bookingKey({ phone: customer.phone, postalCode: site.postalCode, jobTypeId: job.jobTypeId, date: day, windowStart: job.windowStart.slice(11, 16) }));
+    }
+  }
+  return keys;
 }

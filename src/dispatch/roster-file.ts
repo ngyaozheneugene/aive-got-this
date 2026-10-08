@@ -1,4 +1,4 @@
-// Turns an uploaded roster file into a grid of trimmed text cells, whatever
+// Turns an uploaded file (a roster, ADR 012, or a job list, ADR 013) into a grid of trimmed text cells, whatever
 // it came as: CSV, Excel (.xlsx) or Parquet. Server only. ADR 012.
 
 /** Uploads larger than this are refused before decoding. */
@@ -15,7 +15,12 @@ export class RosterFileError extends Error {
 const cellText = (v: unknown): string => {
   if (v === null || v === undefined) return '';
   if (typeof v === 'bigint') return v.toString();
-  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return '';
+    // Excel keeps a time of day as a date on 30 Dec 1899: "09:00", not "1899-12-30".
+    if (v.getUTCFullYear() < 1901) return v.toISOString().slice(11, 16);
+    return v.toISOString().slice(0, 10);
+  }
   if (Array.isArray(v)) return v.map(cellText).join('; ');
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v).trim();

@@ -13,23 +13,18 @@
 
 import { z } from 'zod';
 import { CERT_TYPES, MAX_ROSTER_ROWS, type RosterCandidateRow, type RosterReadBy } from '../../shared/contracts/technicians';
-import type { GatewayMessage } from '../runtime/gateway';
 import type { Grid } from '../../dispatch/roster-file';
+import {
+  capRows, cellOf, clean, groundedPostal, labelledIn, norm, postalFrom, readRecords, sixDigits, splitGrid,
+  type AssistantSpec, type GridRow, type ImportChat, type ImportRecord, type Reading,
+} from './import-core';
 
-export type RosterChat = (
-  messages: GatewayMessage[],
-  signal: AbortSignal | undefined,
-  tools: Record<string, unknown>[],
-) => Promise<{ content: string; tool_calls?: Array<{ function: { name: string; arguments?: unknown } }> }>;
+export type RosterChat = ImportChat;
 
 export type RosterFields = Omit<RosterCandidateRow, 'cluster' | 'isValid' | 'issues'>;
 type Cert = RosterFields['certs'][number];
 
-export interface RosterReading {
-  rows: RosterFields[];
-  skipped: Array<{ sourceRow: number; reason: string }>;
-  assistantUnavailable: boolean;
-}
+export type RosterReading = Reading<RosterFields>;
 
 /**
  * Records per assistant request. The reply is capped at 500 tokens, and four
@@ -37,43 +32,13 @@ export interface RosterReading {
  * reply arrived as an empty tool call. A batch that still fails is split.
  */
 export const ROSTER_BATCH = 3;
-/** Characters of one record sent to the assistant. */
-const RECORD_CHARS = 400;
 /** Records the assistant reads per file; the rest are read by keywords. */
 export const MAX_ASSISTANT_RECORDS = 60;
-const CONCURRENT_REQUESTS = 3;
 
-interface RosterRecord {
-  sourceRow: number;
-  /** "Header: value | Header: value", or the block's lines joined. */
-  text: string;
-  /** Table records: the cells under their headers, for keyword reading. */
-  cells?: Array<{ header: string; value: string }>;
-}
-
-// ---------------------------------------------------------------- sections
-
-const clean = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, '');
-const filled = (row: string[]) => row.filter((c) => c !== '');
+type RosterRecord = ImportRecord;
 const BLOCK_START = /^\[?\s*(technician|tech|staff|employee|name)\s*[:\]-]\s*/i;
 
-/** Runs of non-blank rows, with the file row number of each row. */
-function sections(grid: Grid): Array<Array<{ n: number; cells: string[] }>> {
-  const out: Array<Array<{ n: number; cells: string[] }>> = [];
-  let current: Array<{ n: number; cells: string[] }> = [];
-  grid.forEach((cells, i) => {
-    if (filled(cells).length === 0) {
-      if (current.length) out.push(current);
-      current = [];
-    } else current.push({ n: i + 1, cells });
-  });
-  if (current.length) out.push(current);
-  return out;
-}
-
-/** Mostly one value per row: a block layout, not a table. */
-const isBlocks = (rows: Array<{ cells: string[] }>) =>
-  rows.filter((r) => filled(r.cells).length <= 1).length >= rows.length * 0.6;
+// ------------------------------------------------------------ the template
 
 const TEMPLATE = {
   name: ['name'],
@@ -90,26 +55,6 @@ const isTemplate = (header: string[]) => {
 };
 
 // ---------------------------------------------------------- shared helpers
-
-const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-
-/** Standalone 6-digit numbers: not part of a phone number or a longer id. */
-const sixDigits = (text: string) => [...text.matchAll(/(?<![\d])(\d{6})(?![\d])/g)].map((m) => m[1]!);
-
-/**
- * A postal code as the record states it. Spreadsheets drop the leading zero
- * of CBD codes (048581 becomes 48581), so a 5-digit value in a postal column
- * gets it back, with a note.
- */
-function postalFrom(raw: string, notices: string[]): string {
-  const v = raw.trim();
-  if (/^\d{6}$/.test(v)) return v;
-  if (/^\d{5}$/.test(v)) {
-    notices.push(`Postal code ${v} read as 0${v}: spreadsheets drop the leading zero.`);
-    return `0${v}`;
-  }
-  return v;
-}
 
 const CERT_WORDS: Array<[Cert['type'], RegExp]> = [
   ['NEA_R32', /\bnea[\s_-]*r[\s-]*32\b|\br[\s-]?32\b|refrigerant/i],
@@ -213,32 +158,8 @@ function readTemplate(header: string[], rows: Array<{ n: number; cells: string[]
   });
 }
 
-// ---------------------------------------------------------------- records
-
-function tableRecords(header: string[], rows: Array<{ n: number; cells: string[] }>): RosterRecord[] {
-  return rows.map(({ n, cells }) => {
-    const pairs = cells
-      .map((value, i) => ({ header: header[i] || `Column ${i + 1}`, value }))
-      .filter((p) => p.value !== '');
-    return { sourceRow: n, text: pairs.map((p) => `${p.header}: ${p.value}`).join(' | '), cells: pairs };
-  });
-}
-
-function blockRecords(rows: Array<{ n: number; cells: string[] }>): RosterRecord[] {
-  const starts = rows.map((r, i) => (BLOCK_START.test(filled(r.cells)[0] ?? '') ? i : -1)).filter((i) => i >= 0);
-  // No "[Technician: …]" markers: each line is one person.
-  if (!starts.length) return rows.map((r) => ({ sourceRow: r.n, text: filled(r.cells).join(' | ') }));
-  return starts.map((start, k) => {
-    const lines = rows.slice(start, starts[k + 1] ?? rows.length);
-    return { sourceRow: lines[0]!.n, text: lines.map((l) => filled(l.cells).join(' | ')).join(' | ') };
-  });
-}
-
 // --------------------------------------------------------- keyword reading
 
-/** Headers compared as words: "can_do_ot" and "Can do OT?" both say OT. */
-const cellOf = (r: RosterRecord, re: RegExp) => r.cells?.find((c) => re.test(c.header.replace(/[_\W]+/g, ' ')))?.value;
-const labelledIn = (r: RosterRecord, re: RegExp) => new RegExp(`(?:${re.source})\\s*:\\s*([^|]+)`, 'i').exec(r.text)?.[1]?.trim();
 /** The record's tier or level field, as written. */
 const tierText = (r: RosterRecord) => cellOf(r, /tier|level|skill|grade/i) ?? labelledIn(r, /level|tier/) ?? '';
 
@@ -290,7 +211,7 @@ certs, only: WSH_PASS (safety pass), NITEC_HVAC (NITEC/aircon), NEA_R32 (R32 ref
 parts: van stock, lower_snake_case. hours: per day. ot: true/false if stated.`;
 
 const TOOL = {
-  type: 'function',
+  type: 'function' as const,
   function: {
     name: 'submit_technicians',
     description: 'Technicians read from the records.',
@@ -330,12 +251,6 @@ const personSchema = z.object({
   hours: z.number().optional(),
   ot: z.boolean().optional(),
 });
-const replySchema = z.object({ people: z.array(z.unknown()).max(ROSTER_BATCH * 2) });
-
-function escapedJson(value: unknown): string {
-  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
-}
-
 /** The assistant's reading of one record, kept only where the record bears it out. */
 function checked(r: RosterRecord, p: z.infer<typeof personSchema>): RosterFields {
   const notices: string[] = [];
@@ -347,17 +262,7 @@ function checked(r: RosterRecord, p: z.infer<typeof personSchema>): RosterFields
     name = '';
   }
 
-  let postal = (p.postal ?? '').replace(/\s/g, '');
-  const inRecord = sixDigits(r.text);
-  if (postal && !inRecord.includes(postal)) {
-    const five = /^0(\d{5})$/.exec(postal)?.[1];
-    if (five && new RegExp(`(?<!\\d)${five}(?!\\d)`).test(r.text)) {
-      notices.push(`Postal code ${five} read as ${postal}: spreadsheets drop the leading zero.`);
-    } else {
-      notices.push(`The assistant read the postal code as "${postal}", which is not in the row; left blank.`);
-      postal = '';
-    }
-  }
+  const postal = groundedPostal(p.postal ?? '', r, notices);
 
   let tier: 1 | 2 | 3 | 4 | null = null;
   if (p.tier !== undefined && [1, 2, 3, 4].includes(p.tier)) tier = p.tier as 1 | 2 | 3 | 4;
@@ -399,101 +304,26 @@ function checked(r: RosterRecord, p: z.infer<typeof personSchema>): RosterFields
   };
 }
 
-/** One request for up to ROSTER_BATCH records. Null when the assistant gave nothing usable. */
-async function readBatch(batch: RosterRecord[], chat: RosterChat, signal?: AbortSignal) {
-  const ids = new Map(batch.map((r, i) => [`r${i + 1}`, r]));
-  const records = [...ids].map(([id, r]) => ({ id, text: r.text.length > RECORD_CHARS ? `${r.text.slice(0, RECORD_CHARS)}…` : r.text }));
-  const messages: GatewayMessage[] = [
-    { role: 'system', content: SYSTEM },
-    { role: 'user', content: `UNTRUSTED_DATA ${escapedJson({ records })}` },
-  ];
-  const reply = await chat(messages, signal, [TOOL]);
-  const call = reply.tool_calls?.length === 1 ? reply.tool_calls[0] : undefined;
-  if (call?.function.name !== 'submit_technicians') return null;
-  const args = typeof call.function.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function.arguments;
-  const parsed = replySchema.safeParse(args);
-  if (!parsed.success) return null;
-
-  const read = new Map<RosterRecord, RosterFields>();
-  for (const raw of parsed.data.people) {
-    const p = personSchema.safeParse(raw);
-    const r = p.success ? ids.get(p.data.id) : undefined;
-    if (r && p.success && !read.has(r)) read.set(r, checked(r, p.data));
-  }
-  return read;
-}
-
-async function inPool<T>(items: T[], limit: number, run: (item: T) => Promise<void>) {
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) await run(items[next++]!);
-  }));
-}
+const SPEC: AssistantSpec<z.infer<typeof personSchema>, RosterFields> = {
+  noun: 'technician',
+  system: SYSTEM,
+  tool: TOOL,
+  listKey: 'people',
+  item: personSchema,
+  batch: ROSTER_BATCH,
+  maxRecords: MAX_ASSISTANT_RECORDS,
+  check: checked,
+  keywords: readByKeywords,
+};
 
 // -------------------------------------------------------------------- read
 
 export async function readRoster(grid: Grid, chat?: RosterChat, signal?: AbortSignal): Promise<RosterReading> {
-  const rows: RosterFields[] = [];
-  const skipped: RosterReading['skipped'] = [];
-  const records: RosterRecord[] = [];
-
-  for (const section of sections(grid)) {
-    if (isBlocks(section)) {
-      records.push(...blockRecords(section));
-      continue;
-    }
-    const [header, ...body] = section;
-    if (!body.length) continue;
-    if (isTemplate(header!.cells)) rows.push(...readTemplate(header!.cells, body));
-    else records.push(...tableRecords(header!.cells, body));
-  }
-
-  let assistantUnavailable = !chat && records.length > 0;
-  const forAssistant = chat ? records.slice(0, MAX_ASSISTANT_RECORDS) : [];
-  for (const r of records.slice(forAssistant.length)) {
-    rows.push(readByKeywords(r, chat ? `Read by keyword matching: past the ${MAX_ASSISTANT_RECORDS} rows the assistant reads. Check each field.` : 'Read by keyword matching: the assistant is not set up. Check each field.'));
-  }
-
-  const batches: RosterRecord[][] = [];
-  for (let i = 0; i < forAssistant.length; i += ROSTER_BATCH) batches.push(forAssistant.slice(i, i + ROSTER_BATCH));
-  /**
-   * Read a batch; when the reply is unusable, split it and try the halves. A
-   * single record the assistant leaves out is asked about once on its own
-   * before it is listed as skipped: a live run dropped one of four.
-   */
-  const readSome = async (batch: RosterRecord[], retryMissing: boolean): Promise<void> => {
-    let read: Map<RosterRecord, RosterFields> | null = null;
-    try {
-      read = await readBatch(batch, chat!, signal);
-    } catch {
-      read = null;
-    }
-    if (!read && batch.length > 1) {
-      const half = Math.ceil(batch.length / 2);
-      await Promise.all([readSome(batch.slice(0, half), retryMissing), readSome(batch.slice(half), retryMissing)]);
-      return;
-    }
-    if (!read) {
-      assistantUnavailable = true;
-      for (const r of batch) rows.push(readByKeywords(r, 'Read by keyword matching: the assistant could not read this row. Check each field.'));
-      return;
-    }
-    const missing: RosterRecord[] = [];
-    for (const r of batch) {
-      const row = read.get(r);
-      if (row) rows.push(row);
-      else if (retryMissing && batch.length > 1) missing.push(r);
-      else skipped.push({ sourceRow: r.sourceRow, reason: 'The assistant did not find a technician in this row.' });
-    }
-    await Promise.all(missing.map((r) => readSome([r], false)));
-  };
-  await inPool(batches, CONCURRENT_REQUESTS, (batch) => readSome(batch, true));
-
-  rows.sort((a, b) => a.sourceRow - b.sourceRow);
-  if (rows.length > MAX_ROSTER_ROWS) {
-    for (const r of rows.splice(MAX_ROSTER_ROWS)) skipped.push({ sourceRow: r.sourceRow, reason: `Only ${MAX_ROSTER_ROWS} technicians can be added at once.` });
-  }
-  return { rows, skipped: skipped.sort((a, b) => a.sourceRow - b.sourceRow), assistantUnavailable };
+  const { templates, records } = splitGrid(grid, { blockStart: BLOCK_START, isTemplate });
+  const fromTemplates = templates.flatMap((t) => readTemplate(t.header, t.rows));
+  const read = await readRecords(records, SPEC, chat, signal);
+  const rows = [...fromTemplates, ...read.rows].sort((a, b) => a.sourceRow - b.sourceRow);
+  return capRows({ ...read, rows }, MAX_ROSTER_ROWS, 'technician');
 }
 
 export type { RosterReadBy };

@@ -1,0 +1,6 @@
+col_ticket_ref,col_payload_a,col_payload_b,col_payload_c,col_payload_d,col_payload_e,col_payload_f
+TICK-001,640441,91234567,"Tan Ah Teck",WATER_LEAK,"16:00 - 10:00",YES_URGENT
+TICK-002,"#REF! [CORRUPT_RECORD]",1234,999999,"UNKNOWN_JOB_TYPE","00:00 - 00:00","MAYBE"
+TICK-003,WATER_LEAK,"Marina Bay Sands",000000,"+1-800-CALL-AC","14:00 - 14:10","urgent"
+TICK-004,"Missing Contact",INVALID_PHONE,730123,"Woodlands Dr 14",CHEMICAL_WASH,"N/A"
+TICK-005,98765432,529510,"Tampines Hub","12:00 - 11:00",CRITICAL_HVAC,"100_PERCENT"
