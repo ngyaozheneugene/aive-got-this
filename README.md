@@ -20,7 +20,7 @@ An agent-assisted control tower for a Singapore HVAC SME. The day is already boo
 
 **Redeploy after a merge:** one line on the box, see [`docs/deploy.md`](docs/deploy.md).
 
-**Try it.** Open the desk, then use **Demo controls** (bottom left) to raise an urgent job, a technician calling in sick, or a job running late. Two validated plans appear in about 12 seconds. Pick one, choose a reason, and approve: the schedule becomes a new version. **Reset the demo day** restores Eastwind Aircon's Tuesday. Approve *On-time first* for the urgent job before the sick call: if Jonah takes Raffles Place, nobody can reach Hafiz's 11:00 job and the sick call is correctly refused.
+**Try it.** `/desk` opens *your workspace*: empty on day one, with **Team** to add technicians and **New job** to book work. Click **Try a sample day** (or open `/desk?mode=simulation`) for Eastwind Aircon's full day: 15 technicians and 41 jobs. There, mark anyone unavailable or a job running late from the list, book a new job, or use **Demo controls**. Two validated plans come back; pick one, give a reason, and approve, and the schedule becomes a new version. If nobody can legally take a job, the plan covers the rest and leaves that one for a call. **Reset the demo day** works only in the simulation. See [ADR 008](docs/adr/008-workspaces-and-simulation.md).
 
 **Verified on 27 Sep 2026.** The full demonstration sequence was replayed against the live URL: every plan validated clean, every commit was refused before approval and accepted after it, and every audit trail read in order. 275 automated tests pass, the real-solver acceptance gate passes 7 of 7, and the scheduler legality gate passes 4 of 4.
 

@@ -6,7 +6,8 @@ import { InMemoryDatabase } from './memory';
 import { PostgresDatabase } from './postgres';
 import { isIsoDate, singaporeToday } from '../shared/config/demo';
 import { EASTWIND, type Scenario } from '../shared/fixtures/eastwind';
-import { buildScenario } from '../shared/fixtures/scenario';
+import { buildEmptyScenario, buildScenario } from '../shared/fixtures/scenario';
+import type { Workspace } from './workspace';
 
 export * from './interface';
 export * from './memory';
@@ -20,27 +21,44 @@ export * from './postgres';
 // was invisible to POST /api/events/{id}/plan, and each route's id counter
 // restarted at 1. globalThis is shared across those bundles, and it also
 // survives dev-server hot reloads.
-const globalForDb = globalThis as unknown as { __dispatchDb?: IDatabase };
+const globalForDb = globalThis as unknown as { __dispatchDbs?: Partial<Record<Workspace, IDatabase>> };
 
-export function getDatabase(): IDatabase {
-  if (!globalForDb.__dispatchDb) {
+export { isWorkspace, WORKSPACES, type Workspace } from './workspace';
+
+/** One store per workspace (src/db/workspace.ts). On Postgres, one schema each. */
+
+export function getDatabase(workspace: Workspace = 'live'): IDatabase {
+  const dbs = (globalForDb.__dispatchDbs ??= {});
+  if (!dbs[workspace]) {
     const useMemory =
       process.env.NODE_ENV === 'test' || process.env.USE_MEMORY_DB !== 'false';
-    // Postgres migrates and, on an empty database, seeds itself on first use.
-    globalForDb.__dispatchDb = useMemory
-      ? new InMemoryDatabase({ scenario: liveScenario() })
-      : new PostgresDatabase({ scenario: liveScenario() });
+    const scenario = workspaceScenario(workspace);
+    // Postgres migrates and, on an empty schema, seeds itself on first use.
+    dbs[workspace] = useMemory
+      ? new InMemoryDatabase({ scenario })
+      : new PostgresDatabase({ scenario, schema: workspace === 'live' ? 'live' : 'simulation' });
   }
-  return globalForDb.__dispatchDb;
+  return dbs[workspace]!;
+}
+
+/** What each workspace starts from (and what a simulation reset restores). */
+export function workspaceScenario(
+  workspace: Workspace,
+  env: Record<string, string | undefined> = process.env,
+): () => Scenario {
+  if (workspace === 'simulation') return simulationScenario(env);
+  // Tests are written against Eastwind whichever workspace a route lands in.
+  if (env.NODE_ENV === 'test') return () => EASTWIND;
+  return () => buildEmptyScenario(singaporeToday());
 }
 
 /**
- * The seed the running app uses. Tests always get the fixed Eastwind fixture.
- * Otherwise `DEMO_SCENARIO=eastwind` keeps the 12-job board, and the default is
- * the finals board dated today in Singapore (or `BOARD_DATE`, for rehearsing a
+ * The sample day. Tests always get the fixed Eastwind fixture. Otherwise
+ * `DEMO_SCENARIO=eastwind` keeps the 12-job board, and the default is the
+ * finals board dated today in Singapore (or `BOARD_DATE`, for rehearsing a
  * specific day). Re-evaluated on every reset, so a reset re-dates the board.
  */
-export function liveScenario(env: Record<string, string | undefined> = process.env): () => Scenario {
+export function simulationScenario(env: Record<string, string | undefined> = process.env): () => Scenario {
   if (env.NODE_ENV === 'test' || env.DEMO_SCENARIO === 'eastwind') return () => EASTWIND;
   return () => buildScenario(isIsoDate(env.BOARD_DATE) ? env.BOARD_DATE : singaporeToday());
 }

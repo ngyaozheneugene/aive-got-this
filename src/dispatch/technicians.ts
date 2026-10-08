@@ -1,0 +1,83 @@
+// Team setup: adding and editing technicians. Eligibility reads certificates,
+// tier, parts and the home area straight from these rows, so a change here is
+// in force at the next plan. Nothing here touches the board.
+
+import type { IDatabase } from '../db/interface';
+import type { Technician, TechnicianCert } from '../shared/types/domain';
+import {
+  LEGAL_GATE_CERTS,
+  type CreateTechnicianBody,
+  type UpdateTechnicianBody,
+} from '../shared/contracts/technicians';
+import { CLUSTER_REGION, clusterForPostal } from '../location/postal';
+import { boardDate } from './board-date';
+
+export type TeamMember = Technician & { certs: TechnicianCert[] };
+
+export type TechnicianResult =
+  | { ok: true; technician: TeamMember }
+  | { ok: false; code: string; httpStatus: number; detail: string };
+
+const refuse = (code: string, httpStatus: number, detail: string): TechnicianResult => ({ ok: false, code, httpStatus, detail });
+
+/** Everyone on file, active or not, with their certificates. */
+export async function listTeam(db: IDatabase): Promise<TeamMember[]> {
+  const techs = await db.technicians.listAll();
+  return Promise.all(techs.map(async (t) => ({ ...t, certs: await db.technicians.getCerts(t.id) })));
+}
+
+async function certRows(db: IDatabase, certs: CreateTechnicianBody['certs']) {
+  // Issued as of today, so they count from the first plan; expiry as given.
+  const today = await boardDate(db);
+  return certs.map((c) => ({
+    certType: c.type,
+    issuedAt: today,
+    expiresAt: c.expiresAt,
+    isLegalGate: LEGAL_GATE_CERTS.includes(c.type),
+  }));
+}
+
+export async function createTechnician(db: IDatabase, body: CreateTechnicianBody): Promise<TechnicianResult> {
+  const cluster = clusterForPostal(body.homePostalCode);
+  if (!cluster) return refuse('unknown_postal_code', 422, `Postal code ${body.homePostalCode} is not one we can place.`);
+  const certs = await certRows(db, body.certs);
+  return db.transaction(async (tx) => {
+    const tech = await tx.technicians.create({
+      name: body.name,
+      tier: body.tier,
+      homeRegion: CLUSTER_REGION[cluster],
+      currentCluster: cluster,
+      maxMinutesDay: body.maxMinutesDay,
+      acceptsOt: body.acceptsOt,
+      parts: body.parts,
+      tools: [],
+      isActive: true,
+    });
+    const saved = await tx.technicians.setCerts(tech.id, certs);
+    return { ok: true as const, technician: { ...tech, certs: saved } };
+  });
+}
+
+export async function updateTechnician(db: IDatabase, id: string, body: UpdateTechnicianBody): Promise<TechnicianResult> {
+  const existing = await db.technicians.getById(id);
+  if (!existing) return refuse('technician_not_found', 404, `No technician ${id}.`);
+  let cluster: ReturnType<typeof clusterForPostal> = null;
+  if (body.homePostalCode) {
+    cluster = clusterForPostal(body.homePostalCode);
+    if (!cluster) return refuse('unknown_postal_code', 422, `Postal code ${body.homePostalCode} is not one we can place.`);
+  }
+  const certs = body.certs ? await certRows(db, body.certs) : null;
+  return db.transaction(async (tx) => {
+    const tech = await tx.technicians.update(id, {
+      name: body.name,
+      tier: body.tier,
+      ...(cluster ? { homeRegion: CLUSTER_REGION[cluster], currentCluster: cluster } : {}),
+      maxMinutesDay: body.maxMinutesDay,
+      acceptsOt: body.acceptsOt,
+      parts: body.parts,
+      isActive: body.isActive,
+    });
+    const saved = certs ? await tx.technicians.setCerts(id, certs) : await tx.technicians.getCerts(id);
+    return { ok: true as const, technician: { ...tech, certs: saved } };
+  });
+}

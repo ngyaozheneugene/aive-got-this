@@ -15,6 +15,9 @@ import type {
   Site,
 } from '../../shared/types/domain';
 import type { CreateJobBody } from '../../shared/contracts/jobs';
+import type { CreateTechnicianBody, UpdateTechnicianBody } from '../../shared/contracts/technicians';
+import type { TeamMember } from '../../dispatch/technicians';
+export type { TeamMember };
 
 /** Backend refusals arrive as { error, detail? }. Surface both, never swallow. */
 export class DeskApiError extends Error {
@@ -28,8 +31,19 @@ export class DeskApiError extends Error {
   }
 }
 
+/** Which workspace the desk is looking at: the company's own, or the sample day. */
+export type DeskWorkspace = 'live' | 'simulation';
+let workspace: DeskWorkspace = 'live';
+
+/** Every request after this goes to `next`. The page owns the choice. */
+export function setDeskWorkspace(next: DeskWorkspace): void {
+  workspace = next;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { cache: 'no-store', ...init });
+  const headers = new Headers(init?.headers);
+  headers.set('x-workspace', workspace);
+  const res = await fetch(url, { cache: 'no-store', ...init, headers });
   const body = (await res.json().catch(() => null)) as
     | (Partial<T> & { error?: string; detail?: string })
     | null;
@@ -90,6 +104,23 @@ export const deskApi = {
     request<DeskBoard>(`/api/schedule/current${date ? `?date=${encodeURIComponent(date)}` : ''}`),
 
   reset: () => request<unknown>('/api/demo/reset', { method: 'POST' }),
+
+  /** Everyone on the team, active or not, with certificates. */
+  team: () => request<TeamMember[]>('/api/technicians'),
+
+  addTechnician: (body: CreateTechnicianBody) =>
+    request<TeamMember>('/api/technicians', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  updateTechnician: (id: string, body: UpdateTechnicianBody) =>
+    request<TeamMember>(`/api/technicians/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
 
   /** What can be booked, with the certificates each needs. */
   jobTypes: () => request<Array<JobType & { certs: string[] }>>('/api/job-types'),

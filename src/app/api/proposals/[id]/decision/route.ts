@@ -3,6 +3,7 @@ import { proposalDecisionBodySchema } from '../../../../../shared/contracts/tool
 import { recordDecision } from '../../../../../dispatch/decision';
 import { getDatabase } from '../../../../../db';
 import { badRequest, fail } from '../../../_lib/http';
+import { workspaceOf } from '../../../_lib/workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export async function POST(
     return badRequest('invalid_decision', parsed.error.flatten());
   }
 
-  const result = await recordDecision(getDatabase(), {
+  const result = await recordDecision(getDatabase(workspaceOf(request)), {
     proposalId: id,
     decision: parsed.data.decision,
     planId: parsed.data.planId,

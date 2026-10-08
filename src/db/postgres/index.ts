@@ -71,8 +71,10 @@ function withoutNulls<T>(row: Row): T {
   return out as T;
 }
 
-export function connect(url = DATABASE_URL): Sql {
+export function connect(url = DATABASE_URL, schema?: string): Sql {
   return postgres(url, {
+    // A workspace lives in its own schema; unqualified table names resolve there.
+    ...(schema ? { connection: { search_path: schema } } : {}),
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
@@ -125,6 +127,8 @@ export interface PostgresOptions {
   url?: string;
   /** What a reset (or a first start on an empty database) loads. Defaults to Eastwind. */
   scenario?: () => Scenario;
+  /** Postgres schema for this workspace (created on first use). Default: public. */
+  schema?: string;
   /** Internal: an open transaction to run against instead of a pool. */
   sql?: Sql;
 }
@@ -132,12 +136,15 @@ export interface PostgresOptions {
 export class PostgresDatabase implements IDatabase {
   private readonly sql: Sql;
   private readonly scenario: () => Scenario;
+  private readonly schema: string | undefined;
   private readonly inTransaction: boolean;
   private readyPromise: Promise<void> | null;
 
   constructor(options: PostgresOptions | string = {}) {
     const opts = typeof options === 'string' ? { url: options } : options;
-    this.sql = opts.sql ?? connect(opts.url);
+    if (opts.schema && !/^[a-z_][a-z0-9_]*$/.test(opts.schema)) throw new Error(`Bad schema name: ${opts.schema}`);
+    this.schema = opts.schema;
+    this.sql = opts.sql ?? connect(opts.url, opts.schema);
     this.scenario = opts.scenario ?? (() => EASTWIND);
     this.inTransaction = Boolean(opts.sql);
     this.readyPromise = this.inTransaction ? Promise.resolve() : null;
@@ -147,6 +154,7 @@ export class PostgresDatabase implements IDatabase {
   public ready(): Promise<void> {
     if (!this.readyPromise) {
       this.readyPromise = (async () => {
+        if (this.schema) await this.sql.unsafe(`CREATE SCHEMA IF NOT EXISTS "${this.schema}"`);
         await migrate(this.sql);
         await this.sql.begin(async (tx) => {
           await tx`SELECT pg_advisory_xact_lock(${SEED_LOCK})`;
@@ -203,7 +211,7 @@ export class PostgresDatabase implements IDatabase {
     if (this.inTransaction) return fn(this);
     await this.ready();
     return (await this.sql.begin((tx) =>
-      fn(new PostgresDatabase({ sql: tx as unknown as Sql, scenario: this.scenario })),
+      fn(new PostgresDatabase({ sql: tx as unknown as Sql, scenario: this.scenario, schema: this.schema })),
     )) as T;
   }
 
@@ -298,6 +306,32 @@ export class PostgresDatabase implements IDatabase {
         INSERT INTO technician (user_id, name, tier, home_region, current_cluster, max_minutes_day, accepts_ot, parts, tools, is_active)
         VALUES (${tech.userId ?? null}, ${tech.name}, ${tech.tier}, ${tech.homeRegion}, ${tech.currentCluster ?? null}, ${tech.maxMinutesDay}, ${tech.acceptsOt}, ${tech.parts ?? []}::text[], ${tech.tools ?? []}::text[], ${tech.isActive})
         RETURNING ${this.cols(TECH_COLS)}`)!,
+    update: async (id: string, patch: Partial<Omit<Technician, 'id' | 'createdAt'>>) => {
+      const row = await this.one<Technician>`
+        UPDATE technician SET
+          name = COALESCE(${patch.name ?? null}, name),
+          tier = COALESCE(${patch.tier ?? null}::int, tier),
+          home_region = COALESCE(${patch.homeRegion ?? null}, home_region),
+          current_cluster = COALESCE(${patch.currentCluster ?? null}, current_cluster),
+          max_minutes_day = COALESCE(${patch.maxMinutesDay ?? null}::int, max_minutes_day),
+          accepts_ot = COALESCE(${patch.acceptsOt ?? null}::boolean, accepts_ot),
+          parts = COALESCE(${patch.parts ?? null}::text[], parts),
+          tools = COALESCE(${patch.tools ?? null}::text[], tools),
+          is_active = COALESCE(${patch.isActive ?? null}::boolean, is_active)
+        WHERE id = ${id}
+        RETURNING ${this.cols(TECH_COLS)}`;
+      if (!row) throw new Error(`Technician ${id} not found`);
+      return row;
+    },
+    setCerts: async (technicianId: string, certs: Array<Omit<TechnicianCert, 'id' | 'createdAt' | 'technicianId'>>) => {
+      await this.q`DELETE FROM technician_cert WHERE technician_id = ${technicianId}`;
+      for (const c of certs) {
+        await this.q`
+          INSERT INTO technician_cert (technician_id, cert_type, brand, issued_at, expires_at, is_legal_gate)
+          VALUES (${technicianId}, ${c.certType}, ${c.brand ?? null}, ${c.issuedAt}::date, ${c.expiresAt ?? null}::date, ${c.isLegalGate})`;
+      }
+      return this.technicians.getCerts(technicianId);
+    },
   };
 
   shifts = {

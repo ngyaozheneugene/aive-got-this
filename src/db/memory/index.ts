@@ -183,6 +183,20 @@ export class InMemoryDatabase implements IDatabase {
       this.techniciansMap.set(created.id, created);
       return created;
     },
+    update: async (id: string, patch: Partial<Omit<Technician, 'id' | 'createdAt'>>) => {
+      const existing = this.techniciansMap.get(id);
+      if (!existing) throw new Error(`Technician ${id} not found`);
+      const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      const updated: Technician = { ...existing, ...defined };
+      this.techniciansMap.set(id, updated);
+      return updated;
+    },
+    setCerts: async (technicianId: string, certs: Array<Omit<TechnicianCert, 'id' | 'createdAt' | 'technicianId'>>) => {
+      for (const [id, c] of this.certsMap) if (c.technicianId === technicianId) this.certsMap.delete(id);
+      const created = certs.map((c) => ({ ...c, technicianId, id: this.generateId('cert'), createdAt: this.nowIso() }));
+      for (const c of created) this.certsMap.set(c.id, c);
+      return byId(created);
+    },
   };
 
   shifts = {

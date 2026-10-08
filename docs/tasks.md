@@ -231,6 +231,10 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [ ] A3 Draft customer/technician messages after commit (not sent)
 - [ ] P3 Demo sign-in and roles
 - [ ] P4 Technician / job type / customer management pages
+  - 8 Oct, technicians done as part of W1 below; job types and customers still open.
+- [x] W1 Your workspace starts empty; the sample day is a simulation mode (added 8 Oct at the user's request)
+  - [ADR 008](adr/008-workspaces-and-simulation.md). Two workspaces with separate data (Postgres schemas `live` / `simulation`), chosen by `x-workspace`; reset is simulation-only. Your workspace starts empty, follows the calendar, and has team setup (`/api/technicians`; tier, certificates with expiry, parts, home postal code, hours, overtime). Active technicians get a default 08:00 shift. "Try a sample day" / "Exit simulation" in the header; demo controls only in the simulation.
+  - Evidence: offline suite green; `test:pg` 16/16 (schema isolation, team edits); desk on Postgres from empty workspace → add technician → sample day → reset → exit, with the live team intact and a live reset refused (403).
 - [ ] P5 Snapshot history with diffs; rollback as a proposal
 - [ ] Q3 Ops metrics page from `decision_log`
 

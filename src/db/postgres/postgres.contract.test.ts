@@ -24,6 +24,9 @@ import { getCurrentBoard } from '../../dispatch/current-board';
 import { commitPlan } from '../../dispatch/commit';
 import { recordDecision } from '../../dispatch/decision';
 import { createJob } from '../../dispatch/create-job';
+import { createTechnician, listTeam, updateTechnician } from '../../dispatch/technicians';
+import { createTechnicianBodySchema } from '../../shared/contracts/technicians';
+import { buildEmptyScenario } from '../../shared/fixtures/scenario';
 import { createJobBodySchema } from '../../shared/contracts/jobs';
 import { propose } from '../../matching/propose';
 import { EASTWIND, type Scenario } from '../../shared/fixtures/eastwind';
@@ -232,6 +235,40 @@ describe.skipIf(!enabled)('Postgres adapter', () => {
         };
       };
       expect(await book(pg)).toEqual(await book(mem));
+    });
+
+    it('adds and edits technicians the same way', async () => {
+      const { pg, mem } = await pair(() => buildEmptyScenario(FINALS_DATE));
+      track(pg);
+      const strip = ({ id: _i, createdAt: _c, ...rest }: Record<string, unknown>) => rest;
+      const steps = async (db: IDatabase) => {
+        const made = await createTechnician(db, createTechnicianBodySchema.parse({
+          name: 'Aisha', tier: 3, homePostalCode: '310123', certs: [{ type: 'NEA_R32', expiresAt: '2027-06-30' }], parts: ['inverter_board'],
+        }));
+        if (!made.ok) throw new Error(made.detail);
+        await updateTechnician(db, made.technician.id, { tier: 4, homePostalCode: '640441', certs: [{ type: 'WSH_PASS' }, { type: 'EMA_LEW' }] });
+        await updateTechnician(db, made.technician.id, { isActive: false });
+        return (await listTeam(db)).map((t) => ({
+          ...strip(t as unknown as Record<string, unknown>),
+          certs: t.certs.map((c) => strip({ ...c, technicianId: 'x' } as unknown as Record<string, unknown>)).sort((a, b) => String(a.certType).localeCompare(String(b.certType))),
+        }));
+      };
+      expect(await steps(pg)).toEqual(await steps(mem));
+    });
+
+    it('keeps two workspace schemas apart: a reset in one never touches the other', async () => {
+      const live = track(new PostgresDatabase({ url: URL, schema: 'test_live', scenario: () => buildEmptyScenario(FINALS_DATE) }));
+      const sim = track(new PostgresDatabase({ url: URL, schema: 'test_simulation', scenario: () => buildScenario(FINALS_DATE) }));
+      await live.reset();
+      await sim.reset();
+      const made = await createTechnician(live, createTechnicianBodySchema.parse({ name: 'Real person', tier: 2, homePostalCode: '520123' }));
+      expect(made.ok).toBe(true);
+      expect((await live.technicians.listAll()).map((t) => t.name)).toEqual(['Real person']);
+      expect(await sim.technicians.listAll()).toHaveLength(15);
+
+      await sim.reset();
+      expect((await live.technicians.listAll()).map((t) => t.name)).toEqual(['Real person']);
+      expect((await getCurrentBoard(live)).date).not.toBe(FINALS_DATE); // follows the clock
     });
 
     it('rolls a transaction back when it throws', async () => {

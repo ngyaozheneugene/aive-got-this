@@ -1,0 +1,40 @@
+import { z } from 'zod';
+
+/** The certificates the desk knows. NEA_R32, BCA_STRUCTURAL and EMA_LEW are legal gates. */
+export const CERT_TYPES = ['WSH_PASS', 'NITEC_HVAC', 'NEA_R32', 'EMA_LEW', 'BCA_STRUCTURAL'] as const;
+export const LEGAL_GATE_CERTS: readonly string[] = ['NEA_R32', 'BCA_STRUCTURAL', 'EMA_LEW'];
+
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+
+const fields = {
+  name: z.string().trim().min(1).max(80),
+  tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  /** Where their day starts: a postal code, placed on the travel matrix. */
+  homePostalCode: z.string().trim().regex(/^\d{6}$/, 'expected a 6-digit postal code'),
+  certs: z
+    .array(z.object({ type: z.enum(CERT_TYPES), expiresAt: date.optional() }))
+    .max(CERT_TYPES.length)
+    .refine((cs) => new Set(cs.map((c) => c.type)).size === cs.length, 'each certificate once'),
+  /** Parts carried on the van, e.g. inverter_board. */
+  parts: z.array(z.string().trim().regex(/^[a-z0-9_]{1,40}$/, 'lower_snake_case')).max(20),
+  acceptsOt: z.boolean(),
+  maxMinutesDay: z.number().int().min(120).max(720),
+};
+
+/** Adding a technician from team setup. They work every day from 08:00 unless told otherwise. ADR 008. */
+export const createTechnicianBodySchema = z.object({
+  ...fields,
+  certs: fields.certs.default([]),
+  parts: fields.parts.default([]),
+  acceptsOt: fields.acceptsOt.default(false),
+  maxMinutesDay: fields.maxMinutesDay.default(480),
+});
+
+/** Editing one: any subset of the fields, plus taking them off the team. */
+export const updateTechnicianBodySchema = z
+  .object({ ...fields, isActive: z.boolean() })
+  .partial()
+  .refine((b) => Object.keys(b).length > 0, 'nothing to change');
+
+export type CreateTechnicianBody = z.infer<typeof createTechnicianBodySchema>;
+export type UpdateTechnicianBody = z.infer<typeof updateTechnicianBodySchema>;

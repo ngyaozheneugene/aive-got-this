@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CandidatePlan, DeskBoard, DeskJobRow, PlanProfile } from '../../../shared/types/domain';
 import {
-  DeskApiError, deskApi, type PlanResult,
+  DeskApiError, deskApi, setDeskWorkspace, type DeskWorkspace, type PlanResult,
 } from '../../_components/desk-api';
 import { BoardView } from '../../_components/BoardView';
 import { MapBoundary } from '../../_components/MapBoundary';
@@ -17,13 +17,14 @@ import {
   disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption,
 } from '../../_components/disruptions';
 import { NewJobForm } from '../../_components/NewJobForm';
+import { TeamPanel } from '../../_components/TeamPanel';
 import type { CreateJobBody } from '../../../shared/contracts/jobs';
 import { TechList } from '../../_components/TechList';
 import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
 import type { MapInsets } from '../../_components/MapView';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Bell, ChevronDown, Clock, FlaskConical, History, List, Loader2, Maximize2, RotateCcw, Snowflake, Table2, X,
+  Bell, ChevronDown, Clock, FlaskConical, History, List, Loader2, Maximize2, RotateCcw, Snowflake, Table2, UserPlus, Users, X,
 } from 'lucide-react';
 import { BorderBeam, LiveDot, NumberTicker, ShimmerText } from '../../_components/fx';
 import { PROFILE_COPY, eventStatusCopy } from '../../_components/copy';
@@ -75,7 +76,18 @@ export default function DeskPage() {
   // and, on narrow screens, the technician list.
   const [cardOpen, setCardOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
-  const [demoOpen, setDemoOpen] = useState(true);
+  const [demoOpen, setDemoOpen] = useState(false);
+  // The company's own workspace or the sample day. Read from the URL before
+  // the first load (?mode=simulation), so nothing loads from the wrong one.
+  const [workspace, setWorkspace] = useState<DeskWorkspace | null>(null);
+  useEffect(() => {
+    const mode = new URLSearchParams(window.location.search).get('mode');
+    const initial: DeskWorkspace = mode === 'simulation' ? 'simulation' : 'live';
+    setWorkspace(initial);
+    setDemoOpen(initial === 'simulation');
+  }, []);
+  const simulation = workspace === 'simulation';
+  const feedKey = `${FEED_KEY}:${workspace ?? 'live'}`;
   const [listOpen, setListOpen] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
   // Today's events: what this desk has received, newest first. Kept for the
@@ -92,23 +104,26 @@ export default function DeskPage() {
   // the empty initial one (and strict mode runs mount effects twice).
   const [feedRestored, setFeedRestored] = useState(false);
   useEffect(() => {
+    if (!workspace) return;
+    setFeedRestored(false);
     try {
-      const saved = sessionStorage.getItem(FEED_KEY);
-      if (saved) setFeed(JSON.parse(saved) as FeedItem[]);
+      const saved = sessionStorage.getItem(feedKey);
+      setFeed(saved ? (JSON.parse(saved) as FeedItem[]) : []);
     } catch {
       // No storage (private window, blocked): the feed just starts empty.
+      setFeed([]);
     }
     setFeedRestored(true);
-  }, []);
+  }, [workspace, feedKey]);
 
   useEffect(() => {
     if (!feedRestored) return;
     try {
-      sessionStorage.setItem(FEED_KEY, JSON.stringify(feed));
+      sessionStorage.setItem(feedKey, JSON.stringify(feed));
     } catch {
       // Best effort only.
     }
-  }, [feed, feedRestored]);
+  }, [feed, feedRestored, feedKey]);
 
   // Refetch statuses whenever something about the current event moves.
   const feedRefresh = `${currentEventId}|${busy}|${proposal?.proposal.id}|${decision}|${planError?.code}`;
@@ -141,13 +156,15 @@ export default function DeskPage() {
   const [viewDate, setViewDate] = useState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
+    if (!workspace) return;
+    setDeskWorkspace(workspace);
     setLoadError(null);
     try {
       setBoard(await deskApi.getBoard(viewDate));
     } catch (e) {
       setLoadError(e instanceof DeskApiError ? e.message : 'Could not load the board.');
     }
-  }, [viewDate]);
+  }, [viewDate, workspace]);
 
   useEffect(() => {
     void load();
@@ -189,6 +206,7 @@ export default function DeskPage() {
   // Booking a call for a job that is not on the board: save it as waiting, then
   // ask for options exactly as "Find a technician" would.
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
   const loadJobTypes = useCallback(() => deskApi.jobTypes(), []);
   const bookJob = useCallback(
     async (body: CreateJobBody, typeName: string): Promise<string | null> => {
@@ -205,6 +223,29 @@ export default function DeskPage() {
     },
     [load, simulate],
   );
+
+  // Into or out of the sample day. Nothing in flight carries across.
+  const switchWorkspace = useCallback((next: DeskWorkspace) => {
+    setProposal(null);
+    setPreview(undefined);
+    setDecision(null);
+    setProposalMemory(undefined);
+    setPlanError(null);
+    setLastAttempt(null);
+    setPinnedTechId(undefined);
+    setCardOpen(false);
+    setCurrentEventId(undefined);
+    setViewDate(undefined);
+    setBookingOpen(false);
+    setTeamOpen(false);
+    setBoard(null);
+    setDemoOpen(next === 'simulation');
+    const url = new URL(window.location.href);
+    if (next === 'simulation') url.searchParams.set('mode', 'simulation');
+    else url.searchParams.delete('mode');
+    window.history.replaceState(null, '', url);
+    setWorkspace(next);
+  }, []);
 
   const reset = useCallback(async () => {
     setBusy(true);
@@ -316,7 +357,26 @@ export default function DeskPage() {
             <Snowflake className="size-4" />
           </div>
           <span className="truncate text-sm font-semibold">Dispatch Coordinator</span>
-          <span className="hidden truncate text-xs text-muted-foreground sm:inline">Eastwind Aircon</span>
+          {simulation ? (
+            <>
+              <Badge variant="warning" className="gap-1.5" title="A sample company and day. Nothing here touches your workspace.">
+                <FlaskConical className="size-3" />
+                <span className="hidden sm:inline">Simulation · Eastwind Aircon sample day</span>
+                <span className="sm:hidden">Simulation</span>
+              </Badge>
+              <Button variant="ghost" size="sm" onClick={() => switchWorkspace('live')} disabled={busy}>
+                Exit simulation
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="hidden truncate text-xs text-muted-foreground sm:inline">Your workspace</span>
+              <Button variant="outline" size="sm" onClick={() => switchWorkspace('simulation')} disabled={busy} className="gap-1.5">
+                <FlaskConical className="size-3.5 text-warning" />
+                Try a sample day
+              </Button>
+            </>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2">
           <AnimatePresence mode="wait" initial={false}>
@@ -398,6 +458,9 @@ export default function DeskPage() {
               </motion.span>
             ) : null}
           </RailButton>
+          <RailButton label="Team" active={teamOpen} onClick={() => setTeamOpen((o) => !o)}>
+            <Users />
+          </RailButton>
           <RailButton
             label="Show all of Singapore"
             onClick={() => {
@@ -407,11 +470,13 @@ export default function DeskPage() {
           >
             <Maximize2 />
           </RailButton>
-          <div className="mt-auto">
-            <RailButton label="Demo controls" active={demoOpen} onClick={() => setDemoOpen((o) => !o)} className="text-warning">
-              <FlaskConical />
-            </RailButton>
-          </div>
+          {simulation ? (
+            <div className="mt-auto">
+              <RailButton label="Demo controls" active={demoOpen} onClick={() => setDemoOpen((o) => !o)} className="text-warning">
+                <FlaskConical />
+              </RailButton>
+            </div>
+          ) : null}
         </nav>
 
         {/* Map and everything floating on it */}
@@ -608,9 +673,41 @@ export default function DeskPage() {
             ) : null}
           </AnimatePresence>
 
+          {/* Team setup, over the map. */}
+          {teamOpen ? (
+            <div className="absolute inset-y-3 left-3 z-[760] flex w-[min(440px,calc(100%-24px))] flex-col">
+              <TeamPanel onClose={() => setTeamOpen(false)} onChanged={() => void load()} />
+            </div>
+          ) : null}
+
+          {/* Day one: nobody on the team yet. */}
+          {!simulation && !teamOpen && board.technicians.length === 0 && !viewDate ? (
+            <div className="absolute inset-0 z-[740] grid place-items-center bg-background/60 p-4 backdrop-blur-[2px]">
+              <Card className="w-full max-w-md">
+                <CardHeader>
+                  <CardTitle>Set up your team</CardTitle>
+                  <CardDescription>
+                    Add the technicians who work for you: their skill tier, certificates, the parts on their van and
+                    where their day starts. Then book jobs and let the assistant plan around whatever the day brings.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  <Button onClick={() => setTeamOpen(true)} className="gap-1.5">
+                    <UserPlus />
+                    Add your first technician
+                  </Button>
+                  <Button variant="outline" onClick={() => switchWorkspace('simulation')} className="gap-1.5">
+                    <FlaskConical className="text-warning" />
+                    Try a sample day first
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
           {/* Demo controls: stand-in for the outside world. */}
           <AnimatePresence>
-            {demoOpen ? (
+            {demoOpen && simulation ? (
               <motion.div
                 key="demo"
                 initial={{ opacity: 0, y: 10 }}
@@ -642,6 +739,7 @@ export default function DeskPage() {
         >
           <TechList
             board={board}
+            teamName={simulation ? 'Eastwind Aircon · field team' : 'Your field team'}
             plan={preview}
             unavailableTechId={unavailableTechId}
             focusTechId={focusTechId}

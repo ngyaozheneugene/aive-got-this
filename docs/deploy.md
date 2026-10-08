@@ -25,11 +25,13 @@ It finishes with `Deployed <commit>. Health: {...}`. That takes a few minutes, m
 curl -s https://54.179.142.4.sslip.io/health
 ```
 
-The current build reports `"database":"postgres","databaseOk":true` and a `boardVersion`. To start the demo day fresh, use **Reset the demo day** on the desk, or:
+The current build reports `"database":"postgres","databaseOk":true` and a `boardVersion`. For a demo, open `https://54.179.142.4.sslip.io/desk?mode=simulation`. To start the sample day fresh, use **Reset the demo day** there, or:
 
 ```bash
-curl -s -X POST https://54.179.142.4.sslip.io/api/demo/reset
+curl -s -X POST -H 'x-workspace: simulation' https://54.179.142.4.sslip.io/api/demo/reset
 ```
+
+A reset without that header is refused (403): the company's own workspace cannot be reset.
 
 ## If something goes wrong
 

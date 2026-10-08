@@ -28,8 +28,11 @@ export function TechList({
   onReportLate,
   onNewJob,
   newJobForm,
+  teamName = 'Field team',
 }: {
   board: DeskBoard;
+  /** Heading over the technicians. */
+  teamName?: string;
   plan?: CandidatePlan;
   unavailableTechId?: string;
   focusTechId?: string;
@@ -139,7 +142,7 @@ export function TechList({
         ))}
         {shownWaiting.length === 0 ? (
           <p className="border-b px-3.5 py-3 text-xs text-muted-foreground">
-            {waiting.length === 0 ? 'Every job has a technician.' : 'No matches.'}
+            {board.jobs.length === 0 ? 'No jobs booked for this day yet.' : waiting.length === 0 ? 'Every job has a technician.' : 'No matches.'}
           </p>
         ) : (
           shownWaiting.map((r) => (
@@ -154,7 +157,7 @@ export function TechList({
           ))
         )}
 
-        <SectionHead title="Eastwind Aircon · field team" note={`${board.technicians.length} on duty`} />
+        <SectionHead title={teamName} note={`${board.technicians.length} on duty`} />
         {board.technicians.map(({ technician, loadMinutes, shift }) => {
           const stops = view.slots.filter((s) => s.technicianId === technician.id);
           const leaving = view.slots.filter((s) => s.previous?.technicianId === technician.id && s.technicianId !== technician.id);
