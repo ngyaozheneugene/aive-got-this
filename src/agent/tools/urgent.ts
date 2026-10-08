@@ -4,8 +4,8 @@ import type { PlanningSchedule } from '../../dispatch/board-schedule';
 import { propose, proposeWithSidecar } from '../../matching/propose';
 import { validatePlan } from '../../matching/validate';
 import {
-  jobOverrunPayloadSchema, operationalEventSchema, technicianUnavailablePayloadSchema, unavailabilityIssue,
-  urgentJobPayloadSchema,
+  jobOverrunPayloadSchema, operationalEventSchema, placeWaitingPayloadSchema, technicianUnavailablePayloadSchema,
+  unavailabilityIssue, urgentJobPayloadSchema,
 } from '../../shared/contracts/events';
 import { applyDisruption, parseUnavailability, unavailabilityOnDay } from '../../matching/disruption';
 import { planValidationSchema } from '../../shared/contracts/propose';
@@ -29,7 +29,12 @@ export interface UrgentTools extends SchedulerPort {
   readContext(eventId: string, sourceSnapshotId?: string): Promise<PlanningContext>;
 }
 
-function primaryId(event: OperationalEvent): { jobId?: string; technicianId?: string } {
+function primaryId(event: OperationalEvent): { jobId?: string; technicianId?: string; jobIds?: string[] } {
+  if (event.type === 'place_waiting') {
+    const payload = placeWaitingPayloadSchema.strict().safeParse(event.normalizedPayload);
+    if (!payload.success) throw new AgentError('INVALID_EVENT_PAYLOAD');
+    return { jobIds: payload.data.jobIds };
+  }
   if (event.type === 'urgent_job') {
     const payload = urgentJobPayloadSchema.strict().safeParse(event.normalizedPayload);
     if (!payload.success) throw new AgentError('INVALID_EVENT_PAYLOAD');
@@ -79,6 +84,10 @@ export function createUrgentTools(
       if (event.type === 'urgent_job' && event.affectedIds.some((id) => id !== ids.jobId)) {
         throw new AgentError('EVENT_AFFECTED_IDS_MISMATCH');
       }
+      if (event.type === 'place_waiting' &&
+          (event.affectedIds.length !== ids.jobIds!.length || event.affectedIds.some((id) => !ids.jobIds!.includes(id)))) {
+        throw new AgentError('EVENT_AFFECTED_IDS_MISMATCH');
+      }
       if (event.type !== 'urgent_job' && ids.technicianId && event.affectedIds.length &&
           !event.affectedIds.includes(ids.technicianId)) {
         throw new AgentError('EVENT_AFFECTED_IDS_MISMATCH');
@@ -99,6 +108,15 @@ export function createUrgentTools(
       const schedule = applyDisruption(board, event);
       const job = ids.jobId ? schedule.jobs.find((row) => row.id === ids.jobId) : undefined;
       if (ids.jobId && !job) throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
+      // Placing waiting jobs: every one must be on today's board and still waiting.
+      // One that was placed or removed since the request means the request is stale.
+      if (ids.jobIds) {
+        const booked = new Set(schedule.assignments.map((a) => a.jobId));
+        for (const id of ids.jobIds) {
+          if (!schedule.jobs.some((row) => row.id === id)) throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
+          if (booked.has(id)) throw new AgentError('PLANNING_CONTEXT_CHANGED');
+        }
+      }
       if (ids.technicianId && !schedule.technicians.some((row) => row.id === ids.technicianId)) {
         throw new AgentError('INVALID_EVENT_PAYLOAD');
       }

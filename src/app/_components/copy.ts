@@ -106,6 +106,27 @@ export function describeLeftForCall(board: DeskBoard, plan: CandidatePlan): stri
   });
 }
 
+const WAITING_REASON: Record<string, string> = {
+  no_legal_technician: 'nobody on the team is qualified for it',
+  no_time: 'no qualified technician is free inside its window',
+  window_too_short: 'its window is shorter than the job',
+};
+
+/**
+ * Waiting jobs a "place all" plan could not place (ADR 014), one sentence each:
+ * "Far East Medical (08:30–11:30) stays waiting: no qualified technician is free inside its window".
+ */
+export function describeLeftWaiting(board: DeskBoard, plan: CandidatePlan): string[] {
+  const rows = new Map(board.jobs.map((r) => [r.job.id, r]));
+  return (plan.changeSet ?? [])
+    .filter((c) => c.action === 'leave_waiting' && typeof c.jobId === 'string')
+    .map((c) => {
+      const row = rows.get(c.jobId as string);
+      const when = row?.job.windowStart && row.job.windowEnd ? ` (${row.job.windowStart.slice(11, 16)}–${row.job.windowEnd.slice(11, 16)})` : '';
+      return `${row?.customer.name ?? 'A job'}${when} stays waiting: ${WAITING_REASON[String(c.reason)] ?? 'it could not be placed'}`;
+    });
+}
+
 /**
  * How busy each technician the plan gives new work to already is, from the
  * board's stored load: "Jonah already has 90 min of work booked today".

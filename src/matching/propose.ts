@@ -185,6 +185,17 @@ function proposeInsertion(input: ProposeInput): ProposeOutput {
     return { plans, engine: 'insertion', timedOut: false };
   }
 
+  if (event.type === 'place_waiting') {
+    const plans = (['sla_first', 'minimal_disruption'] as const).map((planProfile) =>
+      placeWaitingFallback(input, planProfile, certs, shifts, requirements),
+    );
+    if (plans.every((p) => !p.assignments.some((s) => !(schedule.assignments ?? []).some((a) => a.jobId === s.jobId)))) {
+      return { plans: [], engine: 'insertion', timedOut: false, message: 'no_eligible_technicians' };
+    }
+    (plans.find((p) => p.profile === profile) ?? plans[0])!.status = 'RECOMMENDED';
+    return { plans, engine: 'insertion', timedOut: false };
+  }
+
   const targetJobId = event.affectedIds[0] || (event.normalizedPayload.jobId as string);
 
   const targetJob = (schedule.jobs || []).find((j) => j.id === targetJobId);
@@ -246,6 +257,83 @@ function proposeInsertion(input: ProposeInput): ProposeOutput {
     engine: 'insertion',
     timedOut: false,
   };
+}
+
+const PRIORITY_ORDER: Record<string, number> = { urgent: 0, on_demand: 1, callback: 1, when_available: 2, quote: 2 };
+
+/**
+ * place_waiting without the solver (ADR 014): the jobs one at a time, urgent
+ * first then by window, each placed by the single-job insertion on top of
+ * those already placed. A job no one can take, or that no longer fits, is
+ * left waiting with its reason. Weaker than the solver (no rebalancing), but
+ * legal by the same checks.
+ */
+function placeWaitingFallback(
+  input: ProposeInput,
+  profile: PlanProfile,
+  certs: TechnicianCert[],
+  shifts: Shift[],
+  requirements: JobRequirement[],
+): CandidatePlan {
+  const { event, schedule } = input;
+  const byId = jobsById(schedule);
+  const booked = new Set((schedule.assignments ?? []).filter((a) => a.status === 'accepted' || a.status === 'offered').map((a) => a.jobId));
+  const ids = ((event.normalizedPayload.jobIds as string[] | undefined) ?? event.affectedIds).filter((id) => byId.has(id) && !booked.has(id));
+  const order = [...ids].sort((a, b) => {
+    const ja = byId.get(a)!;
+    const jb = byId.get(b)!;
+    return (PRIORITY_ORDER[ja.priority] ?? 1) - (PRIORITY_ORDER[jb.priority] ?? 1) || (ja.windowStart ?? '').localeCompare(jb.windowStart ?? '') || a.localeCompare(b);
+  });
+
+  let assignments = [...(schedule.assignments ?? [])];
+  const changeSet: Array<Record<string, unknown>> = [];
+  const leftWaiting: Array<{ jobId: string; reason: string }> = [];
+  for (const jobId of order) {
+    const job = byId.get(jobId)!;
+    const eligible = stageA(job, schedule.technicians || [], certs, shifts, requirements).filter((r) => r.isEligible).map((r) => r.technician);
+    if (!eligible.length) {
+      leftWaiting.push({ jobId, reason: 'no_legal_technician' });
+      continue;
+    }
+    const current = { ...input, schedule: { ...schedule, assignments } };
+    const candidate = generateCandidateForProfile(current, job, eligible, profile);
+    const slot = candidate?.assignments.find((s) => s.jobId === jobId);
+    if (!candidate || !slot || !candidate.validations.ok) {
+      leftWaiting.push({ jobId, reason: 'no_time' });
+      continue;
+    }
+    // Placed: from here on it is booked, so the next job plans around it.
+    assignments = [
+      ...assignments,
+      {
+        id: `placing_${jobId}`, jobId, technicianId: slot.technicianId, status: 'accepted', snapshotId: schedule.snapshotId,
+        windowStart: slot.windowStart, windowEnd: slot.windowEnd, travelBeforeMinutes: slot.travelBeforeMinutes,
+        offeredAt: slot.windowStart ?? '', metrics: candidate.metrics,
+      },
+    ];
+    changeSet.push({ action: 'assign', jobId, technicianId: slot.technicianId, windowStart: slot.windowStart, windowEnd: slot.windowEnd });
+  }
+  for (const left of leftWaiting) changeSet.push({ action: 'leave_waiting', jobId: left.jobId, reason: left.reason });
+
+  const final = liveSlots({ ...schedule, assignments });
+  const { metrics, workload, travelBefore } = measurePlan(final, event, schedule);
+  const plan: CandidatePlan = {
+    id: `plan_${profile}_waiting_${event.id}`,
+    proposalId: event.id,
+    sourceSnapshotId: event.sourceSnapshotId || schedule.snapshotId,
+    profile,
+    assignments: final.map((s) => ({ ...s, travelBeforeMinutes: travelBefore.get(s.jobId) ?? s.travelBeforeMinutes })),
+    changeSet,
+    metrics,
+    validations: { ok: true, violations: [] },
+    solverTrace: { engine: 'insertion', objective: profile === 'sla_first' ? 'soonest_on_site' : 'least_knock_on', workload, order, leftWaiting },
+    timedOut: false,
+    durationMs: 15,
+    status: 'VALIDATED',
+    createdAt: `${schedule.date || EASTWIND_DATE}T08:00:00+08:00`,
+  };
+  plan.validations = validatePlan(plan, schedule);
+  return plan;
 }
 
 /** Mirrors validate.ts: maxMinutesDay, plus 120 when the technician accepts overtime. */

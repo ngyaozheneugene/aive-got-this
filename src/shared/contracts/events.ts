@@ -4,6 +4,7 @@ export const operationalEventTypeSchema = z.enum([
   'urgent_job',
   'technician_unavailable',
   'job_overrun',
+  'place_waiting',
 ]);
 
 export const operationalEventStatusSchema = z.enum([
@@ -22,6 +23,18 @@ export const operationalEventStatusSchema = z.enum([
 
 export const urgentJobPayloadSchema = z.object({
   jobId: z.string().min(1),
+});
+
+/** Jobs placed together from one request (ADR 014). */
+export const MAX_PLACE_WAITING = 60;
+
+/** Every job waiting for a technician, placed in one plan with one approval. ADR 014. */
+export const placeWaitingPayloadSchema = z.object({
+  jobIds: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(MAX_PLACE_WAITING)
+    .refine((ids) => new Set(ids).size === ids.length, 'each job once'),
 });
 
 /** An instant with its offset, e.g. 2026-10-07T14:00:00+08:00. */
@@ -73,6 +86,12 @@ const eventBodySchema = z.discriminatedUnion('type', [
     rawText: z.string().optional().default(''),
     sourceSnapshotId: z.string().optional(),
     payload: jobOverrunPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('place_waiting'),
+    rawText: z.string().optional().default(''),
+    sourceSnapshotId: z.string().optional(),
+    payload: placeWaitingPayloadSchema,
   }),
 ]);
 

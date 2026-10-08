@@ -23,7 +23,11 @@ export async function POST(request: NextRequest) {
   const snapshot = await db.boardSnapshots.getLatest();
   const body = parsed.data;
   const affectedIds =
-    body.type === 'technician_unavailable' ? [body.payload.technicianId] : [body.payload.jobId];
+    body.type === 'technician_unavailable'
+      ? [body.payload.technicianId]
+      : body.type === 'place_waiting'
+        ? body.payload.jobIds
+        : [body.payload.jobId];
 
   const event = await db.events.create({
     type: body.type,

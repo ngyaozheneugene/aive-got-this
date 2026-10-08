@@ -35,6 +35,12 @@ Scope per event
                           started, is not promised or locked, and starts beyond
                           the frozen horizon may change technician. It keeps
                           its customer's booked time; only who does it moves.
+  place_waiting           every listed waiting job at once (ADR 014), around
+                          booked work, which stays where it is. A job nobody
+                          can legally take, or that does not fit, is left
+                          waiting with a reason instead of failing the plan;
+                          leaving one costs more than any arrangement, and
+                          more for urgent jobs.
 
 Balance
 -------
@@ -233,18 +239,28 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             if s["tech"] == owner and j != overrun_job
             and s["start"] >= live[overrun_job]["start"] and not in_progress(j)
         ]
-    elif event_type == "urgent_job":
-        target = payload.get("jobId") or (affected[0] if affected else None)
-        if target not in jobs or target in live:
-            return _empty("urgent_job_not_unassigned")
-        in_scope = [target]
+    elif event_type in ("urgent_job", "place_waiting"):
+        if event_type == "urgent_job":
+            target = payload.get("jobId") or (affected[0] if affected else None)
+            if target not in jobs or target in live:
+                return _empty("urgent_job_not_unassigned")
+            in_scope = [target]
+        else:
+            waiting = [j for j in (payload.get("jobIds") or affected) if j in jobs and j not in live]
+            if not waiting:
+                return _empty("no_waiting_jobs")
+            in_scope = list(dict.fromkeys(waiting))
         # The board's "now" is the latest start of work already under way; with
         # nothing started, it is the earliest clock-in. The demo has no wall
         # clock on the board day, so this is read from the board, not the host.
         started = [s["start"] for j, s in live.items() if in_progress(j)]
         clock_ins = [m for m in (_to_minutes(sh.get("clockInAt")) for sh in shifts.values()) if m is not None]
         now = max(started) if started else (min(clock_ins) if clock_ins else 0)
-        for j, s in live.items():
+        # Placing many waiting jobs keeps booked work where it is: opening the
+        # whole day for each of them made the model too big to solve in time
+        # (G-13, nine jobs), and a bulk placement should not reshuffle
+        # customers who are already booked.
+        for j, s in (live.items() if event_type == "urgent_job" else []):
             job = jobs[j]
             if (
                 not in_progress(j)
@@ -266,8 +282,12 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
     # Booked jobs this event put in play may be left unassigned when nobody can
     # legally take them. The urgent job itself may not: a plan that does not
     # place it is no plan.
-    droppable = {j for j in in_scope if j in live and j not in rebalance} if event_type != "urgent_job" else set()
+    droppable = {j for j in in_scope if j in live and j not in rebalance} if event_type not in ("urgent_job", "place_waiting") else set()
     unassigned: Dict[str, str] = {}
+    # place_waiting: listed jobs that stay waiting, and why. Not "unassign":
+    # they had no booking to lose.
+    may_wait = {j for j in in_scope if j not in live} if event_type == "place_waiting" else set()
+    left_waiting: Dict[str, str] = {}
 
     model = cp_model.CpModel()
     assign: Dict[Tuple[str, str], cp_model.IntVar] = {}
@@ -291,6 +311,9 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         if job_id in rebalance:
             lo = hi = booked["start"]
         if hi < lo:
+            if job_id in may_wait:
+                left_waiting[job_id] = "window_too_short"
+                continue
             if not booked:
                 unplaceable.append(job_id)
                 continue
@@ -302,6 +325,9 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
         if job.get("lockState") == "promised" and booked:
             candidates = [t for t in candidates if t == booked["tech"]]
         candidates_by_job[job_id] = candidates
+        if not candidates and job_id in may_wait:
+            left_waiting[job_id] = "no_legal_technician"
+            continue
         if not candidates:
             if job_id in droppable:
                 promised = job.get("lockState") == "promised"
@@ -319,7 +345,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             clock_out = _to_minutes(shift.get("clockOutAt"))
             if clock_out is not None:
                 model.Add(start[job_id] + dur <= clock_out).OnlyEnforceIf(chosen)
-        if job_id in droppable:
+        if job_id in droppable or job_id in may_wait:
             drop[job_id] = model.NewBoolVar(f"unassign_{job_id}")
             model.AddExactlyOne([assign[t, job_id] for t in candidates] + [drop[job_id]])
         else:
@@ -327,7 +353,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
 
     if unplaceable:
         return _empty("no_legal_technician:" + ",".join(sorted(unplaceable)))
-    in_scope = [j for j in in_scope if j not in unassigned]
+    in_scope = [j for j in in_scope if j not in unassigned and j not in left_waiting]
 
     # Each technician's day is a route: a circuit from their starting point
     # through every job they hold and back. An arc between two jobs is a real
@@ -440,6 +466,11 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
     gap = model.NewIntVar(-1000, 1000, "workload_gap_pct")
     model.Add(gap == busiest - idlest)
 
+    def drop_cost(job_id: str) -> int:
+        # An urgent job left waiting costs more than a routine one.
+        weight = PRIORITY_WEIGHT.get(jobs[job_id].get("priority"), 2) if job_id in may_wait else 1
+        return UNASSIGN_COST * weight
+
     def moves(tech_id: str, job_id: str) -> bool:
         booked = live.get(job_id)
         return not booked or booked["tech"] != tech_id
@@ -467,7 +498,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
                 terms.append((REBALANCE_MOVE_COST if job_id in rebalance else 1) * chosen)
         if working:
             terms.append(BALANCE_WEIGHT[profile] * gap)
-        terms.extend(UNASSIGN_COST * flag for flag in drop.values())
+        terms.extend(drop_cost(j) * flag for j, flag in drop.items())
         model.Minimize(sum(terms))
     else:
         objective_name = "least_knock_on"
@@ -500,7 +531,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
                 terms.append(weight * (start[job_id] - window_open[job_id]))
         if working:
             terms.append(BALANCE_WEIGHT[profile] * gap)
-        terms.extend(UNASSIGN_COST * flag for flag in drop.values())
+        terms.extend(drop_cost(j) * flag for j, flag in drop.items())
         model.Minimize(sum(terms))
 
     solver = cp_model.CpSolver()
@@ -517,11 +548,14 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
 
     for job_id, flag in drop.items():
         if solver.BooleanValue(flag):
-            unassigned[job_id] = "promised" if jobs[job_id].get("lockState") == "promised" else "no_time"
+            if job_id in may_wait:
+                left_waiting[job_id] = "no_time"
+            else:
+                unassigned[job_id] = "promised" if jobs[job_id].get("lockState") == "promised" else "no_time"
 
     final: Dict[str, Tuple[str, int, int]] = {j: (s["tech"], s["start"], s["end"]) for j, s in fixed.items()}
     for job_id in in_scope:
-        if job_id in unassigned:
+        if job_id in unassigned or job_id in left_waiting:
             continue
         chosen_tech = next(t for (t, j), var in assign.items() if j == job_id and solver.BooleanValue(var))
         begins = solver.Value(start[job_id])
@@ -599,6 +633,10 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             "reason": unassigned[j],
         })
 
+    # place_waiting: what stays waiting, and why, for the coordinator.
+    for j in sorted(left_waiting):
+        change_set.append({"action": "leave_waiting", "jobId": j, "reason": left_waiting[j]})
+
     plan = {
         "id": f"plan_{profile}_ortools_{event.get('id', 'evt')}",
         "proposalId": event.get("id", "evt"),
@@ -612,7 +650,7 @@ def propose(body: ProposeRequest) -> Dict[str, Any]:
             "overtimeMinutes": overtime,
             "jobsMoved": len(moved_jobs),
             "customersAffected": len(customers),
-            "unassignedCount": len(unassigned),
+            "unassignedCount": len(unassigned) + len(left_waiting),
         },
         # Fail closed. The TypeScript validator is the authority and overwrites
         # this; if anything ever skipped it, an unchecked plan must not pass.

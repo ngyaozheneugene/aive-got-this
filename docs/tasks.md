@@ -209,6 +209,7 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
   - Fixed on the way: the fallback planner handed promised jobs to others (`LOCKED_MOVED`); overruns on any job not seeded as on site failed validation (`WINDOW_INFEASIBLE`).
   - Evidence: offline 341 passed; real solver G-suite 49/49 (G-12); `test:pg` 14/14. Desk on Postgres: "Mei off for the rest of today" moved two jobs and left Northpoint's promised slot for a call; committed to v2 with Northpoint back in the waiting list.
 - [ ] R5 Several events at once; stale proposal offers one-click Replan
+  - 8 Oct, part: [ADR 014](adr/014-place-waiting.md). "Plan all N" places every waiting job in one `place_waiting` plan with one approval, around booked work; jobs it cannot place stay waiting with a reason. Evidence: unit tests, G-13 on the real solver (G-suite 51/51), desk click-through to version 2. Still open: several different events in flight, and one-click replan of a stale proposal.
 
 **Agent**
 - [ ] A4 Rename `urgent*` runtime to `recovery*`; one playbook per event

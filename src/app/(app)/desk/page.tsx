@@ -14,7 +14,7 @@ import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import {
-  disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption, fromReport,
+  disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, disruptionForWaiting, findDisruption, fromReport,
 } from '../../_components/disruptions';
 import { ReportBar } from '../../_components/ReportBar';
 import type { ReportDraft } from '../../_components/desk-api';
@@ -767,6 +767,11 @@ export default function DeskPage() {
               busy || pending || lookingAhead ? undefined : (row, minutes) => void simulate(disruptionForOverrun(row, minutes).key)
             }
             onNewJob={busy || pending || lookingAhead ? undefined : () => setBookingOpen(true)}
+            onPlanAll={
+              busy || pending || lookingAhead
+                ? undefined
+                : () => void simulate(disruptionForWaiting(board.jobs.filter((r) => !r.assignment)).key)
+            }
             newJobForm={
               bookingOpen && !lookingAhead ? (
                 <NewJobForm loadTypes={loadJobTypes} onBook={bookJob} onCancel={() => setBookingOpen(false)} />

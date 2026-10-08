@@ -57,7 +57,8 @@ export type JobLockState = 'none' | 'promised' | 'in_progress';
 export type OperationalEventType =
   | 'urgent_job'
   | 'technician_unavailable'
-  | 'job_overrun';
+  | 'job_overrun'
+  | 'place_waiting';
 
 export type OperationalEventStatus =
   | 'RECEIVED'
