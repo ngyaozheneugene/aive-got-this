@@ -28,10 +28,13 @@ export function NewJobForm({
   loadTypes,
   onBook,
   onCancel,
+  submitLabel = 'Book and find options',
 }: {
   loadTypes: () => Promise<BookableType[]>;
   onBook: (body: CreateJobBody, typeName: string) => Promise<string | null>;
   onCancel: () => void;
+  /** The Jobs page books without planning; the board books and asks for options. */
+  submitLabel?: string;
 }) {
   const [types, setTypes] = useState<BookableType[] | null>(null);
   const [form, setForm] = useState({
@@ -191,7 +194,7 @@ export function NewJobForm({
           className={cn('inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11.5px] font-semibold text-primary-foreground disabled:opacity-40', FOCUS)}
         >
           {busy ? <Loader2 className="size-3 animate-spin" /> : null}
-          Book and find options
+          {submitLabel}
         </button>
       </span>
     </form>

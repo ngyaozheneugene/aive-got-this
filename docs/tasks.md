@@ -247,9 +247,10 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
   - [ADR 012](adr/012-roster-import.md). Preview first, nothing saved until confirmed; template read by code, other layouts by the assistant three records per request with every value checked against its row, keyword fallback labelled; unclear values left blank for the coordinator; duplicates flagged and refused; 2 MB / 200 rows; `xlsx` replaced by `read-excel-file`.
   - Evidence: offline suite green (roster reader 16 cases, routes, dispatch); live model 3/3 ([evidence](team/member-3/roster-import-live-2026-10-08.json)); desk import in the simulation.
 - [x] W6 Import jobs from CSV, Excel or Parquet (Damon's commit, finished 8 Oct)
-  - [ADR 013](adr/013-job-import.md). Shares the roster import's reader core; the workspace's own job types; every value checked against its row; unclear values left for the coordinator; no double booking; bulk booking reuses single booking. "Import" next to "New job" on the board.
+  - [ADR 013](adr/013-job-import.md). Shares the roster import's reader core; the workspace's own job types; every value checked against its row; unclear values left for the coordinator; no double booking; bulk booking reuses single booking. On the Jobs page (W3).
   - Evidence: offline suite green (job reader 9 cases, routes); live model 2/2 ([evidence](team/member-3/job-import-live-2026-10-08.json)).
 - [ ] W3 Full tool layout, part 2: Jobs and Customers pages
+  - 8 Oct, Jobs page done: every job on today's and tomorrow's board with window, customer, place, type, priority and technician; filters (waiting, assigned, under way, done) and search; New job and Import jobs live here (import moved off the board at the user's request); waiting rows link to the board to find a technician. Committing a plan now marks a placed job `assigned` (it stayed `unassigned`). Customers page still open.
 - [ ] W4 Full tool layout, part 3: Activity (browsable audit log)
 - [ ] P5 Snapshot history with diffs; rollback as a proposal
 - [ ] Q3 Ops metrics page from `decision_log`

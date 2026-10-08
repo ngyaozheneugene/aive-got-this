@@ -15,7 +15,7 @@ Customers' work orders arrive as spreadsheets and exports as often as phone call
 
 ## Decision
 
-1. **Same shape as roster import.**
+1. **Same shape as roster import, on the Jobs page.**
    - `POST /api/jobs/import/draft` reads a file into preview rows and writes nothing.
    - The coordinator edits or removes rows.
    - `POST /api/jobs/bulk` books the confirmed rows in one transaction.

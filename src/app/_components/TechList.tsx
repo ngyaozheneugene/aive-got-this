@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, Clock, FileSpreadsheet, Lock, Plus, Search, UserX } from 'lucide-react';
+import { ChevronRight, Clock, Lock, Plus, Search, UserX } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CandidatePlan, DeskBoard, DeskJobRow, Shift } from '../../shared/types/domain';
 import type { Availability } from './disruptions';
@@ -27,7 +27,6 @@ export function TechList({
   onMarkUnavailable,
   onReportLate,
   onNewJob,
-  onImportJobs,
   newJobForm,
   teamName = 'Field team',
   reportBar,
@@ -53,8 +52,6 @@ export function TechList({
   onReportLate?: (row: DeskJobRow, minutes: number) => void;
   /** Open the new-job form; absent when booking is not possible. */
   onNewJob?: () => void;
-  /** Open the batch job import dialog; absent when booking is not possible. */
-  onImportJobs?: () => void;
   /** The open new-job form, shown above the waiting jobs. */
   newJobForm?: ReactNode;
 }) {
@@ -117,29 +114,16 @@ export function TechList({
           title="Needs a technician"
           note={waiting.length === 0 ? 'None' : `${waiting.length} job${waiting.length === 1 ? '' : 's'}`}
           action={
-            <div className="flex items-center gap-1">
-              {onImportJobs && !newJobForm ? (
-                <button
-                  type="button"
-                  onClick={onImportJobs}
-                  className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
-                  title="Book jobs from a CSV, Excel or Parquet file"
-                >
-                  <FileSpreadsheet className="size-3 text-primary" />
-                  Import
-                </button>
-              ) : null}
-              {onNewJob && !newJobForm ? (
-                <button
-                  type="button"
-                  onClick={onNewJob}
-                  className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
-                >
-                  <Plus className="size-3" />
-                  New job
-                </button>
-              ) : null}
-            </div>
+            onNewJob && !newJobForm ? (
+              <button
+                type="button"
+                onClick={onNewJob}
+                className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
+              >
+                <Plus className="size-3" />
+                New job
+              </button>
+            ) : null
           }
         />
         {newJobForm}

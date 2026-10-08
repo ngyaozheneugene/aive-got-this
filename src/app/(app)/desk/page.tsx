@@ -19,7 +19,6 @@ import {
 import { ReportBar } from '../../_components/ReportBar';
 import type { ReportDraft } from '../../_components/desk-api';
 import { NewJobForm } from '../../_components/NewJobForm';
-import { JobImportView } from '../../_components/JobImportView';
 import type { CreateJobBody } from '../../../shared/contracts/jobs';
 import { TechList } from '../../_components/TechList';
 import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
@@ -80,7 +79,6 @@ export default function DeskPage() {
   // and, on narrow screens, the technician list.
   const [cardOpen, setCardOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
-  const [jobImportOpen, setJobImportOpen] = useState(false);
   const [demoOpen, setDemoOpen] = useState(simulation);
   const feedKey = `${FEED_KEY}:${workspace}`;
   const [listOpen, setListOpen] = useState(false);
@@ -769,7 +767,6 @@ export default function DeskPage() {
               busy || pending || lookingAhead ? undefined : (row, minutes) => void simulate(disruptionForOverrun(row, minutes).key)
             }
             onNewJob={busy || pending || lookingAhead ? undefined : () => setBookingOpen(true)}
-            onImportJobs={busy || pending || lookingAhead ? undefined : () => setJobImportOpen(true)}
             newJobForm={
               bookingOpen && !lookingAhead ? (
                 <NewJobForm loadTypes={loadJobTypes} onBook={bookJob} onCancel={() => setBookingOpen(false)} />
@@ -853,19 +850,6 @@ export default function DeskPage() {
         </BarToggle>
       </footer>
 
-      {jobImportOpen ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-label="Import jobs">
-          <div className="flex h-[85vh] w-full max-w-5xl flex-col rounded-xl border bg-card shadow-2xl overflow-hidden">
-            <JobImportView
-              onCancel={() => setJobImportOpen(false)}
-              onImported={() => {
-                setJobImportOpen(false);
-                void load();
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

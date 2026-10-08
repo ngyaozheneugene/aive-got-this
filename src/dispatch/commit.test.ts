@@ -95,6 +95,8 @@ describe('commitPlan — the happy path', () => {
     const after = await getCurrentBoard(db);
     expect(after.snapshot.version).toBe(2);
     expect(after.jobs.find((j) => j.job.id === 'job_raffles')?.technician?.id).toBe('tech_siti');
+    // The job itself now says it is assigned, not just its assignment row.
+    expect(after.jobs.find((j) => j.job.id === 'job_raffles')?.job.status).toBe('assigned');
 
     expect((await db.proposals.getById(proposal.id))?.status).toBe('COMMITTED');
     expect((await db.events.getById(event.id))?.status).toBe('COMMITTED');
