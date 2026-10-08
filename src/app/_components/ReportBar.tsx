@@ -91,6 +91,9 @@ export function ReportBar({
 
   const draft = result?.draft;
 
+  // Only the button's word: the assistant still decides whether it is a question or a report.
+  const asking = QUESTION.test(text.trim());
+
   return (
     <section aria-label="Report what happened" className="grid gap-2 border-b px-2.5 py-2.5">
       <form
@@ -120,10 +123,10 @@ export function ReportBar({
           type="submit"
           disabled={disabled || busy || !text.trim()}
           className={cn('inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2 text-[11.5px] font-semibold text-primary-foreground disabled:opacity-40', FOCUS)}
-          title="Read it (Enter)"
+          title={`${asking ? 'Ask' : 'Send'} (Enter)`}
         >
           {busy && !result ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-          Read
+          {asking ? 'Ask' : 'Send'}
         </button>
       </form>
 
@@ -139,7 +142,7 @@ export function ReportBar({
 
       {busy && !result ? (
         <span className="flex items-center gap-1.5 px-1 text-[11.5px] text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" /> Reading your report…
+          <Loader2 className="size-3 animate-spin" /> Checking the board…
         </span>
       ) : null}
 
@@ -238,3 +241,6 @@ export function ReportBar({
     </section>
   );
 }
+
+/** Reads like a question: ends with "?" or opens with a question word. */
+const QUESTION = /\?$|^(who|what|whats|what's|when|where|why|how|which|is|are|can|could|does|do|will|should|any)\b/i;
