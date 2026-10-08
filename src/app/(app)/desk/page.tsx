@@ -151,6 +151,7 @@ export default function DeskPage() {
     setLoadError(null);
     try {
       setBoard(await deskApi.getBoard(viewDate));
+      setBoardMoved(false);
     } catch (e) {
       setLoadError(e instanceof DeskApiError ? e.message : 'Could not load the board.');
     }
@@ -159,6 +160,56 @@ export default function DeskPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Other desks share this workspace: a booking, a commit or a reset from
+  // another laptop changes the board under this one. Check every few seconds
+  // while the tab is visible and take the newer board. While options are on
+  // screen the board stays put (the options were planned against it); the
+  // footer says it moved instead.
+  const boardRef = useRef<DeskBoard | null>(null);
+  const holdRef = useRef(false);
+  const [boardMoved, setBoardMoved] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<number | null>(null);
+  useEffect(() => {
+    boardRef.current = board;
+  }, [board]);
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      if (document.visibilityState !== 'visible' || !boardRef.current) return;
+      try {
+        const next = await deskApi.getBoard(viewDate);
+        if (cancelled || JSON.stringify(next) === JSON.stringify(boardRef.current)) return;
+        if (holdRef.current) {
+          setBoardMoved(true);
+          return;
+        }
+        setBoard(next);
+        setBoardMoved(false);
+        setSyncedAt(Date.now());
+      } catch {
+        // Offline for a moment: the next check tries again.
+      }
+    };
+    const timer = window.setInterval(() => void check(), BOARD_CHECK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [viewDate]);
+  useEffect(() => {
+    holdRef.current = busy || (Boolean(proposal) && decision === null);
+  }, [busy, proposal, decision]);
+  useEffect(() => {
+    if (!syncedAt) return;
+    const t = window.setTimeout(() => setSyncedAt(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [syncedAt]);
 
   const simulate = useCallback(
     async (disruptionKey: string, profile: PlanProfile = priority) => {
@@ -186,11 +237,13 @@ export default function DeskPage() {
             ? { code: e.code, detail: e.detail }
             : { code: 'planning_failed', detail: 'Planning could not be completed.' },
         );
+        // The board moved under this request (another desk, a reset): show the current one.
+        if (e instanceof DeskApiError && BOARD_MOVED_CODES.has(e.code)) void load();
       } finally {
         setBusy(false);
       }
     },
-    [board, priority],
+    [board, priority, load],
   );
 
   // Booking a call for a job that is not on the board: save it as waiting, then
@@ -778,6 +831,19 @@ export default function DeskPage() {
             </Badge>
           </button>
         ) : null}
+        {boardMoved ? (
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="flex items-center gap-1.5 rounded-md bg-warning/10 px-2 py-1 font-medium text-warning hover:bg-warning/20"
+            title="Another desk changed this board. The options on screen were worked out before that change."
+          >
+            <RotateCcw className="size-3.5" />
+            Board changed elsewhere · Refresh
+          </button>
+        ) : syncedAt ? (
+          <span className="px-2 text-muted-foreground">Board updated</span>
+        ) : null}
         <span className="flex-1" />
         <BarToggle active={tableOpen} onClick={() => setTableOpen((o) => !o)}>
           <Table2 className="size-3.5" />
@@ -879,3 +945,6 @@ function useElementSize<T extends HTMLElement>(): [(el: T | null) => void, { wid
 
 
 const FEED_KEY = 'desk:today-events';
+const BOARD_CHECK_MS = 5000;
+// Planning refusals that mean the board changed under the request.
+const BOARD_MOVED_CODES = new Set(['stale_planning_context', 'stale_snapshot', 'event_gone', 'invalid_event_context']);

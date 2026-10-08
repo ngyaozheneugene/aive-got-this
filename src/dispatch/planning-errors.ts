@@ -45,7 +45,13 @@ export function planningError(error: unknown): PlanningError {
   if (code === 'SCHEDULER_NOT_IMPLEMENTED') {
     return new PlanningError('scheduler_unavailable', 503, 'The scheduler is not implemented for this flow.', 'FAILED', true);
   }
-  if (['EVENT_NOT_FOUND', 'EVENT_JOB_NOT_FOUND_ON_BOARD'].includes(code)) {
+  // The event vanished mid-run: a reset (from any desk) clears every event,
+  // and keeps the board's id, so no staleness check catches it.
+  if (code === 'EVENT_NOT_FOUND') {
+    return new PlanningError('event_gone', 410,
+      'This event no longer exists. The workspace was probably reset while planning ran.', 'INVALID');
+  }
+  if (code === 'EVENT_JOB_NOT_FOUND_ON_BOARD') {
     return new PlanningError('invalid_event_context', 422, 'The event must reference a job on the current board.', 'INVALID');
   }
   if (['INVALID_EVENT', 'INVALID_EVENT_PAYLOAD', 'EVENT_AFFECTED_IDS_MISMATCH'].includes(code)) {

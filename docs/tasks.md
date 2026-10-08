@@ -219,6 +219,7 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 **Surfaces**
 - [ ] P1 Technician field page `/tech/[id]`; *Running late* / *Can't make it* raise events
 - [ ] P2 Desk picks up new events and status without a refresh
+  - 8 Oct, board part done: the desk checks the board every 5 s while visible (and on returning to the tab) and takes a newer one; while options are on screen it keeps them and shows "Board changed elsewhere · Refresh". A reset during planning now says "This event was cleared" (`event_gone`) instead of `invalid_event_context`, names the workspace, and reloads the board. Found when two laptops shared the box. Still open: events raised on another desk do not appear in this desk's feed.
 
 **Polish and proof**
 - [ ] Q1 Loading / empty / failure states, keyboard path, phone width
