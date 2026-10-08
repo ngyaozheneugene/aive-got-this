@@ -1,0 +1,6 @@
+name,tier,homePostalCode,certs,parts,maxHoursDay,acceptsOt
+Tan Wei,1,048581,WSH_PASS,,8,false
+Siti binti Ahmad,3,529544,NEA_R32:2027-12-31;NITEC_HVAC,inverter_board,8,true
+Kumar Rajan,3,640605,BCA_STRUCTURAL:2026-11-30;EMA_LEW:2028-06-15,capacitor;copper_pipe,9,true
+Mei Lin,2,730123,WSH_PASS;NITEC_HVAC,drain_pipe,8,false
+Hafiz Osman,2,460111,NEA_R32:2027-05-20,inverter_board;compressor,8,false

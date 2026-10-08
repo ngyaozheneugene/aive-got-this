@@ -243,6 +243,9 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [x] W2 Full tool layout, part 1: app shell with sidebar, Team and Settings pages (added 8 Oct at the user's request)
   - [ADR 011](adr/011-app-shell-and-settings.md). Sidebar (Dispatch, Team, Settings) with the workspace switch in its footer; the workspace and its settings load once in the shell and survive navigation. Settings: company name, working day (default clock-in, end of free time), the option recommended first, job types (add/edit with certificates), sample-day reset. Team is a full page. The desk keeps the board only.
   - Evidence: offline 368 passed; `test:pg` 17/17; desk on Postgres: settings changed in the simulation reached the board and the recommendation, a job type was added, and the reset restored the sample settings.
+- [x] W5 Import a team roster from CSV, Excel or Parquet (Damon's branch, finished 8 Oct)
+  - [ADR 012](adr/012-roster-import.md). Preview first, nothing saved until confirmed; template read by code, other layouts by the assistant three records per request with every value checked against its row, keyword fallback labelled; unclear values left blank for the coordinator; duplicates flagged and refused; 2 MB / 200 rows; `xlsx` replaced by `read-excel-file`.
+  - Evidence: offline suite green (roster reader 16 cases, routes, dispatch); live model 3/3 ([evidence](team/member-3/roster-import-live-2026-10-08.json)); desk import in the simulation.
 - [ ] W3 Full tool layout, part 2: Jobs and Customers pages
 - [ ] W4 Full tool layout, part 3: Activity (browsable audit log)
 - [ ] P5 Snapshot history with diffs; rollback as a proposal

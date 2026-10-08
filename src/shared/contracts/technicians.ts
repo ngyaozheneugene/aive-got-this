@@ -38,3 +38,48 @@ export const updateTechnicianBodySchema = z
 
 export type CreateTechnicianBody = z.infer<typeof createTechnicianBodySchema>;
 export type UpdateTechnicianBody = z.infer<typeof updateTechnicianBodySchema>;
+
+/** Adding technicians from a roster file, all or nothing. ADR 012. */
+export const MAX_ROSTER_ROWS = 200;
+export const bulkCreateTechniciansSchema = z.object({
+  technicians: z.array(createTechnicianBodySchema).min(1).max(MAX_ROSTER_ROWS),
+});
+
+export type BulkCreateTechniciansBody = z.infer<typeof bulkCreateTechniciansSchema>;
+
+/** How a roster row was read: by code from the standard template, by the assistant, or by keyword matching. */
+export type RosterReadBy = 'template' | 'assistant' | 'keywords';
+
+/**
+ * One row of an import preview. `null` means the file did not say clearly and
+ * the coordinator must choose; `issues` are recomputed from the fields, so
+ * fixing a field clears its issue. `notices` explain how the row was read.
+ */
+export interface RosterCandidateRow {
+  /** Row in the file where this technician starts (1-based), for "see row 12". */
+  sourceRow: number;
+  readBy: RosterReadBy;
+  name: string;
+  tier: 1 | 2 | 3 | 4 | null;
+  homePostalCode: string;
+  certs: Array<{ type: (typeof CERT_TYPES)[number]; expiresAt?: string }>;
+  parts: string[];
+  maxMinutesDay: number | null;
+  acceptsOt: boolean;
+  cluster: string | null;
+  isValid: boolean;
+  issues: string[];
+  notices: string[];
+}
+
+export interface ParseRosterResponse {
+  candidates: RosterCandidateRow[];
+  /** Records that were not read as a technician, so nothing disappears unexplained. */
+  skipped: Array<{ sourceRow: number; reason: string }>;
+  /** Names already on the team, for duplicate checks while the preview is edited. */
+  teamNames: string[];
+  /** The assistant could not be used for some or all rows (not configured, or a request failed). */
+  assistantUnavailable: boolean;
+  totalRows: number;
+  validCount: number;
+}

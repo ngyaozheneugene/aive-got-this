@@ -11,6 +11,7 @@ import {
 } from '../shared/contracts/technicians';
 import { CLUSTER_REGION, clusterForPostal } from '../location/postal';
 import { boardDate } from './board-date';
+import { nameKey } from './roster-check';
 
 export type TeamMember = Technician & { certs: TechnicianCert[] };
 
@@ -79,5 +80,56 @@ export async function updateTechnician(db: IDatabase, id: string, body: UpdateTe
     });
     const saved = certs ? await tx.technicians.setCerts(id, certs) : await tx.technicians.getCerts(id);
     return { ok: true as const, technician: { ...tech, certs: saved } };
+  });
+}
+
+export type BulkTechniciansResult =
+  | { ok: true; created: number; technicians: TeamMember[] }
+  | { ok: false; code: string; httpStatus: number; detail: string };
+
+/**
+ * Add a confirmed roster import (ADR 012): all or nothing, in one transaction.
+ * Refuses a name already on the team or repeated in the batch, so importing
+ * the same file twice cannot double the team.
+ */
+export async function createTechniciansBulk(db: IDatabase, bodies: CreateTechnicianBody[]): Promise<BulkTechniciansResult> {
+  if (bodies.length === 0) return { ok: true, created: 0, technicians: [] };
+
+  for (const [i, b] of bodies.entries()) {
+    if (!clusterForPostal(b.homePostalCode)) {
+      return { ok: false, code: 'unknown_postal_code', httpStatus: 422, detail: `Row ${i + 1} (${b.name}): postal code ${b.homePostalCode} is not one we can place.` };
+    }
+  }
+  const team = new Set((await db.technicians.listAll()).map((t) => nameKey(t.name)));
+  const seen = new Set<string>();
+  const clashes: string[] = [];
+  for (const b of bodies) {
+    const key = nameKey(b.name);
+    if (team.has(key) || seen.has(key)) clashes.push(b.name);
+    seen.add(key);
+  }
+  if (clashes.length) {
+    return { ok: false, code: 'duplicate_technicians', httpStatus: 409, detail: `Already on the team or listed twice: ${clashes.join(', ')}.` };
+  }
+
+  return db.transaction(async (tx) => {
+    const created: TeamMember[] = [];
+    for (const body of bodies) {
+      const cluster = clusterForPostal(body.homePostalCode)!;
+      const tech = await tx.technicians.create({
+        name: body.name.trim().replace(/\s+/g, ' '),
+        tier: body.tier,
+        homeRegion: CLUSTER_REGION[cluster],
+        currentCluster: cluster,
+        maxMinutesDay: body.maxMinutesDay,
+        acceptsOt: body.acceptsOt,
+        parts: body.parts,
+        tools: [],
+        isActive: true,
+      });
+      const saved = await tx.technicians.setCerts(tech.id, await certRows(tx, body.certs));
+      created.push({ ...tech, certs: saved });
+    }
+    return { ok: true as const, created: created.length, technicians: created };
   });
 }

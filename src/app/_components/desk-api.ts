@@ -19,9 +19,9 @@ import type { CompanySettings, CreateJobTypeBody, UpdateJobTypeBody, UpdateSetti
 export type { CompanySettings };
 import type { ReadReportResult, ReportDraft } from '../../agent/reports/reader';
 export type { ReadReportResult, ReportDraft };
-import type { CreateTechnicianBody, UpdateTechnicianBody } from '../../shared/contracts/technicians';
+import type { CreateTechnicianBody, UpdateTechnicianBody, ParseRosterResponse, RosterCandidateRow } from '../../shared/contracts/technicians';
 import type { TeamMember } from '../../dispatch/technicians';
-export type { TeamMember };
+export type { TeamMember, ParseRosterResponse, RosterCandidateRow };
 
 /** Backend refusals arrive as { error, detail? }. Surface both, never swallow. */
 export class DeskApiError extends Error {
@@ -124,6 +124,21 @@ export const deskApi = {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+    }),
+
+  parseRoster: (input: string | { fileBase64: string; filename?: string }, signal?: AbortSignal) =>
+    request<ParseRosterResponse>('/api/technicians/import/draft', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(typeof input === 'string' ? { text: input } : input),
+      signal,
+    }),
+
+  importTechnicians: (technicians: CreateTechnicianBody[]) =>
+    request<{ ok: boolean; created: number; technicians: TeamMember[] }>('/api/technicians/bulk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ technicians }),
     }),
 
   /** What can be booked, with the certificates each needs. */

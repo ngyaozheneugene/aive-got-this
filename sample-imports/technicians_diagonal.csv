@@ -1,0 +1,22 @@
+Step_0,Step_1,Step_2,Step_3,Step_4,Step_5,Step_6
+[Technician: Siti Ahmad],,,,,,
+,Level: Tier 3,,,,,
+,,Base Postal: 520112 (Tampines),,,,
+,,,Certs: NEA_R32 (exp 2028-02-15) & NITEC HVAC,,,
+,,,,Van Stock: inverter_board; copper_pipe,,,
+,,,,,Shift: 8 hrs / day,,
+,,,,,,OT: Yes
+[Technician: Nathan Tan],,,,,,
+,Level: Tier 1,,,,,
+,,Base Postal: 048624 (CBD),,,,
+,,,Certs: WSH Pass,,,
+,,,,Van Stock: None,,,
+,,,,,Shift: 7.5 hours,,
+,,,,,,OT: No
+[Technician: Muhammad Hafiz],,,,,,
+,Level: Tier 2,,,,,
+,,Base Postal: 730888 (Woodlands),,,,
+,,,Certs: BCA Structural (expires 2027-11-20),,,
+,,,,Van Stock: capacitor; compressor,,,
+,,,,,Shift: 9 hours,,
+,,,,,,OT: Yes
