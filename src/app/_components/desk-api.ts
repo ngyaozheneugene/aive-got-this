@@ -15,6 +15,8 @@ import type {
   Site,
 } from '../../shared/types/domain';
 import type { CreateJobBody } from '../../shared/contracts/jobs';
+import type { ReadReportResult, ReportDraft } from '../../agent/reports/reader';
+export type { ReadReportResult, ReportDraft };
 import type { CreateTechnicianBody, UpdateTechnicianBody } from '../../shared/contracts/technicians';
 import type { TeamMember } from '../../dispatch/technicians';
 export type { TeamMember };
@@ -133,11 +135,21 @@ export const deskApi = {
       body: JSON.stringify(body),
     }),
 
-  createEvent: (body: EventBody, sourceSnapshotId?: string) =>
+  /** `rawText`: the coordinator's own words, when the event came from a typed report. */
+  createEvent: (body: EventBody, sourceSnapshotId?: string, rawText?: string) =>
     request<OperationalEvent>('/api/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...body, sourceSnapshotId }),
+      body: JSON.stringify({ ...body, sourceSnapshotId, ...(rawText ? { rawText } : {}) }),
+    }),
+
+  /** Read a typed report into one draft to confirm. Writes nothing. */
+  readReport: (text: string, signal?: AbortSignal) =>
+    request<ReadReportResult>('/api/reports/draft', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal,
     }),
 
   getEvent: (eventId: string) => request<OperationalEvent>(`/api/events/${eventId}`),

@@ -29,10 +29,13 @@ export function TechList({
   onNewJob,
   newJobForm,
   teamName = 'Field team',
+  reportBar,
 }: {
   board: DeskBoard;
   /** Heading over the technicians. */
   teamName?: string;
+  /** "What happened?": typed reports, above everything else. */
+  reportBar?: ReactNode;
   plan?: CandidatePlan;
   unavailableTechId?: string;
   focusTechId?: string;
@@ -90,6 +93,7 @@ export function TechList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {reportBar}
       <label className="m-2.5 flex items-center gap-2 rounded-lg border bg-background/60 px-2.5 py-1.5 text-muted-foreground focus-within:border-ring">
         <Search className="size-3.5 shrink-0" />
         <input
