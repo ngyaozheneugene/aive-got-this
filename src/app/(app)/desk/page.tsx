@@ -682,7 +682,6 @@ export default function DeskPage() {
               </motion.section>
             ) : null}
           </AnimatePresence>
-
           {/* Day one: nobody on the team yet. */}
           {!simulation && board.technicians.length === 0 && !viewDate ? (
             <div className="absolute inset-0 z-[740] grid place-items-center bg-background/60 p-4 backdrop-blur-[2px]">

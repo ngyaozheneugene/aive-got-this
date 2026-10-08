@@ -4,7 +4,7 @@ import { buildEmptyScenario } from '../shared/fixtures/scenario';
 import { singaporeToday } from '../shared/config/demo';
 import { createTechnicianBodySchema, updateTechnicianBodySchema } from '../shared/contracts/technicians';
 import { createJobBodySchema } from '../shared/contracts/jobs';
-import { createTechnician, listTeam, updateTechnician } from './technicians';
+import { createTechnician, createTechniciansBulk, listTeam, updateTechnician } from './technicians';
 import { createJob } from './create-job';
 import { boardDate } from './board-date';
 import { buildBoardSchedule } from './board-schedule';
@@ -99,5 +99,30 @@ describe('editing the team', () => {
     expect(createTechnicianBodySchema.safeParse({ ...ben, certs: [{ type: 'NEA_R32' }, { type: 'NEA_R32' }] }).success).toBe(false);
     expect(createTechnicianBodySchema.safeParse({ ...ben, tier: 5 }).success).toBe(false);
     expect(updateTechnicianBodySchema.safeParse({}).success).toBe(false);
+  });
+
+  it('creates technicians in bulk atomically', async () => {
+    const db = dayOne();
+    const result = await createTechniciansBulk(db, [aisha, ben]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.created).toBe(2);
+    expect(result.technicians.map((t) => t.name)).toEqual(['Aisha', 'Ben']);
+
+    const board = await getCurrentBoard(db);
+    expect(board.technicians).toHaveLength(2);
+  });
+
+  it('fails bulk creation atomically if any postal code is invalid', async () => {
+    const db = dayOne();
+    const bad = { ...ben, name: 'Invalid', homePostalCode: '999999' };
+    const result = await createTechniciansBulk(db, [aisha, bad]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('unknown_postal_code');
+
+    // Nothing was created
+    const team = await listTeam(db);
+    expect(team).toHaveLength(0);
   });
 });

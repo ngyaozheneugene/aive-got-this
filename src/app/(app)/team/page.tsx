@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlaskConical, Loader2, Pencil, Plus, Search, UserCheck, UserX } from 'lucide-react';
+import { FlaskConical, Loader2, Pencil, Plus, Search, Upload, UserCheck, UserX } from 'lucide-react';
 import { deskApi, type TeamMember } from '../../_components/desk-api';
 import { FIELD, FOCUS, TechnicianForm } from '../../_components/TechnicianForm';
 import { PageHeader } from '../../_components/shell/PageHeader';
@@ -10,6 +10,7 @@ import { Button } from '../../_components/ui/button';
 import { Card } from '../../_components/ui/card';
 import { CLUSTER_LABEL } from '../../../location/postal';
 import { LEGAL_GATE_CERTS } from '../../../shared/contracts/technicians';
+import { RosterImportView } from '../../_components/RosterImportView';
 import { cn } from '../../_components/lib/utils';
 
 /**
@@ -21,6 +22,7 @@ export default function TeamPage() {
   const { settings, simulation, switchWorkspace } = useWorkspace();
   const [team, setTeam] = useState<TeamMember[] | null>(null);
   const [editing, setEditing] = useState<TeamMember | 'new' | null>(null);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   // On narrow screens the editor sits below the list; bring it into view.
@@ -75,44 +77,87 @@ export default function TeamPage() {
         title="Team"
         description={team ? `${activeCount} active${simulation ? ' · sample team' : ''}. New people work every day from ${settings.dayStart}.` : 'Your technicians.'}
         actions={
-          <Button size="sm" onClick={() => setEditing('new')} disabled={editing === 'new'}>
-            <Plus />
-            Add technician
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={importing ? 'secondary' : 'outline'}
+              onClick={() => {
+                setEditing(null);
+                setImporting((v) => !v);
+              }}
+              className="gap-1.5"
+            >
+              <Upload className="size-3.5" />
+              Import roster
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setImporting(false);
+                setEditing('new');
+              }}
+              disabled={editing === 'new'}
+              className="gap-1.5"
+            >
+              <Plus className="size-3.5" />
+              Add technician
+            </Button>
+          </div>
         }
       />
 
-      <div className={cn('grid gap-4 p-4 sm:p-6', editing && 'lg:grid-cols-[minmax(0,1fr)_400px]')}>
-        <section aria-label="Technicians" className="grid min-w-0 content-start gap-3">
-          {error ? <p role="alert" className="text-[13px] text-destructive">{error}</p> : null}
-          {!team ? (
-            <p className="flex items-center gap-2 py-8 text-[13px] text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading the team…
-            </p>
-          ) : empty && !editing ? (
-            <Card className="grid gap-3 p-6">
-              <h2 className="text-base font-semibold">Nobody on the team yet</h2>
-              <p className="text-[13px] text-muted-foreground">
-                Add the technicians who work for you: their skill tier, certificates, the parts on their van and where their day
-                starts. Then book jobs on the dispatch board and let the assistant plan around whatever the day brings.
+      {importing ? (
+        <div className="p-4 sm:p-6">
+          <Card className="overflow-hidden border p-0 shadow-lg">
+            <RosterImportView
+              onCancel={() => setImporting(false)}
+              onImported={async () => {
+                setImporting(false);
+                await reload();
+              }}
+            />
+          </Card>
+        </div>
+      ) : (
+        <div className={cn('grid gap-4 p-4 sm:p-6', editing && 'lg:grid-cols-[minmax(0,1fr)_400px]')}>
+          <section aria-label="Technicians" className="grid min-w-0 content-start gap-3">
+            {error ? <p role="alert" className="text-[13px] text-destructive">{error}</p> : null}
+            {!team ? (
+              <p className="flex items-center gap-2 py-8 text-[13px] text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Loading the team…
               </p>
-              <span className="flex flex-wrap gap-2">
-                <Button onClick={() => setEditing('new')}>
-                  <Plus />
-                  Add your first technician
-                </Button>
-                {!simulation ? (
-                  <Button variant="outline" onClick={() => switchWorkspace('simulation')}>
-                    <FlaskConical className="text-warning" />
-                    Look at a sample team first
+            ) : empty && !editing ? (
+              <Card className="grid gap-3 p-6">
+                <h2 className="text-base font-semibold">Nobody on the team yet</h2>
+                <p className="text-[13px] text-muted-foreground">
+                  Add the technicians who work for you: their skill tier, certificates, the parts on their van and where their day
+                  starts. Then book jobs on the dispatch board and let the assistant plan around whatever the day brings.
+                </p>
+                <span className="flex flex-wrap gap-2">
+                  <Button onClick={() => setEditing('new')}>
+                    <Plus />
+                    Add your first technician
                   </Button>
-                ) : null}
-              </span>
-            </Card>
-          ) : (
-            <>
-              {team.length > 0 ? (
-                <label className="relative block max-w-sm">
+                  <Button
+                    variant="outline"
+                    onClick={() => setImporting(true)}
+                    className="gap-1.5"
+                  >
+                    <Upload className="size-3.5" />
+                    Import roster (.csv, .xlsx)
+                  </Button>
+                  {!simulation ? (
+                    <Button variant="outline" onClick={() => switchWorkspace('simulation')}>
+                      <FlaskConical className="text-warning" />
+                      Look at a sample team first
+                    </Button>
+                  ) : null}
+                </span>
+              </Card>
+            ) : (
+              <>
+                {team.length > 0 ? (
+                  <label className="relative block max-w-sm">
                   <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" />
                   <input
                     className={cn(FIELD, 'pl-8')}
@@ -219,6 +264,7 @@ export default function TeamPage() {
           </aside>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

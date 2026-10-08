@@ -81,3 +81,50 @@ export async function updateTechnician(db: IDatabase, id: string, body: UpdateTe
     return { ok: true as const, technician: { ...tech, certs: saved } };
   });
 }
+
+export type BulkTechniciansResult =
+  | { ok: true; created: number; technicians: TeamMember[] }
+  | { ok: false; code: string; httpStatus: number; detail: string };
+
+/**
+ * Add a batch of technicians inside a single atomic transaction.
+ * All or nothing: if any technician cannot be placed or fails, the transaction aborts.
+ */
+export async function createTechniciansBulk(db: IDatabase, bodies: CreateTechnicianBody[]): Promise<BulkTechniciansResult> {
+  if (bodies.length === 0) return { ok: true, created: 0, technicians: [] };
+
+  for (let i = 0; i < bodies.length; i += 1) {
+    const b = bodies[i]!;
+    const cluster = clusterForPostal(b.homePostalCode);
+    if (!cluster) {
+      return {
+        ok: false,
+        code: 'unknown_postal_code',
+        httpStatus: 422,
+        detail: `Row ${i + 1} (${b.name}): Postal code ${b.homePostalCode} is not one we can place.`,
+      };
+    }
+  }
+
+  return db.transaction(async (tx) => {
+    const created: TeamMember[] = [];
+    for (const body of bodies) {
+      const cluster = clusterForPostal(body.homePostalCode)!;
+      const certs = await certRows(tx, body.certs);
+      const tech = await tx.technicians.create({
+        name: body.name,
+        tier: body.tier,
+        homeRegion: CLUSTER_REGION[cluster],
+        currentCluster: cluster,
+        maxMinutesDay: body.maxMinutesDay,
+        acceptsOt: body.acceptsOt,
+        parts: body.parts,
+        tools: [],
+        isActive: true,
+      });
+      const saved = await tx.technicians.setCerts(tech.id, certs);
+      created.push({ ...tech, certs: saved });
+    }
+    return { ok: true as const, created: created.length, technicians: created };
+  });
+}

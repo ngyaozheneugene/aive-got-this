@@ -38,3 +38,32 @@ export const updateTechnicianBodySchema = z
 
 export type CreateTechnicianBody = z.infer<typeof createTechnicianBodySchema>;
 export type UpdateTechnicianBody = z.infer<typeof updateTechnicianBodySchema>;
+
+/** Bulk addition of technicians from file import. */
+export const bulkCreateTechniciansSchema = z.object({
+  technicians: z.array(createTechnicianBodySchema).min(1).max(500),
+});
+
+export type BulkCreateTechniciansBody = z.infer<typeof bulkCreateTechniciansSchema>;
+
+export interface RosterCandidateRow {
+  name: string;
+  tier: 1 | 2 | 3 | 4;
+  homePostalCode: string;
+  certs: Array<{ type: (typeof CERT_TYPES)[number]; expiresAt?: string }>;
+  parts: string[];
+  maxMinutesDay: number;
+  acceptsOt: boolean;
+  cluster: string | null;
+  isValid: boolean;
+  issues: string[];
+  notices: string[];
+}
+
+export interface ParseRosterResponse {
+  source: 'template_fast_path' | 'agent_nlp_path';
+  candidates: RosterCandidateRow[];
+  totalRows: number;
+  validCount: number;
+  error?: string;
+}
