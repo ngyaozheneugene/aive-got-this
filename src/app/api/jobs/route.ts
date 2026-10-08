@@ -3,6 +3,7 @@ import { getDatabase } from '../../../db';
 import { createJob } from '../../../dispatch/create-job';
 import { createJobBodySchema } from '../../../shared/contracts/jobs';
 import { badRequest, fail } from '../_lib/http';
+import { workspaceOf } from '../_lib/workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
   const parsed = createJobBodySchema.safeParse(json);
   if (!parsed.success) return badRequest('invalid_job', parsed.error.flatten());
 
-  const result = await createJob(getDatabase(), parsed.data);
+  const result = await createJob(getDatabase(workspaceOf(request)), parsed.data);
   if (!result.ok) return fail(result.code, result.httpStatus, result.detail);
   const { ok: _ok, ...created } = result;
   return NextResponse.json(created, { status: 201 });

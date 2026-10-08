@@ -3,6 +3,7 @@ import { proposalCommitBodySchema } from '../../../../../shared/contracts/tools'
 import { commitPlan } from '../../../../../dispatch/commit';
 import { getDatabase } from '../../../../../db';
 import { badRequest, fail } from '../../../_lib/http';
+import { workspaceOf } from '../../../_lib/workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function POST(
     return badRequest('invalid_commit', parsed.error.flatten());
   }
 
-  const result = await commitPlan(getDatabase(), {
+  const result = await commitPlan(getDatabase(workspaceOf(request)), {
     proposalId: id,
     planId: parsed.data.planId,
     sourceSnapshotId: parsed.data.sourceSnapshotId,

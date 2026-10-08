@@ -544,3 +544,28 @@ export function buildScenario(date: string): Scenario {
     travel,
   };
 }
+
+/**
+ * A company on day one: the job-type catalogue and travel matrix, no people,
+ * no customers, no jobs. Its board follows the calendar rather than staying on
+ * the day it was created.
+ */
+export function buildEmptyScenario(date: string): Scenario {
+  const full = buildScenario(date);
+  return {
+    ...full,
+    technicians: [],
+    certs: [],
+    shifts: [],
+    customers: [],
+    sites: [],
+    jobs: [],
+    jobRequirements: [],
+    assignments: [],
+    snapshot: {
+      ...full.snapshot,
+      id: 'snap_live_v1',
+      snapshotData: { date, followsClock: true, scenario: 'empty', assignmentIds: [] },
+    },
+  };
+}

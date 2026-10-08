@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createEventBodySchema } from '../../../shared/contracts/events';
 import { getDatabase } from '../../../db';
 import { badRequest } from '../_lib/http';
+import { workspaceOf } from '../_lib/workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
     return badRequest('invalid_event', parsed.error.flatten());
   }
 
-  const db = getDatabase();
+  const db = getDatabase(workspaceOf(request));
   const snapshot = await db.boardSnapshots.getLatest();
   const body = parsed.data;
   const affectedIds =

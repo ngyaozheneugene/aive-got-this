@@ -115,6 +115,7 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
   const snapshot = await db.boardSnapshots.createSnapshot(
     {
       date: board.date,
+      ...((latest?.snapshotData as { followsClock?: unknown } | undefined)?.followsClock === true ? { followsClock: true } : {}),
       committedPlanId: plan.id,
       profile: plan.profile,
       metrics: plan.metrics,

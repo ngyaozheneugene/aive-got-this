@@ -12,6 +12,7 @@
 // current-board.ts projects the same rows for the desk. Same source, two shapes.
 
 import { boardDate } from './board-date';
+import { withDefaultShifts } from './default-shifts';
 import type { IDatabase } from '../db/interface';
 import type {
   BoardSchedule,
@@ -48,13 +49,14 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
   }
 
   const date = await boardDate(db);
-  const [technicians, jobs, allAssignments, shifts, travel] = await Promise.all([
+  const [technicians, jobs, allAssignments, storedShifts, travel] = await Promise.all([
     db.technicians.listActive(),
     db.jobs.listByScheduledDate(date),
     db.assignments.listAll(),
     db.shifts.listByDate(date),
     db.travelMatrix.listAll(),
   ]);
+  const shifts = withDefaultShifts(storedShifts, technicians, date);
 
   // Only live rows are the board. Superseded and cancelled rows stay in the
   // table for the audit trail but must not be planned around. Other days'

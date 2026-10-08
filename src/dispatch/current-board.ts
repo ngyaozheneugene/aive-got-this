@@ -1,4 +1,5 @@
 import { boardDate } from './board-date';
+import { withDefaultShifts } from './default-shifts';
 import type { DeskBoard, DeskJobRow, DeskTechnicianRow } from '../shared/types/domain';
 import type { IDatabase } from '../db/interface';
 
@@ -14,12 +15,13 @@ export async function getCurrentBoard(db: IDatabase, date?: string): Promise<Des
 
   const today = await boardDate(db);
   const day = date ?? today;
-  const [technicians, jobs, allAssignments, shifts] = await Promise.all([
+  const [technicians, jobs, allAssignments, storedShifts] = await Promise.all([
     db.technicians.listActive(),
     db.jobs.listByScheduledDate(day),
     db.assignments.listAll(),
     db.shifts.listByDate(day),
   ]);
+  const shifts = withDefaultShifts(storedShifts, technicians, day);
   const jobIds = new Set(jobs.map((j) => j.id));
   const assignments = allAssignments.filter((a) => jobIds.has(a.jobId));
 

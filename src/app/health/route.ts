@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDatabase } from '../../db';
+import { workspaceOf } from '../api/_lib/workspace';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   const optimizerUrl = process.env.OPTIMIZER_URL ?? 'http://localhost:8081';
   let optimizer: { ok: boolean; detail?: string } = { ok: false };
   try {
@@ -18,7 +19,7 @@ export async function GET() {
   let boardVersion: number | undefined;
   let databaseDetail: string | undefined;
   try {
-    boardVersion = await getDatabase().boardSnapshots.getLatestVersion();
+    boardVersion = await getDatabase(workspaceOf(request)).boardSnapshots.getLatestVersion();
     databaseOk = boardVersion > 0;
   } catch (error) {
     databaseDetail = error instanceof Error ? error.message : 'unreachable';

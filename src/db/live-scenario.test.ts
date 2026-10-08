@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { liveScenario } from './index';
+import { simulationScenario as liveScenario, workspaceScenario } from './index';
 import { InMemoryDatabase } from './memory';
 import { boardDate } from '../dispatch/board-date';
 import { EASTWIND_DATE, singaporeToday } from '../shared/config/demo';
@@ -36,5 +36,16 @@ describe('singaporeToday', () => {
     // 17:30 UTC on 5 Oct is 01:30 on 6 Oct in Singapore.
     expect(singaporeToday(new Date('2026-10-05T17:30:00Z'))).toBe('2026-10-06');
     expect(singaporeToday(new Date('2026-10-05T15:59:00Z'))).toBe('2026-10-05');
+  });
+});
+
+describe('workspaceScenario', () => {
+  it('starts the company workspace empty and the simulation on the sample day', () => {
+    const live = workspaceScenario('live', {})();
+    expect(live.technicians).toEqual([]);
+    expect(live.jobs).toEqual([]);
+    expect(live.jobTypes.length).toBeGreaterThan(0);
+    expect(live.snapshot.snapshotData).toMatchObject({ followsClock: true });
+    expect(workspaceScenario('simulation', {})().technicians).toHaveLength(15);
   });
 });

@@ -4,6 +4,7 @@ import { getDatabase } from '../../../../../db';
 import { planUrgentEvent } from '../../../../../dispatch/plan-event';
 import { planProfileSchema } from '../../../../../shared/contracts/propose';
 import { fail } from '../../../_lib/http';
+import { workspaceOf } from '../../../_lib/workspace';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,7 +45,7 @@ export async function POST(
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) return fail('invalid_plan_request', 400, 'Only an optional valid profile is accepted.');
   try {
-    const result = await planUrgentEvent(getDatabase(), { eventId, profile: parsed.data.profile, signal: request.signal });
+    const result = await planUrgentEvent(getDatabase(workspaceOf(request)), { eventId, profile: parsed.data.profile, signal: request.signal });
     if (!result.ok) return fail(result.code, result.httpStatus, result.detail);
     const { ok: _ok, ...body } = result;
     return NextResponse.json(body, { status: 201 });

@@ -76,6 +76,10 @@ export interface IDatabase {
     certValidOn(technicianId: string, certType: string, dateStr: string): Promise<boolean>;
     addCert(cert: Omit<TechnicianCert, 'id' | 'createdAt'>): Promise<TechnicianCert>;
     create(tech: Omit<Technician, 'id' | 'createdAt'>): Promise<Technician>;
+    /** Change any of the technician's own fields; fields left out keep their value. */
+    update(id: string, patch: Partial<Omit<Technician, 'id' | 'createdAt'>>): Promise<Technician>;
+    /** Replace every certificate on file for the technician. */
+    setCerts(technicianId: string, certs: Array<Omit<TechnicianCert, 'id' | 'createdAt' | 'technicianId'>>): Promise<TechnicianCert[]>;
   };
 
   // Shifts
