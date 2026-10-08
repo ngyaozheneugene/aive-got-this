@@ -1,6 +1,7 @@
 // Dispatch Coordinator v1.1 — database interface.
 // Postgres is the product store. Memory is for tests.
 
+import type { CompanySettings } from '../shared/contracts/settings';
 import {
   AppUser,
   Technician,
@@ -121,6 +122,16 @@ export interface IDatabase {
     getById(id: string): Promise<JobType | null>;
     listAll(): Promise<JobType[]>;
     getCerts(jobTypeId: string): Promise<JobTypeCert[]>;
+    create(jobType: Omit<JobType, 'createdAt'>): Promise<JobType>;
+    update(id: string, patch: Partial<Pick<JobType, 'name' | 'minTier' | 'defaultMinutes'>>): Promise<JobType>;
+    /** Replaces the certificates the job type requires. */
+    setCerts(jobTypeId: string, certTypes: string[]): Promise<JobTypeCert[]>;
+  };
+
+  // The company's own settings (ADR 011). Defaults when nothing is stored.
+  settings: {
+    get(): Promise<CompanySettings>;
+    update(patch: Partial<CompanySettings>): Promise<CompanySettings>;
   };
 
   // Jobs

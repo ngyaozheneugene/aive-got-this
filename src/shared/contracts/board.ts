@@ -10,4 +10,5 @@ export const deskBoardSchema = z.object({
   }),
   technicians: z.array(z.record(z.unknown())),
   jobs: z.array(z.record(z.unknown())),
+  workingDay: z.object({ start: z.string(), end: z.string() }).optional(),
 });

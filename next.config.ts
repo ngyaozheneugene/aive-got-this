@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
+  // Bottom left is the sidebar's workspace switch.
+  devIndicators: { position: "top-right" },
 };
 
 export default nextConfig;

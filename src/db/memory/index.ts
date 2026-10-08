@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS, type CompanySettings } from '../../shared/contracts/settings';
 import { EASTWIND, type Scenario } from '../../shared/fixtures/eastwind';
 import { emptyPlanMetrics } from '../../shared/types/domain';
 import type {
@@ -70,6 +71,7 @@ export class InMemoryDatabase implements IDatabase {
   private eventsMap = new Map<string, OperationalEvent>();
   private proposalsMap = new Map<string, Proposal>();
   private candidatePlansMap = new Map<string, CandidatePlan>();
+  private companySettings: CompanySettings | null = null;
   private idCounter = 1;
 
   /**
@@ -113,6 +115,7 @@ export class InMemoryDatabase implements IDatabase {
     this.eventsMap.clear();
     this.proposalsMap.clear();
     this.candidatePlansMap.clear();
+    this.companySettings = null;
   }
 
   private hydrate(): void {
@@ -131,6 +134,7 @@ export class InMemoryDatabase implements IDatabase {
     data.assignments.forEach((a) => this.assignmentsMap.set(a.id, a));
     data.travel.forEach((t) => this.travelMatrixMap.set(`${t.fromCluster}_${t.toCluster}`, t));
     this.boardSnapshotRows = [data.snapshot];
+    this.companySettings = data.company ? { ...data.company } : null;
   }
 
   public async reset(): Promise<void> {
@@ -304,6 +308,37 @@ export class InMemoryDatabase implements IDatabase {
     listAll: async () => byId(Array.from(this.jobTypesMap.values())),
     getCerts: async (jobTypeId: string) =>
       byId(Array.from(this.jobTypeCertsMap.values()).filter((c) => c.jobTypeId === jobTypeId)),
+    create: async (jobType: Omit<JobType, 'createdAt'>) => {
+      if (this.jobTypesMap.has(jobType.id)) throw new Error(`Job type ${jobType.id} exists`);
+      const created: JobType = { ...jobType, createdAt: this.nowIso() };
+      this.jobTypesMap.set(created.id, created);
+      return created;
+    },
+    update: async (id: string, patch: Partial<Pick<JobType, 'name' | 'minTier' | 'defaultMinutes'>>) => {
+      const existing = this.jobTypesMap.get(id);
+      if (!existing) throw new Error(`Job type ${id} not found`);
+      const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      const updated: JobType = { ...existing, ...defined };
+      this.jobTypesMap.set(id, updated);
+      return updated;
+    },
+    setCerts: async (jobTypeId: string, certTypes: string[]) => {
+      for (const [id, c] of this.jobTypeCertsMap) if (c.jobTypeId === jobTypeId) this.jobTypeCertsMap.delete(id);
+      for (const certType of certTypes) {
+        const id = this.generateId('jtc');
+        this.jobTypeCertsMap.set(id, { id, jobTypeId, certType, brandRequired: false });
+      }
+      return this.jobTypes.getCerts(jobTypeId);
+    },
+  };
+
+  settings = {
+    get: async (): Promise<CompanySettings> => ({ ...DEFAULT_SETTINGS, ...this.companySettings }),
+    update: async (patch: Partial<CompanySettings>) => {
+      const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      this.companySettings = { ...DEFAULT_SETTINGS, ...this.companySettings, ...defined };
+      return { ...this.companySettings };
+    },
   };
 
   jobs = {

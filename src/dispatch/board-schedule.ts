@@ -40,6 +40,8 @@ export type PlanningSchedule = BoardSchedule & {
    * Raffles Place and wrong for the other eleven jobs on the board.
    */
   sites: Site[];
+  /** The company's working day (settings, ADR 011), HH:MM. Free-time answers count to `end`. */
+  workingDay?: { start: string; end: string };
 };
 
 export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedule> {
@@ -49,14 +51,15 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
   }
 
   const date = await boardDate(db);
-  const [technicians, jobs, allAssignments, storedShifts, travel] = await Promise.all([
+  const [technicians, jobs, allAssignments, storedShifts, travel, settings] = await Promise.all([
     db.technicians.listActive(),
     db.jobs.listByScheduledDate(date),
     db.assignments.listAll(),
     db.shifts.listByDate(date),
     db.travelMatrix.listAll(),
+    db.settings.get(),
   ]);
-  const shifts = withDefaultShifts(storedShifts, technicians, date);
+  const shifts = withDefaultShifts(storedShifts, technicians, date, settings.dayStart);
 
   // Only live rows are the board. Superseded and cancelled rows stay in the
   // table for the audit trail but must not be planned around. Other days'
@@ -92,5 +95,6 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
     shifts,
     jobRequirements,
     sites,
+    workingDay: { start: settings.dayStart, end: settings.dayEnd },
   };
 }

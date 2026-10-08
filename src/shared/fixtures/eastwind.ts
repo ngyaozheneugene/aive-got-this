@@ -1,4 +1,5 @@
 import { EASTWIND_DATE, SNAPSHOT_V1_ID } from '../config/demo';
+import type { CompanySettings } from '../contracts/settings';
 import {
   emptyPlanMetrics,
   type AppUser,
@@ -590,5 +591,8 @@ export const EASTWIND = {
   travel: buildTravel(),
 };
 
-/** The shape every seed takes: the Eastwind fixture and the finals scenario alike. */
-export type Scenario = typeof EASTWIND;
+/**
+ * The shape every seed takes: the Eastwind fixture and the finals scenario
+ * alike. `company` seeds the settings row; without one the defaults apply.
+ */
+export type Scenario = typeof EASTWIND & { company?: CompanySettings };

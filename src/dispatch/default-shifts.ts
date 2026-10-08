@@ -7,7 +7,8 @@ import type { Shift, Technician } from '../shared/types/domain';
 
 export const DEFAULT_CLOCK_IN = '08:00';
 
-export function withDefaultShifts(shifts: Shift[], technicians: Technician[], date: string): Shift[] {
+/** `clockIn`: the company's working-day start (settings), HH:MM. */
+export function withDefaultShifts(shifts: Shift[], technicians: Technician[], date: string, clockIn = DEFAULT_CLOCK_IN): Shift[] {
   const have = new Set(shifts.filter((s) => s.shiftDate === date).map((s) => s.technicianId));
   const filled = technicians
     .filter((t) => t.isActive && !have.has(t.id))
@@ -16,7 +17,7 @@ export function withDefaultShifts(shifts: Shift[], technicians: Technician[], da
       technicianId: t.id,
       shiftDate: date,
       status: 'scheduled',
-      clockInAt: `${date}T${DEFAULT_CLOCK_IN}:00+08:00`,
+      clockInAt: `${date}T${clockIn}:00+08:00`,
       createdAt: `${date}T00:00:00+08:00`,
     }));
   return [...shifts, ...filled];

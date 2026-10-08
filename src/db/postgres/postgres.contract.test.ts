@@ -13,6 +13,8 @@
  *
  * DATABASE_URL_TEST overrides the default postgres://dispatch:dispatch@localhost:5432/dispatch_test.
  */
+import { createJobType, listJobTypes, updateJobType, updateSettings } from '../../dispatch/settings';
+import { createJobTypeBodySchema } from '../../shared/contracts/settings';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres from 'postgres';
 import { InMemoryDatabase } from '../memory';
@@ -120,7 +122,7 @@ describe.skipIf(!enabled)('Postgres adapter', () => {
       await migrate(sql);
       expect(await migrate(sql)).toEqual([]);
       const names = (await sql<{ name: string }[]>`SELECT name FROM schema_migration ORDER BY name`).map((r) => r.name);
-      expect(names).toEqual(['0001_baseline.sql', '0002_free_text_actors.sql']);
+      expect(names).toEqual(['0001_baseline.sql', '0002_free_text_actors.sql', '0003_company_settings.sql']);
     });
 
     it('lets a desk actor that is not a user row action an approval', async () => {
@@ -252,6 +254,23 @@ describe.skipIf(!enabled)('Postgres adapter', () => {
           ...strip(t as unknown as Record<string, unknown>),
           certs: t.certs.map((c) => strip({ ...c, technicianId: 'x' } as unknown as Record<string, unknown>)).sort((a, b) => String(a.certType).localeCompare(String(b.certType))),
         }));
+      };
+      expect(await steps(pg)).toEqual(await steps(mem));
+    });
+
+    it('stores settings and job types the same way', async () => {
+      const { pg, mem } = await pair(() => buildScenario(FINALS_DATE));
+      track(pg);
+      const steps = async (db: IDatabase) => {
+        const before = await db.settings.get();
+        await updateSettings(db, { name: 'Coolwave', dayStart: '07:30' });
+        const made = await createJobType(db, createJobTypeBodySchema.parse({ name: 'Duct cleaning', minTier: 2, defaultMinutes: 120, certs: ['WSH_PASS', 'NITEC_HVAC'] }));
+        if (!made.ok) throw new Error(made.detail);
+        await updateJobType(db, made.jobType.id, { minTier: 3, certs: ['NEA_R32'] });
+        const types = (await listJobTypes(db)).map(({ createdAt: _c, ...t }) => ({ ...t, certs: [...t.certs].sort() }));
+        const after = await db.settings.get();
+        await db.reset();
+        return { before, after, types, reset: await db.settings.get() };
       };
       expect(await steps(pg)).toEqual(await steps(mem));
     });
