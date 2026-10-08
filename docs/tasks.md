@@ -229,7 +229,9 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 **Stretch (in order of value)**
 - [ ] R4 `job_cancelled` event (needs R3)
 - [ ] R6 Manual override through the same validate → commit path
-- [ ] A2 Ask about a plan ("why not Kumar?", "what if 3pm?") from stored evidence
+- [x] A2 Ask about a plan ("why not Kumar?", "what if 3pm?") from stored evidence
+  - 8 Oct: [ADR 010](adr/010-questions.md). Questions in the same box: read-only tools (`who_is_free`, `technician_day`, `why_technician`, `board_summary`) computed by code, including the Stage A gate; the model words a short `answer` only after a lookup; the desk shows "Based on". "What if 3pm?" re-planning is not included.
+  - Evidence: scripted tests 13/13; live model 12/12 (questions checked by hand against the board); desk answer card in the simulation.
 - [ ] A3 Draft customer/technician messages after commit (not sent)
 - [ ] P3 Demo sign-in and roles
 - [ ] P4 Technician / job type / customer management pages

@@ -229,7 +229,7 @@ export default function DeskPage() {
 
   // A confirmed typed report runs exactly what the board's own controls run.
   const confirmReport = useCallback(
-    async (draft: Exclude<ReportDraft, { kind: 'clarify' }>, quoted: string): Promise<string | null> => {
+    async (draft: Exclude<ReportDraft, { kind: 'clarify' } | { kind: 'answer' }>, quoted: string): Promise<string | null> => {
       if (!board) return 'The board is not loaded.';
       if (draft.kind === 'booking') return bookJob(draft.body, draft.jobTypeName, quoted);
       if (draft.kind === 'unavailable') {
