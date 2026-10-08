@@ -123,7 +123,7 @@ export function TechList({
                   type="button"
                   onClick={onImportJobs}
                   className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
-                  title="Batch import work orders from CSV, XLSX, or Parquet"
+                  title="Book jobs from a CSV, Excel or Parquet file"
                 >
                   <FileSpreadsheet className="size-3 text-primary" />
                   Import

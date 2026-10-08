@@ -246,6 +246,9 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [x] W5 Import a team roster from CSV, Excel or Parquet (Damon's branch, finished 8 Oct)
   - [ADR 012](adr/012-roster-import.md). Preview first, nothing saved until confirmed; template read by code, other layouts by the assistant three records per request with every value checked against its row, keyword fallback labelled; unclear values left blank for the coordinator; duplicates flagged and refused; 2 MB / 200 rows; `xlsx` replaced by `read-excel-file`.
   - Evidence: offline suite green (roster reader 16 cases, routes, dispatch); live model 3/3 ([evidence](team/member-3/roster-import-live-2026-10-08.json)); desk import in the simulation.
+- [x] W6 Import jobs from CSV, Excel or Parquet (Damon's commit, finished 8 Oct)
+  - [ADR 013](adr/013-job-import.md). Shares the roster import's reader core; the workspace's own job types; every value checked against its row; unclear values left for the coordinator; no double booking; bulk booking reuses single booking. "Import" next to "New job" on the board.
+  - Evidence: offline suite green (job reader 9 cases, routes); live model 2/2 ([evidence](team/member-3/job-import-live-2026-10-08.json)).
 - [ ] W3 Full tool layout, part 2: Jobs and Customers pages
 - [ ] W4 Full tool layout, part 3: Activity (browsable audit log)
 - [ ] P5 Snapshot history with diffs; rollback as a proposal

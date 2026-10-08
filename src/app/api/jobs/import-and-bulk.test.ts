@@ -21,7 +21,7 @@ Lee Clinic,82345678,520123,Simei St 1,,GENERAL_SERVICE,on_demand,14:00,16:30,Che
     expect(res.status).toBe(200);
 
     const data = await res.json();
-    expect(data.source).toBe('template_fast_path');
+    expect(data.candidates.every((c: { readBy: string }) => c.readBy === 'template')).toBe(true);
     expect(data.totalRows).toBe(2);
     expect(data.validCount).toBe(2);
     expect(data.candidates[0].customerName).toBe('Tan Corp');
@@ -47,9 +47,14 @@ Lee Clinic,82345678,520123,Simei St 1,,GENERAL_SERVICE,on_demand,14:00,16:30,Che
     expect(res.status).toBe(200);
 
     const data = await res.json();
-    expect(data.source).toBe('template_fast_path');
+    expect(data.candidates.every((c: { readBy: string }) => c.readBy === 'template')).toBe(true);
     expect(data.totalRows).toBe(5);
-    expect(data.validCount).toBe(5);
+    // The test company offers three job types; the two it does not offer are left for the coordinator.
+    expect(data.validCount).toBe(3);
+    expect(data.candidates.filter((c: { isValid: boolean }) => !c.isValid).map((c: { customerName: string; issues: string[] }) => [c.customerName, c.issues])).toEqual([
+      ['Causeway Point Clinic', ['Choose the kind of job.']],
+      ['Bishan Park Condo MCST', ['Choose the kind of job.']],
+    ]);
     expect(data.candidates[0].customerName).toBe('Raffles Place Capital');
     expect(data.candidates[0].cluster).toBe('CBD');
   });
@@ -137,5 +142,23 @@ Lee Clinic,82345678,520123,Simei St 1,,GENERAL_SERVICE,on_demand,14:00,16:30,Che
     // Verify count did not change (ACID rollback)
     const afterJobs = await db.jobs.listUnassigned();
     expect(afterJobs).toHaveLength(beforeCount);
+  });
+
+  it('refuses booking the same jobs twice, and the preview says so first', async () => {
+    const csv = 'customerName,phone,postalCode,address,jobTypeId,priority,windowStart,windowEnd\nTwice Clinic,91112222,520123,Simei St 1,GENERAL_SERVICE,on_demand,14:00,16:30';
+    const preview = await (await parseDraft(req('/api/jobs/import/draft', { method: 'POST', workspace: 'simulation', body: { text: csv } }))).json();
+    expect(preview.candidates[0].isValid).toBe(true);
+    const body = { jobs: [{ customerName: 'Twice Clinic', phone: '91112222', postalCode: '520123', address: 'Simei St 1', jobTypeId: 'GENERAL_SERVICE', priority: 'on_demand', windowStart: '14:00', windowEnd: '16:30' }] };
+    expect((await bulkCreate(req('/api/jobs/bulk', { method: 'POST', workspace: 'simulation', body }))).status).toBe(201);
+    const again = await bulkCreate(req('/api/jobs/bulk', { method: 'POST', workspace: 'simulation', body }));
+    expect(again.status).toBe(409);
+    expect((await again.json()).error).toBe('duplicate_jobs');
+    const second = await (await parseDraft(req('/api/jobs/import/draft', { method: 'POST', workspace: 'simulation', body: { text: csv } }))).json();
+    expect(second.candidates[0]).toMatchObject({ isValid: false, issues: ['Already booked: same customer, place, job and time.'] });
+  });
+
+  it('refuses an oversized upload with a plain reason', async () => {
+    const big = await parseDraft(req('/api/jobs/import/draft', { method: 'POST', body: { fileBase64: 'A'.repeat(3_000_000) } }));
+    expect(big.status).toBe(400);
   });
 });

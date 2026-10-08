@@ -3,32 +3,41 @@
 import {
   AlertCircle,
   AlertTriangle,
-  Briefcase,
   Check,
   CheckCircle2,
-  Clock,
-  Database,
   Download,
   FileSpreadsheet,
   FileText,
   Loader2,
   MapPin,
+  RefreshCw,
   Sparkles,
   Trash2,
   Upload,
   Zap,
 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
-import type { CreateJobBody, JobCandidateRow, ParseJobsResponse } from '../../shared/contracts/jobs';
-import { CLUSTER_LABEL, clusterForPostal } from '../../location/postal';
+import React, { useRef, useState } from 'react';
+import type { JobCandidateRow, JobPriority, ParseJobsResponse } from '../../shared/contracts/jobs';
+import { addDays } from '../../shared/config/demo';
+import { checkJobs, toJobBody } from '../../dispatch/job-import-check';
 import { DeskApiError, deskApi } from './desk-api';
 import { cn } from './lib/utils';
-import type { BookableType } from './NewJobForm';
 
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/60';
 const FIELD =
   'w-full min-w-0 rounded border bg-transparent px-1.5 py-0.5 text-[11px] outline-none placeholder:text-muted-foreground focus:border-ring [color-scheme:dark]';
+const BAD = 'border-destructive/60';
+
+/** Same limit as the server (ADR 013). */
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+
+const READ_BY: Record<JobCandidateRow['readBy'], { label: string; className: string; title: string }> = {
+  template: { label: 'Template', className: 'text-emerald-400', title: 'Read by code from the standard template.' },
+  assistant: { label: 'Assistant', className: 'text-sky-400', title: 'Read by the assistant; values not in the row were left blank.' },
+  keywords: { label: 'Keywords', className: 'text-amber-400', title: 'Read by keyword matching. Check each field.' },
+};
+
+const PRIORITY: Record<JobPriority, string> = { urgent: 'Urgent', on_demand: 'On demand', when_available: 'When available' };
 
 const SAMPLE_PERFECT = `customerName,phone,postalCode,address,unitNo,jobTypeId,priority,windowStart,windowEnd,note
 Raffles Place Capital,91234567,048616,1 Raffles Place,#12-01,WATER_LEAK,urgent,09:00,12:00,Severe water leaking from ceiling fan coil in server room
@@ -51,43 +60,23 @@ TICK-003,WATER_LEAK,"Marina Bay Sands",000000,"+1-800-CALL-AC","14:00 - 14:10","
 TICK-004,"Missing Contact",INVALID_PHONE,730123,"Woodlands Dr 14",CHEMICAL_WASH,"N/A"
 TICK-005,98765432,529510,"Tampines Hub","12:00 - 11:00",CRITICAL_HVAC,"100_PERCENT"`;
 
-const FALLBACK_JOB_TYPES: BookableType[] = [
-  { id: 'GENERAL_SERVICE', name: 'General Aircon Service', minTier: 1, difficulty: 1, defaultMinutes: 60, slaHours: 48, brandSensitive: false, createdAt: '', certs: [] },
-  { id: 'CHEMICAL_WASH', name: 'Chemical Wash', minTier: 1, difficulty: 1, defaultMinutes: 90, slaHours: 72, brandSensitive: false, createdAt: '', certs: [] },
-  { id: 'WATER_LEAK', name: 'Water Leakage Repair', minTier: 2, difficulty: 2, defaultMinutes: 90, slaHours: 4, brandSensitive: false, createdAt: '', certs: [] },
-  { id: 'GAS_TOPUP', name: 'Refrigerant Top-up (R32)', minTier: 2, difficulty: 2, defaultMinutes: 60, slaHours: 24, brandSensitive: false, createdAt: '', certs: ['NEA_R32'] },
-  { id: 'INSTALLATION', name: 'New Unit Installation', minTier: 2, difficulty: 3, defaultMinutes: 180, slaHours: 168, brandSensitive: false, createdAt: '', certs: ['NITEC_HVAC'] },
-  { id: 'CRITICAL_HVAC_ELECTRICAL', name: 'Critical HVAC + electrical', minTier: 3, difficulty: 5, defaultMinutes: 90, slaHours: 2, brandSensitive: true, createdAt: '', certs: ['NITEC_HVAC', 'NEA_R32'] },
-];
-
-export function JobImportView({
-  onCancel,
-  onImported,
-}: {
-  onCancel: () => void;
-  onImported: () => void;
-}) {
+/**
+ * Booking jobs from a file (ADR 013). The server reads the file; every row is
+ * shown with how it was read, what is unclear and why. Nothing is booked
+ * until the coordinator confirms, and only rows without issues are booked.
+ * Booked jobs land on the board waiting for a technician, like any booking.
+ */
+export function JobImportView({ onCancel, onImported }: { onCancel: () => void; onImported: () => void }) {
   const [candidates, setCandidates] = useState<JobCandidateRow[] | null>(null);
-  const [parseMeta, setParseMeta] = useState<ParseJobsResponse | null>(null);
-  const [filename, setFilename] = useState<string>('');
+  const [meta, setMeta] = useState<ParseJobsResponse | null>(null);
+  const [filename, setFilename] = useState('');
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [jobTypes, setJobTypes] = useState<BookableType[]>(FALLBACK_JOB_TYPES);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    deskApi
-      .jobTypes()
-      .then((types) => {
-        if (types && types.length > 0) setJobTypes(types);
-      })
-      .catch(() => {});
-  }, []);
-
   const downloadTemplate = () => {
-    const blob = new Blob([SAMPLE_PERFECT], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(new Blob([SAMPLE_PERFECT], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = 'jobs_template.csv';
@@ -97,176 +86,78 @@ export function JobImportView({
     URL.revokeObjectURL(url);
   };
 
-  const processText = async (text: string, name: string) => {
+  const read = async (input: Parameters<typeof deskApi.parseJobs>[0], name: string) => {
     setLoading(true);
     setError(null);
     setFilename(name);
     try {
-      const res = await deskApi.parseJobs(text);
-      setParseMeta(res);
+      const res = await deskApi.parseJobs(input);
+      setMeta(res);
       setCandidates(res.candidates);
     } catch (e) {
-      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Failed to parse file.');
+      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Could not read the file.');
       setCandidates(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // The server reads every format; the browser only uploads the bytes.
   const handleFile = async (file: File) => {
-    setLoading(true);
-    setError(null);
-    try {
-      let text = '';
-      if (file.name.endsWith('.parquet')) {
-        const { parquetReadObjects } = await import('hyparquet');
-        const { compressors } = await import('hyparquet-compressors');
-        const { recordsToCsv } = await import('../../agent/reports/roster-reader');
-        const buffer = await file.arrayBuffer();
-        const records = await parquetReadObjects({ file: buffer, compressors });
-        if (!records || records.length === 0) {
-          throw new Error('Parquet file contains no records.');
-        }
-        text = recordsToCsv(records as Record<string, unknown>[]);
-      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const firstSheet = wb.SheetNames[0];
-        if (!firstSheet || !wb.Sheets[firstSheet]) {
-          throw new Error('No worksheets found in this Excel file.');
-        }
-        text = XLSX.utils.sheet_to_csv(wb.Sheets[firstSheet]!);
-      } else {
-        text = await file.text();
-      }
-      await processText(text, file.name);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not read file.');
-      setLoading(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) void handleFile(dropped);
-  };
-
-  const updateCandidate = (index: number, patch: Partial<JobCandidateRow>) => {
-    if (!candidates) return;
-    setCandidates((prev) => {
-      if (!prev) return prev;
-      const copy = [...prev];
-      const target = { ...copy[index]!, ...patch };
-
-      // Re-validate fields
-      const issues: string[] = [];
-      if (!target.customerName.trim()) issues.push('Customer name is required.');
-
-      const cleanPhone = (target.phone || '').trim().replace(/[\s-]/g, '').replace(/^\+?65(?=\d{8}$)/, '');
-      if (!/^[3689]\d{7}$/.test(cleanPhone)) {
-        issues.push(`Phone must be an 8-digit Singapore number (starts with 3, 6, 8, or 9).`);
-      }
-
-      const cluster = /^\d{6}$/.test(target.postalCode) ? clusterForPostal(target.postalCode) : null;
-      target.cluster = cluster ? CLUSTER_LABEL[cluster] : null;
-      if (!cluster) {
-        issues.push(`Postal code "${target.postalCode}" cannot be placed into a Singapore sector.`);
-      }
-
-      if (!target.address.trim()) {
-        issues.push('Address is required.');
-      }
-
-      if (target.windowEnd <= target.windowStart) {
-        issues.push(`Window end (${target.windowEnd}) must be later than window start (${target.windowStart}).`);
-      } else {
-        const [startH, startM] = target.windowStart.split(':').map(Number);
-        const [endH, endM] = target.windowEnd.split(':').map(Number);
-        const durationMinutes = (endH! * 60 + endM!) - (startH! * 60 + startM!);
-        const currentType = jobTypes.find((t) => t.id === target.jobTypeId);
-        const requiredMin = currentType?.defaultMinutes ?? 60;
-        if (durationMinutes < requiredMin) {
-          issues.push(`Window (${durationMinutes}m) is shorter than ${currentType?.name || 'job'} takes (${requiredMin}m).`);
-        }
-      }
-
-      target.isValid = issues.length === 0;
-      target.issues = issues;
-      copy[index] = target;
-      return copy;
-    });
-  };
-
-  const removeCandidate = (index: number) => {
-    setCandidates((prev) => (prev ? prev.filter((_, i) => i !== index) : null));
-  };
-
-  const handleConfirmImport = async () => {
-    if (!candidates || candidates.length === 0) return;
-    const validRows = candidates.filter((c) => c.isValid);
-    if (validRows.length === 0) {
-      setError('No valid jobs to import. Please correct or delete highlighted rows.');
+    if (file.size > MAX_FILE_BYTES) {
+      setError('Job files are limited to 2 MB.');
       return;
     }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    await read({ fileBase64: btoa(binary), filename: file.name }, file.name);
+  };
 
+  // Every edit re-runs the server's checks, so a fixed field's issue clears.
+  const recheck = (rows: JobCandidateRow[]) => meta && setCandidates(checkJobs(rows, meta.context));
+  const update = (index: number, patch: Partial<JobCandidateRow>) => candidates && recheck(candidates.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  const remove = (index: number) => candidates && recheck(candidates.filter((_, i) => i !== index));
+
+  const confirm = async () => {
+    const ready = (candidates ?? []).filter((c) => c.isValid);
+    if (!ready.length) return;
     setImporting(true);
     setError(null);
-
-    const bodies: CreateJobBody[] = validRows.map((c) => ({
-      customerName: c.customerName.trim(),
-      phone: c.phone.trim().replace(/[\s-]/g, '').replace(/^\+?65(?=\d{8}$)/, ''),
-      postalCode: c.postalCode.trim(),
-      address: c.address.trim(),
-      unitNo: c.unitNo?.trim() || undefined,
-      jobTypeId: c.jobTypeId,
-      priority: c.priority,
-      windowStart: c.windowStart,
-      windowEnd: c.windowEnd,
-      date: c.date,
-      note: c.note,
-    }));
-
     try {
-      await deskApi.importJobs(bodies);
+      await deskApi.importJobs(ready.map(toJobBody));
       onImported();
     } catch (e) {
-      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Failed to import jobs.');
+      setError(e instanceof DeskApiError ? (e.detail ?? e.code) : 'Could not book the jobs.');
       setImporting(false);
     }
   };
 
   const validCount = candidates?.filter((c) => c.isValid).length ?? 0;
   const invalidCount = (candidates?.length ?? 0) - validCount;
+  const byWay = (candidates ?? []).reduce<Partial<Record<JobCandidateRow['readBy'], number>>>((acc, c) => ({ ...acc, [c.readBy]: (acc[c.readBy] ?? 0) + 1 }), {});
+  const today = meta?.context.today;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-foreground">
-      {/* Subheader */}
-      <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/20">
+      <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-2.5">
         <div>
-          <h2 className="text-xs font-semibold flex items-center gap-1.5">
-            <Briefcase className="size-3.5 text-primary" />
-            Batch Import Work Orders / Jobs
+          <h2 className="flex items-center gap-1.5 text-xs font-semibold">
+            <FileSpreadsheet className="size-3.5 text-primary" />
+            Import jobs
           </h2>
           <p className="text-[11px] text-muted-foreground">
-            Ingest customer service tickets from CSV, Excel (.xlsx), or Apache Parquet (.parquet) files.
+            CSV, Excel (.xlsx) or Parquet, up to 2 MB. Nothing is booked until you check the rows and confirm; booked jobs wait for a technician.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={downloadTemplate}
-          className={cn(
-            'inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium hover:bg-accent',
-            FOCUS,
-          )}
-        >
+        <button type="button" onClick={downloadTemplate} className={cn('inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium hover:bg-accent', FOCUS)}>
           <Download className="size-3 text-muted-foreground" />
           Template (.csv)
         </button>
       </div>
 
       {error ? (
-        <div role="alert" className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center gap-2">
+        <div role="alert" className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive">
           <AlertCircle className="size-3.5 flex-none" />
           <span>{error}</span>
         </div>
@@ -275,23 +166,27 @@ export function JobImportView({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {!candidates ? (
           <div className="grid gap-4">
-            {/* Drag & Drop Area */}
             <div
               onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files[0];
+                if (f) void handleFile(f);
+              }}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                'grid place-items-center rounded-xl border-2 border-dashed border-border/80 bg-accent/10 p-8 text-center cursor-pointer transition hover:border-primary/60 hover:bg-accent/25',
+                'grid cursor-pointer place-items-center rounded-xl border-2 border-dashed border-border/80 bg-accent/10 p-8 text-center transition hover:border-primary/60 hover:bg-accent/25',
                 loading && 'pointer-events-none opacity-50',
               )}
             >
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv, .xlsx, .xls, .parquet"
+                accept=".csv,.xlsx,.parquet"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
+                  e.target.value = '';
                   if (f) void handleFile(f);
                 }}
               />
@@ -299,325 +194,197 @@ export function JobImportView({
                 <div className="grid size-10 place-items-center rounded-full bg-primary/10 text-primary">
                   {loading ? <Loader2 className="size-5 animate-spin" /> : <Upload className="size-5" />}
                 </div>
-                <div>
-                  <span className="text-xs font-semibold block">
-                    {loading ? 'Reading & classifying jobs...' : 'Click to upload or drag & drop ticket file'}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground block">
-                    Supports .csv, .xlsx, .xls, and .parquet work order exports
-                  </span>
-                </div>
+                <span className="block text-xs font-semibold">{loading ? 'Reading the jobs…' : 'Click to upload, or drop a file here'}</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  The standard template is read directly; any other layout is read by the assistant, a few rows at a time.
+                </span>
               </div>
             </div>
 
-            {/* Quick-test with sample files */}
             <div className="rounded-lg border bg-card/60 p-3">
-              <span className="text-[11px] font-semibold text-muted-foreground block mb-2">
-                Or test with sample scenarios:
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void processText(SAMPLE_PERFECT, 'jobs_perfect.csv')}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left hover:bg-accent hover:border-primary/50 transition',
-                    FOCUS,
-                  )}
-                >
-                  <span className="flex items-center gap-1 text-[11px] font-semibold">
-                    <Zap className="size-3 text-emerald-400" />
-                    Clean Tickets
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Standard 10-column schema</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void processText(SAMPLE_MESSY, 'jobs_messy.csv')}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left hover:bg-accent hover:border-primary/50 transition',
-                    FOCUS,
-                  )}
-                >
-                  <span className="flex items-center gap-1 text-[11px] font-semibold">
-                    <Sparkles className="size-3 text-sky-400" />
-                    Messy CRM Export
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Conversational issues, slots & phone</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void processText(SAMPLE_SCRAMBLED, 'jobs_scrambled.csv')}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left hover:bg-accent hover:border-primary/50 transition',
-                    FOCUS,
-                  )}
-                >
-                  <span className="flex items-center gap-1 text-[11px] font-semibold">
-                    <FileText className="size-3 text-amber-400" />
-                    Scrambled / Corrupt
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Inverted slots & bad postal codes</span>
-                </button>
+              <span className="mb-2 block text-[11px] font-semibold text-muted-foreground">Or try a sample:</span>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {[
+                  { text: SAMPLE_PERFECT, file: 'jobs_perfect.csv', icon: <Zap className="size-3 text-emerald-400" />, title: 'Standard template', note: 'Read directly, no assistant' },
+                  { text: SAMPLE_MESSY, file: 'jobs_messy.csv', icon: <Sparkles className="size-3 text-sky-400" />, title: 'Messy work orders', note: 'Free-text slots, service names, urgency' },
+                  { text: SAMPLE_SCRAMBLED, file: 'jobs_scrambled.csv', icon: <FileText className="size-3 text-amber-400" />, title: 'Scrambled export', note: 'Nothing should come through unchecked' },
+                ].map((s) => (
+                  <button
+                    key={s.file}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void read(s.text, s.file)}
+                    className={cn('flex flex-col items-start gap-1 rounded-md border border-border bg-background/50 p-2 text-left transition hover:border-primary/50 hover:bg-accent', FOCUS)}
+                  >
+                    <span className="flex items-center gap-1 text-[11px] font-semibold">
+                      {s.icon}
+                      {s.title}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{s.note}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         ) : (
-          /* Pre-Flight Preview & Confirmation Table */
           <div className="grid gap-3">
-            {/* Meta status bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-              <div className="flex items-center gap-2">
-                {parseMeta?.source === 'template_fast_path' ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
-                    <Zap className="size-3" /> Standard Template (Instant)
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                <span className="font-medium">{candidates.length} {candidates.length === 1 ? 'job' : 'jobs'} in {filename}</span>
+                {(Object.keys(byWay) as Array<JobCandidateRow['readBy']>).map((k) => (
+                  <span key={k} className={cn('text-[11px]', READ_BY[k].className)} title={READ_BY[k].title}>
+                    {byWay[k]} read by {READ_BY[k].label.toLowerCase()}
                   </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-400 border border-sky-500/20">
-                    <Sparkles className="size-3" /> AI Assistant Classified
-                  </span>
-                )}
-                {filename.toLowerCase().endsWith('.parquet') && (
-                  <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-400 border border-purple-500/20">
-                    <Database className="size-3" /> Parquet File
-                  </span>
-                )}
-                <span className="text-[11.5px] font-medium">
-                  {candidates.length} {candidates.length === 1 ? 'ticket' : 'tickets'} detected
-                </span>
-                <span className="text-xs text-muted-foreground">({filename})</span>
+                ))}
               </div>
-
               <div className="flex items-center gap-2">
                 {invalidCount > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-medium">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400">
                     <AlertTriangle className="size-3" />
                     {invalidCount} {invalidCount === 1 ? 'row needs' : 'rows need'} attention
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                    <CheckCircle2 className="size-3" />
-                    All {validCount} valid
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                    <CheckCircle2 className="size-3" /> All {validCount} ready
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCandidates(null);
-                    setParseMeta(null);
-                    setFilename('');
-                  }}
-                  className="rounded border px-2 py-0.5 text-[11px] font-medium hover:bg-accent"
-                >
-                  Upload different file
+                <button type="button" onClick={() => setCandidates(null)} className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground', FOCUS)}>
+                  <RefreshCw className="size-3" /> Change file
                 </button>
               </div>
             </div>
 
-            {/* Candidates Table */}
-            <div className="overflow-x-auto rounded-lg border bg-card">
-              <table className="w-full border-collapse text-left text-xs">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-[11px] text-muted-foreground">
-                    <th className="px-2 py-1.5 w-8">#</th>
-                    <th className="px-2 py-1.5 min-w-[130px]">Customer Name</th>
-                    <th className="px-2 py-1.5 min-w-[90px]">Phone</th>
-                    <th className="px-2 py-1.5 min-w-[110px]">Postal & Sector</th>
-                    <th className="px-2 py-1.5 min-w-[160px]">Address & Unit</th>
-                    <th className="px-2 py-1.5 min-w-[140px]">Job Type</th>
-                    <th className="px-2 py-1.5 min-w-[80px]">Priority</th>
-                    <th className="px-2 py-1.5 min-w-[110px]">Window</th>
-                    <th className="px-2 py-1.5 min-w-[180px]">Symptoms / Notes</th>
-                    <th className="px-2 py-1.5 w-8 text-center">Action</th>
+            {meta?.assistantUnavailable ? (
+              <p className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+                The assistant could not read some rows, so they were read by keyword matching. Check those rows field by field.
+              </p>
+            ) : null}
+
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full border-collapse text-left text-[11.5px]">
+                <thead className="border-b bg-muted/40 text-[10.5px] font-semibold text-muted-foreground uppercase">
+                  <tr>
+                    <th className="w-8 px-2 py-1.5 text-center">OK</th>
+                    <th className="min-w-[150px] px-2 py-1.5">Customer</th>
+                    <th className="min-w-[200px] px-2 py-1.5">Where</th>
+                    <th className="min-w-[150px] px-2 py-1.5">Job</th>
+                    <th className="min-w-[150px] px-2 py-1.5">When</th>
+                    <th className="w-8 px-2 py-1.5"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
-                  {candidates.map((cand, idx) => (
-                    <React.Fragment key={idx}>
-                      <tr className={cn('hover:bg-muted/10', !cand.isValid && 'bg-destructive/5')}>
-                        <td className="px-2 py-1.5 text-center">
-                          {cand.isValid ? (
-                            <Check className="size-3.5 text-emerald-400 mx-auto" />
-                          ) : (
-                            <AlertCircle className="size-3.5 text-destructive mx-auto" />
-                          )}
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="text"
-                            value={cand.customerName}
-                            onChange={(e) => updateCandidate(idx, { customerName: e.target.value })}
-                            className={cn(FIELD, !cand.customerName && 'border-destructive')}
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="text"
-                            value={cand.phone}
-                            onChange={(e) => updateCandidate(idx, { phone: e.target.value })}
-                            className={cn(FIELD, !/^[3689]\d{7}$/.test(cand.phone) && 'border-destructive')}
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <div className="flex flex-col gap-0.5">
-                            <input
-                              type="text"
-                              maxLength={6}
-                              value={cand.postalCode}
-                              onChange={(e) => updateCandidate(idx, { postalCode: e.target.value })}
-                              className={cn(FIELD, !cand.cluster && 'border-destructive')}
-                            />
-                            {cand.cluster ? (
-                              <span className="text-[10px] text-muted-foreground truncate flex items-center gap-0.5">
-                                <MapPin className="size-2.5 text-primary flex-none" />
-                                {cand.cluster}
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <div className="grid grid-cols-3 gap-1">
-                            <input
-                              type="text"
-                              placeholder="Address"
-                              value={cand.address}
-                              onChange={(e) => updateCandidate(idx, { address: e.target.value })}
-                              className={cn(FIELD, 'col-span-2')}
-                            />
-                            <input
-                              type="text"
-                              placeholder="#01-01"
-                              value={cand.unitNo || ''}
-                              onChange={(e) => updateCandidate(idx, { unitNo: e.target.value })}
-                              className={FIELD}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <select
-                            value={cand.jobTypeId}
-                            onChange={(e) => updateCandidate(idx, { jobTypeId: e.target.value })}
-                            className={FIELD}
+                <tbody className="divide-y divide-border">
+                  {candidates.map((c, idx) => (
+                    <React.Fragment key={`${c.sourceRow}-${idx}`}>
+                      <tr className={cn(!c.isValid && 'bg-destructive/5')}>
+                        <td className="px-2 pt-2 text-center align-top">
+                          <span
+                            title={c.isValid ? 'Ready to book' : c.issues.join(' ')}
+                            className={cn('mx-auto grid size-4 place-items-center rounded-full', c.isValid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-destructive/20 text-destructive')}
                           >
-                            {jobTypes.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
+                            {c.isValid ? <Check className="size-2.5" /> : <AlertCircle className="size-2.5" />}
+                          </span>
+                        </td>
+                        <td className="grid gap-1 px-2 pt-2 align-top">
+                          <input className={cn(FIELD, !c.customerName.trim() && BAD)} value={c.customerName} onChange={(e) => update(idx, { customerName: e.target.value })} placeholder="Customer" aria-label={`Customer, row ${c.sourceRow}`} />
+                          <input className={cn(FIELD, 'font-mono')} value={c.phone} onChange={(e) => update(idx, { phone: e.target.value })} placeholder="Phone" aria-label={`Phone, row ${c.sourceRow}`} />
+                          <span className="text-[10px] text-muted-foreground">
+                            Row {c.sourceRow} · <span className={READ_BY[c.readBy].className} title={READ_BY[c.readBy].title}>{READ_BY[c.readBy].label}</span>
+                          </span>
+                        </td>
+                        <td className="px-2 pt-2 align-top">
+                          <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-1">
+                            <input className={cn(FIELD, 'font-mono', !c.cluster && BAD)} value={c.postalCode} maxLength={6} inputMode="numeric" onChange={(e) => update(idx, { postalCode: e.target.value.trim() })} placeholder="Postal" aria-label={`Postal code, row ${c.sourceRow}`} />
+                            <input className={FIELD} value={c.unitNo} onChange={(e) => update(idx, { unitNo: e.target.value })} placeholder="Unit" aria-label={`Unit, row ${c.sourceRow}`} />
+                            <input className={cn(FIELD, 'col-span-2', !c.address.trim() && BAD)} value={c.address} onChange={(e) => update(idx, { address: e.target.value })} placeholder="Street address" aria-label={`Address, row ${c.sourceRow}`} />
+                          </div>
+                          <span className={cn('mt-0.5 flex items-center gap-1 text-[10px]', c.cluster ? 'text-muted-foreground' : 'text-destructive')}>
+                            <MapPin className="size-2.5" />
+                            {c.cluster ?? 'Not placed'}
+                          </span>
+                        </td>
+                        <td className="grid gap-1 px-2 pt-2 align-top">
+                          <select className={cn(FIELD, !c.jobTypeId && BAD)} value={c.jobTypeId ?? ''} onChange={(e) => update(idx, { jobTypeId: e.target.value || null })} aria-label={`Job type, row ${c.sourceRow}`}>
+                            <option value="" className="bg-card">Choose…</option>
+                            {meta?.context.jobTypes.map((t) => (
+                              <option key={t.id} value={t.id} className="bg-card">{t.name}</option>
+                            ))}
+                          </select>
+                          <select className={cn(FIELD, !c.priority && BAD)} value={c.priority ?? ''} onChange={(e) => update(idx, { priority: (e.target.value || null) as JobPriority | null })} aria-label={`Priority, row ${c.sourceRow}`}>
+                            <option value="" className="bg-card">Priority…</option>
+                            {(Object.keys(PRIORITY) as JobPriority[]).map((p) => (
+                              <option key={p} value={p} className="bg-card">{PRIORITY[p]}</option>
                             ))}
                           </select>
                         </td>
-                        <td className="px-2 py-1.5">
-                          <select
-                            value={cand.priority}
-                            onChange={(e) =>
-                              updateCandidate(idx, { priority: e.target.value as CreateJobBody['priority'] })
-                            }
-                            className={FIELD}
-                          >
-                            <option value="urgent">Urgent</option>
-                            <option value="on_demand">Normal</option>
-                            <option value="when_available">When free</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="time"
-                              value={cand.windowStart}
-                              onChange={(e) => updateCandidate(idx, { windowStart: e.target.value })}
-                              className={FIELD}
-                            />
-                            <span className="text-muted-foreground">-</span>
-                            <input
-                              type="time"
-                              value={cand.windowEnd}
-                              onChange={(e) => updateCandidate(idx, { windowEnd: e.target.value })}
-                              className={FIELD}
-                            />
+                        <td className="px-2 pt-2 align-top">
+                          <div className="grid grid-cols-2 gap-1">
+                            <input type="time" className={cn(FIELD, !c.windowStart && BAD)} value={c.windowStart ?? ''} onChange={(e) => update(idx, { windowStart: e.target.value || null })} aria-label={`Window start, row ${c.sourceRow}`} />
+                            <input type="time" className={cn(FIELD, !c.windowEnd && BAD)} value={c.windowEnd ?? ''} onChange={(e) => update(idx, { windowEnd: e.target.value || null })} aria-label={`Window end, row ${c.sourceRow}`} />
+                            {today ? (
+                              <select className={cn(FIELD, 'col-span-2')} value={c.date ?? today} onChange={(e) => update(idx, { date: e.target.value === today ? null : e.target.value })} aria-label={`Day, row ${c.sourceRow}`}>
+                                <option value={today} className="bg-card">Today</option>
+                                <option value={addDays(today, 1)} className="bg-card">Tomorrow</option>
+                              </select>
+                            ) : null}
                           </div>
                         </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="text"
-                            placeholder="Complaint notes..."
-                            value={cand.note || ''}
-                            onChange={(e) => updateCandidate(idx, { note: e.target.value })}
-                            className={FIELD}
-                          />
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => removeCandidate(idx)}
-                            className="rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition"
-                            title="Remove row"
-                          >
-                            <Trash2 className="size-3.5" />
+                        <td className="px-2 pt-2 text-center align-top">
+                          <button type="button" onClick={() => remove(idx)} className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Leave this row out" aria-label={`Leave out row ${c.sourceRow}`}>
+                            <Trash2 className="size-3" />
                           </button>
                         </td>
                       </tr>
-                      {/* Issues and notices diagnostics row */}
-                      {cand.issues.length > 0 || cand.notices.length > 0 ? (
-                        <tr className="bg-muted/10 text-[10.5px]">
-                          <td colSpan={10} className="px-3 py-1 border-b border-border/40">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {cand.issues.map((iss, iIdx) => (
-                                <span key={iIdx} className="inline-flex items-center gap-1 text-destructive font-medium">
-                                  <AlertCircle className="size-2.5" /> {iss}
-                                </span>
-                              ))}
-                              {cand.notices.map((not, nIdx) => (
-                                <span key={nIdx} className="inline-flex items-center gap-1 text-sky-400">
-                                  <Sparkles className="size-2.5" /> {not}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
+                      <tr className={cn(!c.isValid && 'bg-destructive/5')}>
+                        <td />
+                        <td colSpan={5} className="px-2 pb-2 text-[10.5px]">
+                          {c.note ? <span className="block truncate text-foreground/70" title={c.note}>“{c.note}”</span> : null}
+                          {c.issues.map((i) => (
+                            <span key={i} className="block text-destructive">{i}</span>
+                          ))}
+                          {c.notices.map((n) => (
+                            <span key={n} className="block text-muted-foreground">{n}</span>
+                          ))}
+                        </td>
+                      </tr>
                     </React.Fragment>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Bottom Actions */}
-            <div className="flex items-center justify-between border-t pt-3">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-accent"
-              >
-                Cancel
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={importing || validCount === 0}
-                  onClick={() => void handleConfirmImport()}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow hover:bg-primary/90 transition disabled:opacity-50',
-                    FOCUS,
-                  )}
-                >
-                  {importing ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Briefcase className="size-3.5" />
-                  )}
-                  {validCount === 0
-                    ? 'No valid jobs to book'
-                    : `Confirm Batch Booking (${validCount} ${validCount === 1 ? 'job' : 'jobs'})`}
-                </button>
+            {meta?.skipped.length ? (
+              <div className="rounded border bg-accent/15 px-3 py-2 text-[10.5px] text-muted-foreground">
+                <span className="mb-0.5 block font-semibold">Not read as jobs</span>
+                {meta.skipped.map((s) => (
+                  <span key={s.sourceRow} className="block">Row {s.sourceRow}: {s.reason}</span>
+                ))}
               </div>
-            </div>
+            ) : null}
           </div>
         )}
       </div>
+
+      <footer className="flex items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
+        <button type="button" onClick={onCancel} disabled={importing} className={cn('rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground', FOCUS)}>
+          Cancel
+        </button>
+        {candidates ? (
+          <span className="flex items-center gap-3">
+            {invalidCount > 0 && validCount > 0 ? (
+              <span className="text-[11px] text-muted-foreground">{invalidCount} {invalidCount === 1 ? 'row' : 'rows'} with issues won’t be booked.</span>
+            ) : null}
+            <button
+              type="button"
+              disabled={importing || validCount === 0}
+              onClick={() => void confirm()}
+              className={cn('inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition disabled:opacity-40', FOCUS)}
+            >
+              {importing ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+              Book {validCount} {validCount === 1 ? 'job' : 'jobs'}
+            </button>
+          </span>
+        ) : null}
+      </footer>
     </div>
   );
 }

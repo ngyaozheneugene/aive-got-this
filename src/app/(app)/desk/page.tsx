@@ -854,7 +854,7 @@ export default function DeskPage() {
       </footer>
 
       {jobImportOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-label="Import jobs">
           <div className="flex h-[85vh] w-full max-w-5xl flex-col rounded-xl border bg-card shadow-2xl overflow-hidden">
             <JobImportView
               onCancel={() => setJobImportOpen(false)}

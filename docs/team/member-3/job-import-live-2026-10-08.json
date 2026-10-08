@@ -1,0 +1,186 @@
+{
+ "date": "2026-10-08",
+ "test": "evals/a-suite/job-reader.live.test.ts",
+ "result": "Tests  2 passed (2)",
+ "runs": [
+  {
+   "file": "jobs_messy.xlsx",
+   "assistantUnavailable": false,
+   "skipped": [],
+   "rows": [
+    {
+     "row": 2,
+     "by": "assistant",
+     "customer": "Far East Medical",
+     "phone": "65 9188 2345",
+     "postal": "307506",
+     "address": "Novena Specialist Centre, 10 Sinaran Dr",
+     "unit": "#08-14",
+     "type": "WATER_LEAK",
+     "priority": "urgent",
+     "window": "08:30-11:30",
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 3,
+     "by": "assistant",
+     "customer": "Uncle Teo (Bedok)",
+     "phone": "+65 8299-1122",
+     "postal": "460218",
+     "address": "Blk 218 Bedok North St 1",
+     "unit": "#05-18",
+     "type": "GAS_TOPUP",
+     "priority": "urgent",
+     "window": "14:00-17:00",
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 4,
+     "by": "assistant",
+     "customer": "Desmond Goh",
+     "phone": "96554321",
+     "postal": "520245",
+     "address": "Tampines Street 21, Block 245",
+     "unit": "",
+     "type": "GENERAL_SERVICE",
+     "priority": "on_demand",
+     "window": "10:00-12:30",
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 5,
+     "by": "assistant",
+     "customer": "Bukit Merah Cold Storage",
+     "phone": "+65-9711-8899",
+     "postal": "150123",
+     "address": "Bukit Merah View",
+     "unit": "#01-105",
+     "type": "CRITICAL_HVAC_ELECTRICAL",
+     "priority": "urgent",
+     "window": "09:00-12:00",
+     "valid": true,
+     "issues": [],
+     "notices": []
+    },
+    {
+     "row": 6,
+     "by": "assistant",
+     "customer": "Punggol Waterway Condo",
+     "phone": "8122-3344",
+     "postal": "828288",
+     "address": "Punggol Field Blk 288",
+     "unit": "#14-22",
+     "type": "CHEMICAL_WASH",
+     "priority": "when_available",
+     "window": "14:00-17:00",
+     "valid": true,
+     "issues": [],
+     "notices": []
+    }
+   ]
+  },
+  {
+   "file": "jobs_scrambled.xlsx",
+   "assistantUnavailable": false,
+   "skipped": [
+    {
+     "sourceRow": 3,
+     "reason": "The assistant did not find a job in this row."
+    }
+   ],
+   "rows": [
+    {
+     "row": 2,
+     "by": "assistant",
+     "customer": "Tan Ah Teck",
+     "phone": "91234567",
+     "postal": "640441",
+     "address": "",
+     "unit": "",
+     "type": "WATER_LEAK",
+     "priority": "urgent",
+     "window": "null-null",
+     "valid": false,
+     "issues": [
+      "Needs the street address.",
+      "Set the time window."
+     ],
+     "notices": [
+      "The window 16:00\u201310:00 ends before it starts; set it."
+     ]
+    },
+    {
+     "row": 4,
+     "by": "assistant",
+     "customer": "",
+     "phone": "+1-800-CALL-AC",
+     "postal": "",
+     "address": "Marina Bay Sands",
+     "unit": "",
+     "type": "WATER_LEAK",
+     "priority": "urgent",
+     "window": "14:00-14:10",
+     "valid": false,
+     "issues": [
+      "Needs the customer\u2019s name.",
+      "+1-800-CALL-AC is not a Singapore phone number.",
+      "Needs the postal code.",
+      "A Water Leakage Repair takes 90 minutes; the window is 10."
+     ],
+     "notices": []
+    },
+    {
+     "row": 5,
+     "by": "assistant",
+     "customer": "",
+     "phone": "",
+     "postal": "730123",
+     "address": "Woodlands Dr 14",
+     "unit": "",
+     "type": "CHEMICAL_WASH",
+     "priority": null,
+     "window": "null-null",
+     "valid": false,
+     "issues": [
+      "Needs the customer\u2019s name.",
+      "Needs a phone number.",
+      "Choose a priority.",
+      "Set the time window."
+     ],
+     "notices": [
+      "Priority not clear in the file; choose one.",
+      "No time window in the file; set it."
+     ]
+    },
+    {
+     "row": 6,
+     "by": "assistant",
+     "customer": "",
+     "phone": "98765432",
+     "postal": "529510",
+     "address": "Tampines Hub",
+     "unit": "",
+     "type": "CRITICAL_HVAC_ELECTRICAL",
+     "priority": null,
+     "window": "null-null",
+     "valid": false,
+     "issues": [
+      "Needs the customer\u2019s name.",
+      "Choose a priority.",
+      "Set the time window."
+     ],
+     "notices": [
+      "Priority not clear in the file; choose one.",
+      "The window 12:00\u201311:00 ends before it starts; set it."
+     ]
+    }
+   ]
+  }
+ ]
+}

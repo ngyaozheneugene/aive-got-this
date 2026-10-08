@@ -1,128 +1,124 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import {
-  parseStandardJobsCsv,
-  parseJobsHeuristically,
-  readJobs,
-  readJobsFromParquet,
-} from './job-reader';
-import { parseCsvRows } from './roster-reader';
+import { checkJobs } from '../../dispatch/job-import-check';
+import { decodeRosterFile, parseCsv } from '../../dispatch/roster-file';
+import { buildScenario } from '../../shared/fixtures/scenario';
+import { GATEWAY_MAX_REQUEST_BYTES, type GatewayMessage } from '../runtime/gateway';
+import type { ImportChat } from './import-core';
+import { JOB_BATCH, readJobs } from './job-reader';
 
-describe('Job Reader', () => {
-  const perfectCsv = fs.readFileSync(
-    path.resolve(process.cwd(), 'sample-imports', 'jobs_perfect.csv'),
-    'utf-8',
-  );
-  const messyCsv = fs.readFileSync(
-    path.resolve(process.cwd(), 'sample-imports', 'jobs_messy.csv'),
-    'utf-8',
-  );
-  const scrambledCsv = fs.readFileSync(
-    path.resolve(process.cwd(), 'sample-imports', 'jobs_scrambled.csv'),
-    'utf-8',
-  );
+const TYPES = buildScenario('2026-10-20').jobTypes.map((t) => ({ id: t.id, name: t.name, defaultMinutes: t.defaultMinutes }));
+const context = { today: '2026-10-20', jobTypes: TYPES, booked: [] as string[] };
+const read = async (f: string, chat?: ImportChat) => {
+  const r = await readJobs(await decodeRosterFile(readFileSync(`sample-imports/${f}`), f), TYPES, chat);
+  return { ...r, rows: checkJobs(r.rows, context) };
+};
 
-  const perfectParquet = fs.readFileSync(
-    path.resolve(process.cwd(), 'sample-imports', 'jobs_perfect.parquet'),
-  );
-  const messyParquet = fs.readFileSync(
-    path.resolve(process.cwd(), 'sample-imports', 'jobs_messy.parquet'),
-  );
-  const scrambledParquet = fs.readFileSync(
-    path.resolve(process.cwd(), 'sample-imports', 'jobs_scrambled.parquet'),
-  );
+function scripted(answer: (records: Array<{ id: string; text: string }>) => unknown[] | 'fail') {
+  const seen: Array<{ messages: GatewayMessage[]; tools: Record<string, unknown>[] }> = [];
+  const chat: ImportChat = async (messages, _signal, tools) => {
+    seen.push({ messages, tools });
+    const records = (JSON.parse(messages[1]!.content.replace(/^UNTRUSTED_DATA /, '')) as { records: Array<{ id: string; text: string }> }).records;
+    const jobs = answer(records);
+    if (jobs === 'fail') throw new Error('gateway down');
+    return { content: '', tool_calls: [{ function: { name: 'submit_jobs', arguments: { jobs } } }] };
+  };
+  return { chat, seen };
+}
+const requestBytes = (m: GatewayMessage[], tools: Record<string, unknown>[]) =>
+  Buffer.byteLength(JSON.stringify({ model: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0', messages: m, stream: false, options: { temperature: 0, num_predict: 500 }, tools }));
 
-  it('parses standard template jobs CSV with fast path', async () => {
-    const result = await readJobs(perfectCsv);
-    expect(result.source).toBe('template_fast_path');
-    expect(result.candidates.length).toBe(5);
-    expect(result.validCount).toBe(5);
+const MESSY: Record<string, object> = {
+  'Far East Medical': { phone: '65 9188 2345', postal: '307506', address: '10 Sinaran Dr', unit: '#08-14', type: 'WATER_LEAK', priority: 'urgent', start: '08:30', end: '11:30', issue: 'Severe water dripping onto ultrasound machine' },
+  'Uncle Teo (Bedok)': { phone: '+65 8299-1122', postal: '460218', address: 'Blk 218 Bedok North St 1', unit: '#05-18', type: 'GAS_TOPUP', priority: 'urgent', start: '14:00', end: '17:00' },
+  'Desmond Goh': { phone: '96554321', postal: '520245', address: 'Tampines Street 21, Block 245', type: 'GENERAL_SERVICE', priority: 'on_demand', start: '10:00', end: '12:30' },
+  'Bukit Merah Cold Storage': { phone: '+65-9711-8899', postal: '150123', address: 'Bukit Merah View', unit: '#01-105', type: 'CRITICAL_HVAC_ELECTRICAL', priority: 'urgent', start: '09:00', end: '12:00' },
+  'Punggol Waterway Condo': { phone: '8122-3344', postal: '828288', address: 'Punggol Field Blk 288', unit: '#14-22', type: 'CHEMICAL_WASH', priority: 'when_available', start: '14:00', end: '17:00' },
+};
+const honest = (records: Array<{ id: string; text: string }>) =>
+  records.flatMap((r) => Object.entries(MESSY).filter(([n]) => r.text.includes(n)).map(([customer, rest]) => ({ id: r.id, customer, ...rest })));
 
-    const raffles = result.candidates[0]!;
-    expect(raffles.customerName).toBe('Raffles Place Capital');
-    expect(raffles.phone).toBe('91234567');
-    expect(raffles.postalCode).toBe('048616');
-    expect(raffles.cluster).toBe('CBD');
-    expect(raffles.jobTypeId).toBe('WATER_LEAK');
-    expect(raffles.priority).toBe('urgent');
-    expect(raffles.windowStart).toBe('09:00');
-    expect(raffles.windowEnd).toBe('12:00');
-    expect(raffles.isValid).toBe(true);
-
-    const tan = result.candidates[1]!;
-    expect(tan.customerName).toBe('Tan Household (Simei)');
-    expect(tan.postalCode).toBe('520123');
-    expect(tan.cluster).toBe('East (Tampines, Pasir Ris, Changi)');
-    expect(tan.jobTypeId).toBe('GENERAL_SERVICE');
-    expect(tan.priority).toBe('on_demand');
+describe('job import: the template, read by code', () => {
+  it('reads CSV, Excel and Parquet the same way, Excel times and the dropped zero included', async () => {
+    for (const f of ['jobs_perfect.csv', 'jobs_perfect.xlsx', 'jobs_perfect.parquet']) {
+      const { rows } = await read(f);
+      expect(rows.map((r) => [r.customerName, r.postalCode, r.jobTypeId, r.priority, r.windowStart, r.windowEnd, r.readBy, r.isValid])).toEqual([
+        ['Raffles Place Capital', '048616', 'WATER_LEAK', 'urgent', '09:00', '12:00', 'template', true],
+        ['Tan Household (Simei)', '520123', 'GENERAL_SERVICE', 'on_demand', '14:00', '16:30', 'template', true],
+        ['Jurong Gateway Offices', '608549', 'CRITICAL_HVAC_ELECTRICAL', 'urgent', '08:30', '11:30', 'template', true],
+        ['Causeway Point Clinic', '738099', 'GAS_TOPUP', 'on_demand', '13:00', '15:30', 'template', true],
+        ['Bishan Park Condo MCST', '570123', 'CHEMICAL_WASH', 'when_available', '10:00', '13:00', 'template', true],
+      ]);
+    }
   });
 
-  it('parses messy CRM ticket export format', async () => {
-    const candidates = parseJobsHeuristically(messyCsv);
-    expect(candidates.length).toBeGreaterThanOrEqual(4);
+  it('leaves unknown types, priorities and short windows for the coordinator', async () => {
+    const r = await readJobs(parseCsv('customerName,phone,postalCode,address,jobTypeId,priority,windowStart,windowEnd\nAh Kow,91234567,520123,Simei St 1,DUCT_SWEEP,sometime,09:00,09:30'), TYPES);
+    const [row] = checkJobs(r.rows, context);
+    expect(row).toMatchObject({ jobTypeId: null, priority: null, isValid: false });
+    expect(row!.issues).toEqual(expect.arrayContaining(['Choose the kind of job.', 'Choose a priority.']));
+  });
+});
 
-    const farEast = candidates.find((c) => c.customerName.toLowerCase().includes('far east'));
-    expect(farEast).toBeDefined();
-    expect(farEast?.phone).toBe('91882345');
-    expect(farEast?.postalCode).toBe('307506');
-    expect(farEast?.cluster).toContain('Central');
-    expect(farEast?.jobTypeId).toBe('WATER_LEAK');
-    expect(farEast?.priority).toBe('urgent');
-
-    const uncleTeo = candidates.find((c) => c.customerName.toLowerCase().includes('uncle teo'));
-    expect(uncleTeo).toBeDefined();
-    expect(uncleTeo?.phone).toBe('82991122');
-    expect(uncleTeo?.postalCode).toBe('460218');
-    expect(uncleTeo?.cluster).toContain('Bedok');
-    expect(uncleTeo?.jobTypeId).toBe('GAS_TOPUP');
+describe('job import: other layouts, read by the assistant', () => {
+  it('reads the messy list a few rows per request, each within the gateway limit, with our job types offered', async () => {
+    const m = scripted(honest);
+    const { rows, assistantUnavailable } = await read('jobs_messy.xlsx', m.chat);
+    expect(m.seen).toHaveLength(Math.ceil(5 / JOB_BATCH));
+    for (const call of m.seen) expect(requestBytes(call.messages, call.tools)).toBeLessThan(GATEWAY_MAX_REQUEST_BYTES);
+    expect(m.seen[0]!.messages[0]!.content).toContain('WATER_LEAK (Water Leakage Repair)');
+    expect(assistantUnavailable).toBe(false);
+    expect(rows.every((r) => r.readBy === 'assistant' && r.isValid)).toBe(true);
+    expect(rows[1]).toMatchObject({ customerName: 'Uncle Teo (Bedok)', phone: '+65 8299-1122', windowStart: '14:00', windowEnd: '17:00' });
   });
 
-  it('handles scrambled CSV tickets and flags invalid rows', async () => {
-    const candidates = parseJobsHeuristically(scrambledCsv);
-    expect(candidates.length).toBeGreaterThanOrEqual(1);
-
-    const invalid = candidates.filter((c) => !c.isValid);
-    expect(invalid.length).toBeGreaterThanOrEqual(1);
-    const hasIssues = invalid.some((c) =>
-      c.issues.some((i) => i.includes('Postal code') || i.includes('Phone') || i.includes('Time window')),
-    );
-    expect(hasIssues).toBe(true);
+  it('keeps only what the row bears out', async () => {
+    const m = scripted((records) => records.map((r) => ({ id: r.id, customer: 'Someone Else', phone: '90001111', postal: '520001', address: 'Orchard Road', type: 'WATER_LEAK', priority: 'urgent', start: '19:00', end: '21:00' })));
+    const { rows } = await read('jobs_messy.csv', m.chat);
+    expect(rows[0]).toMatchObject({ customerName: '', phone: '', postalCode: '', address: '', windowStart: null, windowEnd: null, isValid: false });
+    expect(rows[0]!.notices).toEqual(expect.arrayContaining([
+      'The assistant read the customer as "Someone Else", which is not in the row; left blank.',
+      'The assistant read the postal code as "520001", which is not in the row; left blank.',
+      'The assistant read a time as 19:00, which is not in the row; left blank.',
+    ]));
   });
 
-  it('parses standard template jobs Parquet binary with fast path', async () => {
-    const result = await readJobsFromParquet(perfectParquet);
-    expect(result.source).toBe('template_fast_path');
-    expect(result.candidates.length).toBe(5);
-    expect(result.validCount).toBe(5);
-
-    const jurong = result.candidates[2]!;
-    expect(jurong.customerName).toBe('Jurong Gateway Offices');
-    expect(jurong.phone).toBe('83456789');
-    expect(jurong.postalCode).toBe('608549');
-    expect(jurong.cluster).toBe('West (Jurong, Clementi)');
-    expect(jurong.jobTypeId).toBe('CRITICAL_HVAC_ELECTRICAL');
-    expect(jurong.priority).toBe('urgent');
-    expect(jurong.isValid).toBe(true);
+  it('reads the type from the row when the assistant offers one we do not have', async () => {
+    const m = scripted((records) => honest(records).map((j) => ({ ...j, type: 'PLUMBING' })));
+    const { rows } = await read('jobs_messy.csv', m.chat);
+    expect(rows.map((r) => r.jobTypeId)).toEqual(['WATER_LEAK', 'GAS_TOPUP', 'GENERAL_SERVICE', 'CRITICAL_HVAC_ELECTRICAL', 'CHEMICAL_WASH']);
   });
 
-  it('parses messy CRM jobs Parquet binary', async () => {
-    const result = await readJobsFromParquet(messyParquet);
-    expect(result.candidates.length).toBeGreaterThanOrEqual(4);
-
-    const desmond = result.candidates.find((c) => c.customerName.toLowerCase().includes('desmond'));
-    expect(desmond).toBeDefined();
-    expect(desmond?.phone).toBe('96554321');
-    expect(desmond?.postalCode).toBe('520245');
-    expect(desmond?.cluster).toBe('East (Tampines, Pasir Ris, Changi)');
-    expect(desmond?.jobTypeId).toBe('GENERAL_SERVICE');
+  it('falls back to keyword matching when the gateway keeps failing, and still reads the messy list', async () => {
+    const m = scripted(() => 'fail');
+    const { rows, assistantUnavailable } = await read('jobs_messy.csv', m.chat);
+    expect(assistantUnavailable).toBe(true);
+    expect(rows.every((r) => r.readBy === 'keywords' && r.isValid)).toBe(true);
+    expect(rows.map((r) => [r.jobTypeId, r.priority, r.windowStart, r.windowEnd])).toEqual([
+      ['WATER_LEAK', 'urgent', '08:30', '11:30'],
+      ['GAS_TOPUP', 'urgent', '14:00', '17:00'],
+      ['GENERAL_SERVICE', 'on_demand', '10:00', '12:30'],
+      ['CRITICAL_HVAC_ELECTRICAL', 'urgent', '09:00', '12:00'],
+      ['CHEMICAL_WASH', 'when_available', '14:00', '17:00'],
+    ]);
   });
+});
 
-  it('handles scrambled jobs Parquet binary and isolates validation issues', async () => {
-    const result = await readJobsFromParquet(scrambledParquet);
-    expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+describe('job import: nothing confident from a scrambled file', () => {
+  it('backwards and empty windows, impossible postal codes and fake numbers all stay issues', async () => {
+    for (const f of ['jobs_scrambled.csv', 'jobs_scrambled.xlsx', 'jobs_scrambled.parquet']) {
+      const { rows } = await read(f);
+      expect(rows).toHaveLength(5);
+      expect(rows.filter((r) => r.isValid)).toHaveLength(0);
+      expect(rows.every((r) => r.windowStart === null)).toBe(true);
+    }
+  });
+});
 
-    const invalid = result.candidates.filter((c) => !c.isValid);
-    expect(invalid.length).toBeGreaterThanOrEqual(1);
+describe('checkJobs', () => {
+  it('flags a booking already on the board or repeated in the file', async () => {
+    const r = await readJobs(parseCsv('customerName,phone,postalCode,address,jobTypeId,priority,windowStart,windowEnd\nA,91234567,520123,Simei St 1,GENERAL_SERVICE,on_demand,14:00,16:30\nB,+65 9123 4567,520123,Simei St 1,GENERAL_SERVICE,on_demand,14:00,16:30'), TYPES);
+    expect(checkJobs(r.rows, context).map((x) => x.issues)).toEqual([[], ['Same booking as row 2.']]);
+    expect(checkJobs(r.rows, { ...context, booked: ['91234567|520123|GENERAL_SERVICE|2026-10-20|14:00'] })[0]!.issues).toEqual(['Already booked: same customer, place, job and time.']);
   });
 });
