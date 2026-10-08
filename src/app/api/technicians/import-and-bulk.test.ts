@@ -30,6 +30,30 @@ Bob,3,048581,NEA_R32:2028-01-01,,8,false`;
     expect(data.candidates[1].cluster).toBe('CBD');
   });
 
+  it('parses Parquet binary upload through draft endpoint with fileBase64', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const parquetBuffer = fs.readFileSync(
+      path.resolve(process.cwd(), 'sample-imports', 'technicians_perfect.parquet'),
+    );
+    const fileBase64 = parquetBuffer.toString('base64');
+
+    const res = await parseDraft(
+      req('/api/technicians/import/draft', {
+        method: 'POST',
+        body: { fileBase64, filename: 'technicians_perfect.parquet' },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.source).toBe('template_fast_path');
+    expect(data.totalRows).toBe(5);
+    expect(data.validCount).toBe(5);
+    expect(data.candidates[0].name).toBe('Tan Wei');
+    expect(data.candidates[0].cluster).toBe('CBD');
+  });
+
   it('bulk creates technicians in workspace', async () => {
     const beforeTeam = await (await getTeam(req('/api/technicians', { workspace: 'live' }))).json();
     const beforeCount = beforeTeam.length;

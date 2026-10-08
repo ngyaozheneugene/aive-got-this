@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Database,
   Download,
   FileSpreadsheet,
   FileText,
@@ -118,7 +119,17 @@ export function RosterImportView({
     setError(null);
     try {
       let text = '';
-      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      if (file.name.endsWith('.parquet')) {
+        const { parquetReadObjects } = await import('hyparquet');
+        const { compressors } = await import('hyparquet-compressors');
+        const { recordsToCsv } = await import('../../agent/reports/roster-reader');
+        const buffer = await file.arrayBuffer();
+        const records = await parquetReadObjects({ file: buffer, compressors });
+        if (!records || records.length === 0) {
+          throw new Error('Parquet file contains no records.');
+        }
+        text = recordsToCsv(records as Record<string, unknown>[]);
+      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
         const wb = XLSX.read(buffer, { type: 'array' });
         const firstSheet = wb.SheetNames[0];
@@ -214,7 +225,7 @@ export function RosterImportView({
             Import Team Roster
           </h2>
           <p className="text-[11px] text-muted-foreground">
-            Auto-ingest employees from CSV or Excel (.xlsx) spreadsheets.
+            Auto-ingest employees from CSV, Excel (.xlsx), or Apache Parquet (.parquet) data lake files.
           </p>
         </div>
         <button
@@ -253,7 +264,7 @@ export function RosterImportView({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv, .xlsx, .xls"
+                accept=".csv, .xlsx, .xls, .parquet"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -269,7 +280,7 @@ export function RosterImportView({
                     {loading ? 'Reading & parsing roster...' : 'Click to upload or drag & drop'}
                   </span>
                   <span className="text-[11px] text-muted-foreground block">
-                    Supports .csv, .xlsx, .xls (clean or messy formats)
+                    Supports .csv, .xlsx, .xls, and .parquet data files
                   </span>
                 </div>
               </div>
@@ -344,6 +355,11 @@ export function RosterImportView({
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-400 border border-sky-500/20">
                     <Sparkles className="size-3" /> AI Assistant Structured
+                  </span>
+                )}
+                {filename.toLowerCase().endsWith('.parquet') && (
+                  <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[11px] font-medium text-purple-400 border border-purple-500/20">
+                    <Database className="size-3" /> Parquet File
                   </span>
                 )}
                 <span className="text-[11.5px] font-medium">

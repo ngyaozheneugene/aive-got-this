@@ -126,11 +126,11 @@ export const deskApi = {
       body: JSON.stringify(body),
     }),
 
-  parseRoster: (text: string, signal?: AbortSignal) =>
+  parseRoster: (input: string | { fileBase64: string; filename?: string }, signal?: AbortSignal) =>
     request<ParseRosterResponse>('/api/technicians/import/draft', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(typeof input === 'string' ? { text: input } : input),
       signal,
     }),
 

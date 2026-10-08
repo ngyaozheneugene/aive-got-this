@@ -519,3 +519,57 @@ export async function readRoster(
     validCount: candidates.filter((c) => c.isValid).length,
   };
 }
+
+/** Convert tabular object records into RFC 4180 CSV string. */
+export function recordsToCsv(records: Record<string, unknown>[]): string {
+  if (!records || records.length === 0) return '';
+  const headers = Object.keys(records[0]!);
+  const escapeCell = (val: unknown): string => {
+    if (val === null || val === undefined) return '';
+    let str: string;
+    if (Array.isArray(val)) {
+      str = val
+        .map((item) => (typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item)))
+        .join(';');
+    } else if (typeof val === 'object') {
+      str = JSON.stringify(val);
+    } else {
+      str = String(val);
+    }
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const lines = [
+    headers.map(escapeCell).join(','),
+    ...records.map((row) => headers.map((h) => escapeCell(row[h])).join(',')),
+  ];
+  return lines.join('\n');
+}
+
+/** Parse an Apache Parquet binary buffer into candidate technicians. */
+export async function readRosterFromParquet(
+  buffer: ArrayBuffer | Uint8Array,
+  chat?: ReportChat,
+  signal?: AbortSignal,
+): Promise<ParseRosterResponse> {
+  const { parquetReadObjects } = await import('hyparquet');
+  const { compressors } = await import('hyparquet-compressors');
+
+  let arrayBuffer: ArrayBuffer;
+  if (buffer instanceof Uint8Array) {
+    arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+  } else {
+    arrayBuffer = buffer;
+  }
+
+  const records = await parquetReadObjects({ file: arrayBuffer, compressors });
+  if (!records || records.length === 0) {
+    return { source: 'template_fast_path', candidates: [], totalRows: 0, validCount: 0 };
+  }
+
+  const csvText = recordsToCsv(records as Record<string, unknown>[]);
+  return readRoster(csvText, chat, signal);
+}
