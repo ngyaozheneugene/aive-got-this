@@ -45,8 +45,10 @@ export async function POST(
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) return fail('invalid_plan_request', 400, 'Only an optional valid profile is accepted.');
   try {
-    const result = await planUrgentEvent(getDatabase(workspaceOf(request)), { eventId, profile: parsed.data.profile, signal: request.signal });
-    if (!result.ok) return fail(result.code, result.httpStatus, result.detail);
+    const workspace = workspaceOf(request);
+    const result = await planUrgentEvent(getDatabase(workspace), { eventId, profile: parsed.data.profile, signal: request.signal });
+    // Naming the workspace makes a request sent to the wrong one obvious on screen.
+    if (!result.ok) return fail(result.code, result.httpStatus, `${result.detail} (workspace: ${workspace})`);
     const { ok: _ok, ...body } = result;
     return NextResponse.json(body, { status: 201 });
   } catch {

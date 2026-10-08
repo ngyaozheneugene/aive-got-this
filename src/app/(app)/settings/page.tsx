@@ -356,8 +356,8 @@ function SampleDaySection({ onReset }: { onReset: () => Promise<void> }) {
         {simulation ? (
           <>
             <p className="text-[13px]">
-              Put the sample day back as it started: every booking, absence and decision made in the simulation is cleared.
-              Your own workspace is never touched.
+              Put the sample day back as it started: every booking, absence and decision made in the simulation is cleared,
+              for everyone using it. Anything another desk is in the middle of is lost. Your own workspace is never touched.
             </p>
             <span className="flex flex-wrap items-center gap-2">
               {confirming ? (

@@ -222,7 +222,12 @@ export function refusalCopy(code: string): { title: string; detail: string } {
     case 'stale_snapshot':
     case 'snapshot_mismatch':
     case 'stale_planning_context':
-      return { title: 'The schedule changed while you were deciding', detail: 'Nothing was applied. Raise the problem again to get options for the current schedule.' };
+      return { title: 'The schedule changed while you were deciding', detail: 'Nothing was applied. Someone may have changed it from another desk. The board has been refreshed; raise the problem again for options on the current schedule.' };
+    case 'event_gone':
+    case 'event_not_found':
+      return { title: 'This event was cleared', detail: 'The board was reset while options were being worked out, perhaps from another desk. Nothing was changed. Raise it again if it still applies.' };
+    case 'invalid_event_context':
+      return { title: 'That job isn’t on this board', detail: 'It may have been removed or the board reset from another desk. Nothing was changed. Check the board and try again.' };
     case 'no_candidate_plans':
       return { title: 'No safe option found', detail: 'Every option broke a rule (skills, shifts, customer windows or parts). Arrange this one manually.' };
     case 'approval_required':

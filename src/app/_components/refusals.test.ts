@@ -23,6 +23,7 @@ describe('isRetryablePlanningCode', () => {
       'proposal_exists',
       'unsupported_event_type',
       'invalid_event_context',
+      'event_gone',
       // Server flags these retryable internally, but the desk must not: a retry
       // cannot implement a missing flow or un-cancel the coordinator's action.
       'scheduler_unavailable',
