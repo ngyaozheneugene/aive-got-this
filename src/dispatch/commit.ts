@@ -157,6 +157,11 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
       travelBeforeMinutes: slot.travelBeforeMinutes,
       metrics: plan.metrics,
     });
+    // A waiting job that now has a technician is assigned. Started work keeps its status.
+    const job = await db.jobs.getById(slot.jobId);
+    if (job && ['received', 'unassigned', 'no_candidates', 'needs_skill'].includes(job.status)) {
+      await db.jobs.updateStatus(slot.jobId, 'assigned', input.actorId, 'desk', 'committed');
+    }
     applied.push(slot);
   }
 

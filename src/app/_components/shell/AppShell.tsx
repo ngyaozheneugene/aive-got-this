@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { FlaskConical, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Settings, Snowflake, Users } from 'lucide-react';
+import { ClipboardList, FlaskConical, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Settings, Snowflake, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { hrefIn, useWorkspace, WorkspaceProvider } from './workspace';
 
 const NAV = [
   { href: '/desk', label: 'Dispatch', icon: MapIcon },
+  { href: '/jobs', label: 'Jobs', icon: ClipboardList },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
