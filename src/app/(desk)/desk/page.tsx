@@ -14,8 +14,10 @@ import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import {
-  disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption,
+  disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, findDisruption, fromReport,
 } from '../../_components/disruptions';
+import { ReportBar } from '../../_components/ReportBar';
+import type { ReportDraft } from '../../_components/desk-api';
 import { NewJobForm } from '../../_components/NewJobForm';
 import { TeamPanel } from '../../_components/TeamPanel';
 import type { CreateJobBody } from '../../../shared/contracts/jobs';
@@ -185,7 +187,7 @@ export default function DeskPage() {
       setDemoOpen(false);
       const incoming = findDisruption(disruptionKey);
       try {
-        const event = await deskApi.createEvent(incoming.body, board.snapshot.id);
+        const event = await deskApi.createEvent(incoming.body, board.snapshot.id, incoming.rawText);
         setCurrentEventId(event.id);
         setFeed((prev) => [{ eventId: event.id, disruptionKey }, ...prev.filter((i) => i.eventId !== event.id)]);
         const result = await deskApi.plan(event.id, profile);
@@ -209,19 +211,40 @@ export default function DeskPage() {
   const [teamOpen, setTeamOpen] = useState(false);
   const loadJobTypes = useCallback(() => deskApi.jobTypes(), []);
   const bookJob = useCallback(
-    async (body: CreateJobBody, typeName: string): Promise<string | null> => {
+    async (body: CreateJobBody, typeName: string, reportText?: string): Promise<string | null> => {
       try {
         const booked = await deskApi.createJob(body);
         setBookingOpen(false);
         await load();
         const row = { job: booked.job, customer: booked.customer, site: booked.site } as DeskJobRow;
-        void simulate(disruptionForBooking(row, typeName, booked.customerIsNew).key);
+        const d = disruptionForBooking(row, typeName, booked.customerIsNew);
+        void simulate((reportText ? fromReport(d, reportText) : d).key);
         return null;
       } catch (e) {
         return e instanceof DeskApiError ? (e.detail ?? e.code) : 'Could not book the job.';
       }
     },
     [load, simulate],
+  );
+
+  // A confirmed typed report runs exactly what the board's own controls run.
+  const confirmReport = useCallback(
+    async (draft: Exclude<ReportDraft, { kind: 'clarify' }>, quoted: string): Promise<string | null> => {
+      if (!board) return 'The board is not loaded.';
+      if (draft.kind === 'booking') return bookJob(draft.body, draft.jobTypeName, quoted);
+      if (draft.kind === 'unavailable') {
+        const tech = board.technicians.find((t) => t.technician.id === draft.technicianId)?.technician;
+        if (!tech) return 'That technician is no longer on the board.';
+        void simulate(fromReport(disruptionForUnavailable(tech, board.date, draft.availability), quoted).key);
+        return null;
+      }
+      const row = board.jobs.find((r) => r.job.id === draft.jobId);
+      if (!row) return 'That job is no longer on the board.';
+      const d = draft.kind === 'overrun' ? disruptionForOverrun(row, draft.minutes) : disruptionForJob(row);
+      void simulate(fromReport(d, quoted).key);
+      return null;
+    },
+    [board, bookJob, simulate],
   );
 
   // Into or out of the sample day. Nothing in flight carries across.
@@ -740,6 +763,7 @@ export default function DeskPage() {
           <TechList
             board={board}
             teamName={simulation ? 'Eastwind Aircon · field team' : 'Your field team'}
+            reportBar={<ReportBar disabled={busy || pending || lookingAhead || board.technicians.length === 0} onConfirm={confirmReport} />}
             plan={preview}
             unavailableTechId={unavailableTechId}
             focusTechId={focusTechId}

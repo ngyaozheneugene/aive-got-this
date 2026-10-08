@@ -212,7 +212,9 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 
 **Agent**
 - [ ] A4 Rename `urgent*` runtime to `recovery*`; one playbook per event
-- [ ] A1 Natural-language intake: read-only lookup tools + `draft_event`; confirmation card; X-suite injection cases; A-suite phrasing cases
+- [x] A1 Natural-language intake: read-only lookup tools + `draft_event`; confirmation card; X-suite injection cases; A-suite phrasing cases
+  - 8 Oct: [ADR 009](adr/009-typed-reports.md). "What happened?" box on the desk → `POST /api/reports/draft` → one checked draft (away / running late / new booking / place a waiting job / a question) → confirm runs the board's own path, with the words carried as the event's `rawText`. Two read-only lookups, five drafting tools, no writes; code checks every draft and writes the summary.
+  - Evidence: scripted-model tests 9/9 (incl. injection, unknown tools, request size); live model 8/8 ([evidence](team/member-3/typed-reports-live-2026-10-08.json)); desk click-through in the simulation to a planned proposal.
 
 **Surfaces**
 - [ ] P1 Technician field page `/tech/[id]`; *Running late* / *Can't make it* raise events

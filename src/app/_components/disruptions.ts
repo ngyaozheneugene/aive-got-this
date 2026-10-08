@@ -17,6 +17,8 @@ export interface Disruption {
   headline: string;
   detail: string;
   body: EventBody;
+  /** The coordinator's own words, when this came from a typed report. Sent as the event's rawText. */
+  rawText?: string;
 }
 
 export const DISRUPTIONS: readonly Disruption[] = [
@@ -158,4 +160,11 @@ export function disruptionForJob(row: DeskJobRow): Disruption {
   };
   fromBoard.set(d.key, d);
   return d;
+}
+
+/** The same disruption, raised from a typed report: quotes the words and carries them to the event. */
+export function fromReport(d: Disruption, text: string): Disruption {
+  const reported: Disruption = { ...d, source: 'Typed report', detail: `“${text}”`, rawText: text };
+  fromBoard.set(reported.key, reported);
+  return reported;
 }
