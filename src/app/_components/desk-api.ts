@@ -14,7 +14,8 @@ import type {
   Proposal,
   Site,
 } from '../../shared/types/domain';
-import type { CreateJobBody } from '../../shared/contracts/jobs';
+import type { CreateJobBody, ParseJobsResponse, JobCandidateRow } from '../../shared/contracts/jobs';
+export type { ParseJobsResponse, JobCandidateRow };
 import type { CompanySettings, CreateJobTypeBody, UpdateJobTypeBody, UpdateSettingsBody } from '../../shared/contracts/settings';
 export type { CompanySettings };
 import type { ReadReportResult, ReportDraft } from '../../agent/reports/reader';
@@ -139,6 +140,21 @@ export const deskApi = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ technicians }),
+    }),
+
+  parseJobs: (input: string | { fileBase64: string; filename?: string }, signal?: AbortSignal) =>
+    request<ParseJobsResponse>('/api/jobs/import/draft', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(typeof input === 'string' ? { text: input } : input),
+      signal,
+    }),
+
+  importJobs: (jobs: CreateJobBody[]) =>
+    request<{ ok: boolean; created: number; jobs: Job[] }>('/api/jobs/bulk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jobs }),
     }),
 
   /** What can be booked, with the certificates each needs. */

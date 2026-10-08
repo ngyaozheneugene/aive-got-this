@@ -31,3 +31,35 @@ export const createJobBodySchema = z
   .refine((b) => b.windowEnd > b.windowStart, { path: ['windowEnd'], message: 'window must end after it starts' });
 
 export type CreateJobBody = z.infer<typeof createJobBodySchema>;
+
+export const bulkCreateJobsBodySchema = z.object({
+  jobs: z.array(createJobBodySchema).min(1).max(200),
+});
+
+export type BulkCreateJobsBody = z.infer<typeof bulkCreateJobsBodySchema>;
+
+export interface JobCandidateRow {
+  customerName: string;
+  phone: string;
+  postalCode: string;
+  address: string;
+  unitNo?: string;
+  jobTypeId: string;
+  jobTypeName?: string;
+  priority: 'urgent' | 'on_demand' | 'when_available';
+  windowStart: string;
+  windowEnd: string;
+  date?: string;
+  note?: string;
+  cluster?: string | null;
+  isValid: boolean;
+  issues: string[];
+  notices: string[];
+}
+
+export interface ParseJobsResponse {
+  source: 'template_fast_path' | 'agent_nlp_path';
+  candidates: JobCandidateRow[];
+  totalRows: number;
+  validCount: number;
+}
