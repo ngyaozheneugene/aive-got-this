@@ -9,11 +9,14 @@ const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/60';
 
 const EXAMPLES = [
   'Kumar’s van broke down, he’s out till 2pm',
+  'Who’s free at 3pm for a water leak?',
   'The Bedok North job needs another 45 minutes',
   'New customer Tan, 9123 4567, 529536 Tampines St 81, leaking aircon, 2 to 5pm',
 ];
 
-const CONFIRM_LABEL: Record<Exclude<ReportDraft['kind'], 'clarify'>, string> = {
+type Actionable = Exclude<ReportDraft, { kind: 'clarify' } | { kind: 'answer' }>;
+
+const CONFIRM_LABEL: Record<Actionable['kind'], string> = {
   unavailable: 'Find options',
   overrun: 'Find options',
   place_job: 'Find options',
@@ -33,7 +36,7 @@ export function ReportBar({
   /** Off while another event is being decided, or when looking ahead. */
   disabled: boolean;
   /** Act on a confirmed draft. Returns an error to show, or null. */
-  onConfirm: (draft: Exclude<ReportDraft, { kind: 'clarify' }>, quoted: string) => Promise<string | null>;
+  onConfirm: (draft: Actionable, quoted: string) => Promise<string | null>;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -78,7 +81,7 @@ export function ReportBar({
   };
 
   const confirm = async () => {
-    if (!result || result.draft.kind === 'clarify') return;
+    if (!result || result.draft.kind === 'clarify' || result.draft.kind === 'answer') return;
     setBusy(true);
     const message = await onConfirm(result.draft, result.quoted);
     setBusy(false);
@@ -109,7 +112,7 @@ export function ReportBar({
           }}
           disabled={disabled}
           rows={text.length > 60 ? 3 : 1}
-          placeholder="What happened? Type it like you’d say it…"
+          placeholder="What happened, or ask a question…"
           aria-label="What happened?"
           className="min-h-7 resize-none bg-transparent px-1.5 py-1 text-[13px] outline-none placeholder:text-muted-foreground"
         />
@@ -149,7 +152,27 @@ export function ReportBar({
         </span>
       ) : null}
 
-      {draft && draft.kind !== 'clarify' ? (
+      {draft?.kind === 'answer' ? (
+        <div className="grid gap-1.5 rounded-lg border bg-accent/30 p-2.5" aria-live="polite">
+          <span className="text-[11.5px] text-muted-foreground italic">“{result!.quoted}”</span>
+          <span className="text-[13px] leading-snug whitespace-pre-line">{draft.text}</span>
+          {draft.basedOn.length ? (
+            <span className="grid gap-0.5 border-t pt-1.5 text-[11px] text-muted-foreground">
+              <span className="font-medium">Based on</span>
+              {draft.basedOn.map((b) => (
+                <span key={b}>· {b}</span>
+              ))}
+            </span>
+          ) : null}
+          <span className="flex justify-end">
+            <button type="button" onClick={clear} className={cn('rounded-md border px-2 py-1 text-[11.5px] hover:bg-accent', FOCUS)}>
+              Done
+            </button>
+          </span>
+        </div>
+      ) : null}
+
+      {draft && draft.kind !== 'clarify' && draft.kind !== 'answer' ? (
         <div className="grid gap-1.5 rounded-lg border border-primary/40 bg-primary/5 p-2.5">
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
             <MessageSquareText className="size-3.5" /> I read that as
