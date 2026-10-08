@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, Clock, Lock, Plus, Search, UserX } from 'lucide-react';
+import { ChevronRight, Clock, Lock, Plus, Search, Sparkles, UserX } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CandidatePlan, DeskBoard, DeskJobRow, Shift } from '../../shared/types/domain';
 import type { Availability } from './disruptions';
@@ -27,6 +27,7 @@ export function TechList({
   onMarkUnavailable,
   onReportLate,
   onNewJob,
+  onPlanAll,
   newJobForm,
   teamName = 'Field team',
   reportBar,
@@ -52,6 +53,8 @@ export function TechList({
   onReportLate?: (row: DeskJobRow, minutes: number) => void;
   /** Open the new-job form; absent when booking is not possible. */
   onNewJob?: () => void;
+  /** Find technicians for every waiting job in one plan (ADR 014); absent when planning is not possible. */
+  onPlanAll?: () => void;
   /** The open new-job form, shown above the waiting jobs. */
   newJobForm?: ReactNode;
 }) {
@@ -114,16 +117,29 @@ export function TechList({
           title="Needs a technician"
           note={waiting.length === 0 ? 'None' : `${waiting.length} job${waiting.length === 1 ? '' : 's'}`}
           action={
-            onNewJob && !newJobForm ? (
-              <button
-                type="button"
-                onClick={onNewJob}
-                className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
-              >
-                <Plus className="size-3" />
-                New job
-              </button>
-            ) : null
+            <span className="flex items-center gap-1">
+              {onPlanAll && waiting.length >= 2 && !newJobForm ? (
+                <button
+                  type="button"
+                  onClick={onPlanAll}
+                  title="Find technicians for every waiting job in one plan, with one approval"
+                  className={cn('inline-flex items-center gap-1 rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90', FOCUS)}
+                >
+                  <Sparkles className="size-3" />
+                  Plan all {waiting.length}
+                </button>
+              ) : null}
+              {onNewJob && !newJobForm ? (
+                <button
+                  type="button"
+                  onClick={onNewJob}
+                  className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-accent', FOCUS)}
+                >
+                  <Plus className="size-3" />
+                  New job
+                </button>
+              ) : null}
+            </span>
           }
         />
         {newJobForm}

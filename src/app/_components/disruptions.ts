@@ -60,6 +60,10 @@ export function findDisruption(key: string): Disruption {
   if (key.startsWith('job:')) {
     return { key, label: 'Find a technician', source: 'Your request', headline: 'Find a technician', detail: '', body: { type: 'urgent_job', payload: { jobId: key.slice(4) } } };
   }
+  if (key.startsWith('waiting:')) {
+    const jobIds = key.slice(8).split(',').filter(Boolean);
+    return { key, label: 'Plan all waiting jobs', source: 'Your request', headline: `Find technicians for ${jobIds.length} waiting jobs`, detail: '', body: { type: 'place_waiting', payload: { jobIds } } };
+  }
   const off = /^off:([^:]+):(day|until|from)(?::(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2}))?$/.exec(key);
   if (off) {
     const [, technicianId, mode, date, time] = off;
@@ -157,6 +161,21 @@ export function disruptionForJob(row: DeskJobRow): Disruption {
     headline: `Find a technician: ${row.customer.name}`,
     detail: `${row.site.addressLine1}${ws && we ? `. Window ${ws}–${we}.` : '.'}`,
     body: { type: 'urgent_job', payload: { jobId: row.job.id } },
+  };
+  fromBoard.set(d.key, d);
+  return d;
+}
+
+/** Every job waiting for a technician, placed in one plan (ADR 014). */
+export function disruptionForWaiting(rows: DeskJobRow[]): Disruption {
+  const names = rows.map((r) => r.customer.name);
+  const d: Disruption = {
+    key: `waiting:${rows.map((r) => r.job.id).join(',')}`,
+    label: 'Plan all waiting jobs',
+    source: 'Your request',
+    headline: `Find technicians for ${rows.length} waiting jobs`,
+    detail: names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more.` : `${names.join(', ')}.`,
+    body: { type: 'place_waiting', payload: { jobIds: rows.map((r) => r.job.id) } },
   };
   fromBoard.set(d.key, d);
   return d;

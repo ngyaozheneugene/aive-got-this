@@ -59,7 +59,7 @@ export function planningError(error: unknown): PlanningError {
   }
   if (code === 'UNSUPPORTED_EVENT_TYPE') {
     return new PlanningError('unsupported_event_type', 422,
-      'This endpoint supports urgent_job, technician_unavailable and job_overrun only.', 'INVALID');
+      'This endpoint supports urgent_job, technician_unavailable, job_overrun and place_waiting only.', 'INVALID');
   }
   if (code === 'EVENT_NOT_PLANNABLE') {
     return new PlanningError('event_not_plannable', 409, 'This event is no longer available for planning.');

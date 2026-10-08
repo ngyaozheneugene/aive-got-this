@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronRight, PhoneCall, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react';
 import type { CandidatePlan, DeskBoard } from '../../shared/types/domain';
-import { METRIC_COPY, PROFILE_COPY, compareToOther, describeChanges, describeLeftForCall, profileName, violationCopy, workloadNotes } from './copy';
+import { METRIC_COPY, PROFILE_COPY, compareToOther, describeChanges, describeLeftForCall, describeLeftWaiting, profileName, violationCopy, workloadNotes } from './copy';
 import { cn } from './lib/utils';
 import { Badge } from './ui/badge';
 
@@ -30,6 +30,7 @@ export function PlanCard({
   const copy = PROFILE_COPY[plan.profile];
   const changes = describeChanges(board, plan);
   const calls = describeLeftForCall(board, plan);
+  const stillWaiting = describeLeftWaiting(board, plan);
   const vs = other ? compareToOther(plan, other) : { better: [], worse: [] };
 
   return (
@@ -92,6 +93,22 @@ export function PlanCard({
               ))}
             </ul>
             <span className="text-xs text-muted-foreground">Nobody can legally take it today. Approving cancels the booking so you can rebook it with the customer.</span>
+          </div>
+        ) : null}
+
+        {stillWaiting.length > 0 ? (
+          <div className="grid gap-1 rounded-md border bg-muted/40 p-2.5 text-sm">
+            <span className="font-semibold">
+              {stillWaiting.length === 1 ? 'One job stays waiting' : `${stillWaiting.length} jobs stay waiting`}
+            </span>
+            <ul className="grid gap-1">
+              {stillWaiting.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+            <span className="text-xs text-muted-foreground">
+              Booked work stays where it is. Find a technician on one of these on its own can move booked jobs to make room.
+            </span>
           </div>
         ) : null}
 

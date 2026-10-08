@@ -128,6 +128,10 @@ function jobsInPlay(event: OperationalEvent, live: Assignment[]): string[] {
     const target = (payload.jobId as string) || event.affectedIds[0];
     return target ? [target] : [];
   }
+  if (event.type === 'place_waiting') {
+    const ids = payload.jobIds;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [...event.affectedIds];
+  }
   if (event.type === 'technician_unavailable') {
     const techId = (payload.technicianId as string) || event.affectedIds[0];
     return live.filter((a) => a.technicianId === techId).map((a) => a.jobId);
