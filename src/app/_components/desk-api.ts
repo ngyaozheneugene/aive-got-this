@@ -15,6 +15,8 @@ import type {
   Site,
 } from '../../shared/types/domain';
 import type { CreateJobBody } from '../../shared/contracts/jobs';
+import type { CompanySettings, CreateJobTypeBody, UpdateJobTypeBody, UpdateSettingsBody } from '../../shared/contracts/settings';
+export type { CompanySettings };
 import type { ReadReportResult, ReportDraft } from '../../agent/reports/reader';
 export type { ReadReportResult, ReportDraft };
 import type { CreateTechnicianBody, UpdateTechnicianBody } from '../../shared/contracts/technicians';
@@ -126,6 +128,30 @@ export const deskApi = {
 
   /** What can be booked, with the certificates each needs. */
   jobTypes: () => request<Array<JobType & { certs: string[] }>>('/api/job-types'),
+
+  addJobType: (body: CreateJobTypeBody) =>
+    request<JobType & { certs: string[] }>('/api/job-types', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  updateJobType: (id: string, body: UpdateJobTypeBody) =>
+    request<JobType & { certs: string[] }>(`/api/job-types/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  /** The company's settings for this workspace. */
+  settings: () => request<CompanySettings>('/api/settings'),
+
+  updateSettings: (body: UpdateSettingsBody) =>
+    request<CompanySettings>('/api/settings', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
 
   /** Book a new job. It lands unassigned; raise an urgent_job event to place it. */
   createJob: (body: CreateJobBody) =>

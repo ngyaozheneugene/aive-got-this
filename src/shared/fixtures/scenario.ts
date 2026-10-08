@@ -42,6 +42,7 @@ import {
   type WindowType,
 } from '../types/domain';
 import type { Scenario } from './eastwind';
+import { DEFAULT_SETTINGS } from '../contracts/settings';
 
 export const FINALS_SCENARIO = 'eastwind-finals';
 
@@ -542,6 +543,7 @@ export function buildScenario(date: string): Scenario {
     jobRequirements,
     assignments,
     travel,
+    company: { ...DEFAULT_SETTINGS, name: 'Eastwind Aircon' },
   };
 }
 
@@ -562,6 +564,7 @@ export function buildEmptyScenario(date: string): Scenario {
     jobs: [],
     jobRequirements: [],
     assignments: [],
+    company: undefined,
     snapshot: {
       ...full.snapshot,
       id: 'snap_live_v1',

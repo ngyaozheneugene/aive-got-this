@@ -235,10 +235,15 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [ ] A3 Draft customer/technician messages after commit (not sent)
 - [ ] P3 Demo sign-in and roles
 - [ ] P4 Technician / job type / customer management pages
-  - 8 Oct, technicians done as part of W1 below; job types and customers still open.
+  - 8 Oct, technicians done as part of W1 below; job types done in W2; customers still open.
 - [x] W1 Your workspace starts empty; the sample day is a simulation mode (added 8 Oct at the user's request)
   - [ADR 008](adr/008-workspaces-and-simulation.md). Two workspaces with separate data (Postgres schemas `live` / `simulation`), chosen by `x-workspace`; reset is simulation-only. Your workspace starts empty, follows the calendar, and has team setup (`/api/technicians`; tier, certificates with expiry, parts, home postal code, hours, overtime). Active technicians get a default 08:00 shift. "Try a sample day" / "Exit simulation" in the header; demo controls only in the simulation.
   - Evidence: offline suite green; `test:pg` 16/16 (schema isolation, team edits); desk on Postgres from empty workspace → add technician → sample day → reset → exit, with the live team intact and a live reset refused (403).
+- [x] W2 Full tool layout, part 1: app shell with sidebar, Team and Settings pages (added 8 Oct at the user's request)
+  - [ADR 011](adr/011-app-shell-and-settings.md). Sidebar (Dispatch, Team, Settings) with the workspace switch in its footer; the workspace and its settings load once in the shell and survive navigation. Settings: company name, working day (default clock-in, end of free time), the option recommended first, job types (add/edit with certificates), sample-day reset. Team is a full page. The desk keeps the board only.
+  - Evidence: offline 368 passed; `test:pg` 17/17; desk on Postgres: settings changed in the simulation reached the board and the recommendation, a job type was added, and the reset restored the sample settings.
+- [ ] W3 Full tool layout, part 2: Jobs and Customers pages
+- [ ] W4 Full tool layout, part 3: Activity (browsable audit log)
 - [ ] P5 Snapshot history with diffs; rollback as a proposal
 - [ ] Q3 Ops metrics page from `decision_log`
 

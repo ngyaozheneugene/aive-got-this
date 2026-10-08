@@ -3,9 +3,9 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CandidatePlan, DeskBoard, DeskJobRow, PlanProfile } from '../../../shared/types/domain';
-import {
-  DeskApiError, deskApi, setDeskWorkspace, type DeskWorkspace, type PlanResult,
-} from '../../_components/desk-api';
+import Link from 'next/link';
+import { DeskApiError, deskApi, type PlanResult } from '../../_components/desk-api';
+import { hrefIn, useWorkspace } from '../../_components/shell/workspace';
 import { BoardView } from '../../_components/BoardView';
 import { MapBoundary } from '../../_components/MapBoundary';
 import { Simulator } from '../../_components/Simulator';
@@ -19,14 +19,13 @@ import {
 import { ReportBar } from '../../_components/ReportBar';
 import type { ReportDraft } from '../../_components/desk-api';
 import { NewJobForm } from '../../_components/NewJobForm';
-import { TeamPanel } from '../../_components/TeamPanel';
 import type { CreateJobBody } from '../../../shared/contracts/jobs';
 import { TechList } from '../../_components/TechList';
 import { EventFeed, type FeedItem, SourceIcon, receivedTime, useEventStatuses } from '../../_components/EventFeed';
 import type { MapInsets } from '../../_components/MapView';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Bell, ChevronDown, Clock, FlaskConical, History, List, Loader2, Maximize2, RotateCcw, Snowflake, Table2, UserPlus, Users, X,
+  Bell, ChevronDown, Clock, FlaskConical, History, List, Loader2, Maximize2, RotateCcw, Table2, UserPlus, X,
 } from 'lucide-react';
 import { BorderBeam, LiveDot, NumberTicker, ShimmerText } from '../../_components/fx';
 import { PROFILE_COPY, eventStatusCopy } from '../../_components/copy';
@@ -45,6 +44,8 @@ const MapView = dynamic(() => import('../../_components/MapView'), {
 });
 
 export default function DeskPage() {
+  // The workspace and its settings come from the shell; switching remounts this page.
+  const { workspace, simulation, settings, switchWorkspace } = useWorkspace();
   const [board, setBoard] = useState<DeskBoard | null>(null);
   const [proposal, setProposal] = useState<PlanResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function DeskPage() {
   );
   const [busy, setBusy] = useState(false);
   // The coordinator's own standing preference; decides which option is recommended.
-  const [priority, setPriority] = useState<PlanProfile>('sla_first');
+  const [priority, setPriority] = useState<PlanProfile>(settings.defaultProfile);
   const [preview, setPreview] = useState<CandidatePlan | undefined>(undefined);
   // Hover previews a technician; a click pins them so the map follows their route.
   // Clicking a technician pins them: the map moves to their day and their
@@ -78,18 +79,8 @@ export default function DeskPage() {
   // and, on narrow screens, the technician list.
   const [cardOpen, setCardOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
-  const [demoOpen, setDemoOpen] = useState(false);
-  // The company's own workspace or the sample day. Read from the URL before
-  // the first load (?mode=simulation), so nothing loads from the wrong one.
-  const [workspace, setWorkspace] = useState<DeskWorkspace | null>(null);
-  useEffect(() => {
-    const mode = new URLSearchParams(window.location.search).get('mode');
-    const initial: DeskWorkspace = mode === 'simulation' ? 'simulation' : 'live';
-    setWorkspace(initial);
-    setDemoOpen(initial === 'simulation');
-  }, []);
-  const simulation = workspace === 'simulation';
-  const feedKey = `${FEED_KEY}:${workspace ?? 'live'}`;
+  const [demoOpen, setDemoOpen] = useState(simulation);
+  const feedKey = `${FEED_KEY}:${workspace}`;
   const [listOpen, setListOpen] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
   // Today's events: what this desk has received, newest first. Kept for the
@@ -106,7 +97,6 @@ export default function DeskPage() {
   // the empty initial one (and strict mode runs mount effects twice).
   const [feedRestored, setFeedRestored] = useState(false);
   useEffect(() => {
-    if (!workspace) return;
     setFeedRestored(false);
     try {
       const saved = sessionStorage.getItem(feedKey);
@@ -158,15 +148,13 @@ export default function DeskPage() {
   const [viewDate, setViewDate] = useState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
-    if (!workspace) return;
-    setDeskWorkspace(workspace);
     setLoadError(null);
     try {
       setBoard(await deskApi.getBoard(viewDate));
     } catch (e) {
       setLoadError(e instanceof DeskApiError ? e.message : 'Could not load the board.');
     }
-  }, [viewDate, workspace]);
+  }, [viewDate]);
 
   useEffect(() => {
     void load();
@@ -208,7 +196,6 @@ export default function DeskPage() {
   // Booking a call for a job that is not on the board: save it as waiting, then
   // ask for options exactly as "Find a technician" would.
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(false);
   const loadJobTypes = useCallback(() => deskApi.jobTypes(), []);
   const bookJob = useCallback(
     async (body: CreateJobBody, typeName: string, reportText?: string): Promise<string | null> => {
@@ -247,29 +234,6 @@ export default function DeskPage() {
     [board, bookJob, simulate],
   );
 
-  // Into or out of the sample day. Nothing in flight carries across.
-  const switchWorkspace = useCallback((next: DeskWorkspace) => {
-    setProposal(null);
-    setPreview(undefined);
-    setDecision(null);
-    setProposalMemory(undefined);
-    setPlanError(null);
-    setLastAttempt(null);
-    setPinnedTechId(undefined);
-    setCardOpen(false);
-    setCurrentEventId(undefined);
-    setViewDate(undefined);
-    setBookingOpen(false);
-    setTeamOpen(false);
-    setBoard(null);
-    setDemoOpen(next === 'simulation');
-    const url = new URL(window.location.href);
-    if (next === 'simulation') url.searchParams.set('mode', 'simulation');
-    else url.searchParams.delete('mode');
-    window.history.replaceState(null, '', url);
-    setWorkspace(next);
-  }, []);
-
   const reset = useCallback(async () => {
     setBusy(true);
     setProposal(null);
@@ -305,7 +269,7 @@ export default function DeskPage() {
 
   if (loadError) {
     return (
-      <main className="grid min-h-dvh place-items-center p-6">
+      <main className="grid h-full place-items-center p-6">
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>Board unavailable</CardTitle>
@@ -324,10 +288,10 @@ export default function DeskPage() {
 
   if (!board) {
     return (
-      <main className="grid min-h-dvh place-items-center text-sm text-muted-foreground">
+      <main className="grid h-full place-items-center text-sm text-muted-foreground">
         <span className="flex items-center gap-2">
           <Loader2 className="size-4 animate-spin" />
-          Loading Eastwind Tuesday…
+          Loading the board…
         </span>
       </main>
     );
@@ -372,34 +336,66 @@ export default function DeskPage() {
   };
 
   return (
-    <div className="fixed inset-0 grid grid-rows-[48px_minmax(0,1fr)_40px] bg-background">
-      {/* Top bar */}
+    <div className="absolute inset-0 grid grid-rows-[48px_minmax(0,1fr)_40px] bg-background">
+      {/* Top bar: the page's tools on the left, the day's status on the right. */}
       <header className="z-20 grid grid-cols-[1fr_auto] items-center gap-3 border-b bg-background px-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <div className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-[0_0_18px_-4px] shadow-blue-500/70">
-            <Snowflake className="size-4" />
-          </div>
-          <span className="truncate text-sm font-semibold">Dispatch Coordinator</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <h1 className="mr-2 truncate text-sm font-semibold">Dispatch</h1>
           {simulation ? (
-            <>
-              <Badge variant="warning" className="gap-1.5" title="A sample company and day. Nothing here touches your workspace.">
-                <FlaskConical className="size-3" />
-                <span className="hidden sm:inline">Simulation · Eastwind Aircon sample day</span>
-                <span className="sm:hidden">Simulation</span>
-              </Badge>
-              <Button variant="ghost" size="sm" onClick={() => switchWorkspace('live')} disabled={busy}>
-                Exit simulation
-              </Button>
-            </>
-          ) : (
-            <>
-              <span className="hidden truncate text-xs text-muted-foreground sm:inline">Your workspace</span>
-              <Button variant="outline" size="sm" onClick={() => switchWorkspace('simulation')} disabled={busy} className="gap-1.5">
-                <FlaskConical className="size-3.5 text-warning" />
-                Try a sample day
-              </Button>
-            </>
-          )}
+            <Badge variant="warning" className="mr-1 hidden gap-1.5 sm:inline-flex" title="A sample company and day. Nothing here touches your workspace.">
+              <FlaskConical className="size-3" />
+              Simulation
+            </Badge>
+          ) : null}
+          <ToolButton
+            label={hasEvent ? (cardVisible ? 'Hide the event' : 'Show the event') : 'No events'}
+            active={cardVisible}
+            onClick={() => {
+              if (!hasEvent) {
+                // Nothing to show: the feed's empty state says so, in place.
+                setFeedOpen(true);
+                return;
+              }
+              setCardOpen((o) => !o);
+            }}
+          >
+            <Bell />
+            {pending && !cardVisible ? (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-0 right-0 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[9.5px] font-bold text-white ring-2 ring-background"
+              >
+                1
+              </motion.span>
+            ) : null}
+          </ToolButton>
+          <ToolButton label="Today’s events" active={feedOpen} onClick={() => setFeedOpen((o) => !o)}>
+            <History />
+            {openEvents > 0 && !feedOpen ? (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-0 right-0 grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[9.5px] font-bold text-black ring-2 ring-background"
+              >
+                {openEvents}
+              </motion.span>
+            ) : null}
+          </ToolButton>
+          <ToolButton
+            label="Show all of Singapore"
+            onClick={() => {
+              setPinnedTechId(undefined);
+              setResetSignal((n) => n + 1);
+            }}
+          >
+            <Maximize2 />
+          </ToolButton>
+          {simulation ? (
+            <ToolButton label="Demo controls" active={demoOpen} onClick={() => setDemoOpen((o) => !o)} className="text-warning">
+              <FlaskConical />
+            </ToolButton>
+          ) : null}
         </div>
         <div className="flex items-center justify-end gap-2">
           <AnimatePresence mode="wait" initial={false}>
@@ -412,7 +408,7 @@ export default function DeskPage() {
             >
               <Badge variant={headerStatus.tone} className="gap-2 py-1">
                 <LiveDot tone={headerStatus.tone} />
-                <span className="hidden sm:inline">{headerStatus.label}</span>
+                <span className="hidden lg:inline">{headerStatus.label}</span>
               </Badge>
             </motion.div>
           </AnimatePresence>
@@ -440,68 +436,6 @@ export default function DeskPage() {
       </header>
 
       <div className="relative flex min-h-0">
-        {/* Left rail */}
-        <nav className="z-10 flex w-[52px] flex-none flex-col items-center gap-2 border-r bg-background py-2.5" aria-label="Tools">
-          <span title="You: coordinator" className="grid size-8 place-items-center rounded-full border bg-secondary text-[11px] font-bold">
-            C
-          </span>
-          <span className="my-0.5 h-px w-6 bg-border" />
-          <RailButton
-            label={hasEvent ? (cardVisible ? 'Hide the event' : 'Show the event') : 'No events'}
-            active={cardVisible}
-            onClick={() => {
-              if (!hasEvent) {
-                // Nothing to show: the feed's empty state says so, in place.
-                setFeedOpen(true);
-                return;
-              }
-              setCardOpen((o) => !o);
-            }}
-          >
-            <Bell />
-            {pending && !cardVisible ? (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[9.5px] font-bold text-white ring-2 ring-background"
-              >
-                1
-              </motion.span>
-            ) : null}
-          </RailButton>
-          <RailButton label="Today’s events" active={feedOpen} onClick={() => setFeedOpen((o) => !o)}>
-            <History />
-            {openEvents > 0 && !feedOpen ? (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-warning px-1 text-[9.5px] font-bold text-black ring-2 ring-background"
-              >
-                {openEvents}
-              </motion.span>
-            ) : null}
-          </RailButton>
-          <RailButton label="Team" active={teamOpen} onClick={() => setTeamOpen((o) => !o)}>
-            <Users />
-          </RailButton>
-          <RailButton
-            label="Show all of Singapore"
-            onClick={() => {
-              setPinnedTechId(undefined);
-              setResetSignal((n) => n + 1);
-            }}
-          >
-            <Maximize2 />
-          </RailButton>
-          {simulation ? (
-            <div className="mt-auto">
-              <RailButton label="Demo controls" active={demoOpen} onClick={() => setDemoOpen((o) => !o)} className="text-warning">
-                <FlaskConical />
-              </RailButton>
-            </div>
-          ) : null}
-        </nav>
-
         {/* Map and everything floating on it */}
         <main className="relative min-w-0 flex-1 overflow-hidden">
           {/* isolate: Leaflet's own z-indexes stay inside the map. */}
@@ -696,15 +630,8 @@ export default function DeskPage() {
             ) : null}
           </AnimatePresence>
 
-          {/* Team setup, over the map. */}
-          {teamOpen ? (
-            <div className="absolute inset-y-3 left-3 z-[760] flex w-[min(440px,calc(100%-24px))] flex-col">
-              <TeamPanel onClose={() => setTeamOpen(false)} onChanged={() => void load()} />
-            </div>
-          ) : null}
-
           {/* Day one: nobody on the team yet. */}
-          {!simulation && !teamOpen && board.technicians.length === 0 && !viewDate ? (
+          {!simulation && board.technicians.length === 0 && !viewDate ? (
             <div className="absolute inset-0 z-[740] grid place-items-center bg-background/60 p-4 backdrop-blur-[2px]">
               <Card className="w-full max-w-md">
                 <CardHeader>
@@ -715,9 +642,11 @@ export default function DeskPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
-                  <Button onClick={() => setTeamOpen(true)} className="gap-1.5">
-                    <UserPlus />
-                    Add your first technician
+                  <Button asChild className="gap-1.5">
+                    <Link href={hrefIn('/team', workspace)}>
+                      <UserPlus />
+                      Add your first technician
+                    </Link>
                   </Button>
                   <Button variant="outline" onClick={() => switchWorkspace('simulation')} className="gap-1.5">
                     <FlaskConical className="text-warning" />
@@ -762,7 +691,7 @@ export default function DeskPage() {
         >
           <TechList
             board={board}
-            teamName={simulation ? 'Eastwind Aircon · field team' : 'Your field team'}
+            teamName={`${settings.name} · field team`}
             reportBar={<ReportBar disabled={busy || pending || lookingAhead || board.technicians.length === 0} onConfirm={confirmReport} />}
             plan={preview}
             unavailableTechId={unavailableTechId}
@@ -859,7 +788,7 @@ export default function DeskPage() {
   );
 }
 
-function RailButton({
+function ToolButton({
   label,
   active,
   onClick,
@@ -880,7 +809,7 @@ function RailButton({
       title={label}
       aria-pressed={active}
       className={cn(
-        'relative grid size-9 place-items-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[18px]',
+        'relative grid size-8 place-items-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[17px]',
         active && 'border-primary/35 bg-primary/15 text-foreground',
         className,
       )}

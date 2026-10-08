@@ -15,13 +15,14 @@ export async function getCurrentBoard(db: IDatabase, date?: string): Promise<Des
 
   const today = await boardDate(db);
   const day = date ?? today;
-  const [technicians, jobs, allAssignments, storedShifts] = await Promise.all([
+  const [technicians, jobs, allAssignments, storedShifts, settings] = await Promise.all([
     db.technicians.listActive(),
     db.jobs.listByScheduledDate(day),
     db.assignments.listAll(),
     db.shifts.listByDate(day),
+    db.settings.get(),
   ]);
-  const shifts = withDefaultShifts(storedShifts, technicians, day);
+  const shifts = withDefaultShifts(storedShifts, technicians, day, settings.dayStart);
   const jobIds = new Set(jobs.map((j) => j.id));
   const assignments = allAssignments.filter((a) => jobIds.has(a.jobId));
 
@@ -62,5 +63,6 @@ export async function getCurrentBoard(db: IDatabase, date?: string): Promise<Des
     snapshot,
     technicians: technicianRows,
     jobs: jobRows,
+    workingDay: { start: settings.dayStart, end: settings.dayEnd },
   };
 }

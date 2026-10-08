@@ -489,6 +489,8 @@ export interface DeskBoard {
   snapshot: BoardSnapshot;
   technicians: DeskTechnicianRow[];
   jobs: DeskJobRow[];
+  /** The company's working day, HH:MM (ADR 011). */
+  workingDay?: { start: string; end: string };
 }
 
 export interface DeskProposalView {

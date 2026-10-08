@@ -13,6 +13,7 @@
 //     optional field undefined.
 // src/db/postgres/postgres.contract.test.ts holds the two adapters to that.
 
+import { DEFAULT_SETTINGS, type CompanySettings } from '../../shared/contracts/settings';
 import postgres from 'postgres';
 import { EASTWIND, type Scenario } from '../../shared/fixtures/eastwind';
 import {
@@ -117,7 +118,7 @@ const DATA_TABLES = [
   'candidate_plan', 'approval', 'proposal', 'decision_log', 'operational_event', 'board_snapshot',
   'status_event', 'assignment', 'job_requirement', 'job', 'site_memory', 'recurrence', 'site', 'customer',
   'shift', 'technician_cert', 'technician', 'app_user', 'travel_matrix', 'intake_message', 'dispatch_policy',
-  'job_type_cert', 'job_type',
+  'job_type_cert', 'job_type', 'company_setting',
 ];
 
 // Serialises "seed if the database is empty" across processes.
@@ -163,6 +164,15 @@ export class PostgresDatabase implements IDatabase {
             // No board means nothing worth keeping: start from a clean seed.
             await tx.unsafe(`TRUNCATE TABLE ${DATA_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
             await this.load(tx as unknown as Sql, this.scenario());
+          } else {
+            // A board seeded before settings existed (0003) gets its scenario's
+            // company row; one already stored is never overwritten.
+            const company = this.scenario().company;
+            if (company) {
+              await tx`INSERT INTO company_setting (name, day_start, day_end, default_profile)
+                VALUES (${company.name}, ${company.dayStart}, ${company.dayEnd}, ${company.defaultProfile})
+                ON CONFLICT (id) DO NOTHING`;
+            }
           }
         });
       })().catch((e) => {
@@ -249,6 +259,10 @@ export class PostgresDatabase implements IDatabase {
     for (const jt of data.jobTypes) {
       await tx`INSERT INTO job_type (id, name, min_tier, difficulty, default_minutes, sla_hours, brand_sensitive, created_at)
         VALUES (${jt.id}, ${jt.name}, ${jt.minTier}, ${jt.difficulty}, ${jt.defaultMinutes}, ${jt.slaHours ?? null}, ${jt.brandSensitive}, ${jt.createdAt})`;
+    }
+    if (data.company) {
+      await tx`INSERT INTO company_setting (name, day_start, day_end, default_profile)
+        VALUES (${data.company.name}, ${data.company.dayStart}, ${data.company.dayEnd}, ${data.company.defaultProfile})`;
     }
     for (const c of data.jobTypeCerts) {
       await tx`INSERT INTO job_type_cert (id, job_type_id, cert_type, brand_required)
@@ -412,6 +426,46 @@ export class PostgresDatabase implements IDatabase {
     listAll: () => this.q<JobType>`SELECT ${this.cols(JOB_TYPE_COLS)} FROM job_type ORDER BY id COLLATE "C"`,
     getCerts: (jobTypeId: string) =>
       this.q<JobTypeCert>`SELECT id, job_type_id as "jobTypeId", cert_type as "certType", brand_required as "brandRequired" FROM job_type_cert WHERE job_type_id = ${jobTypeId} ORDER BY id COLLATE "C"`,
+    create: async (jt: Omit<JobType, 'createdAt'>) =>
+      (await this.one<JobType>`
+        INSERT INTO job_type (id, name, min_tier, difficulty, default_minutes, sla_hours, brand_sensitive)
+        VALUES (${jt.id}, ${jt.name}, ${jt.minTier}, ${jt.difficulty}, ${jt.defaultMinutes}, ${jt.slaHours ?? null}, ${jt.brandSensitive})
+        RETURNING ${this.cols(JOB_TYPE_COLS)}`)!,
+    update: async (id: string, patch: Partial<Pick<JobType, 'name' | 'minTier' | 'defaultMinutes'>>) => {
+      const row = await this.one<JobType>`
+        UPDATE job_type SET
+          name = COALESCE(${patch.name ?? null}::text, name),
+          min_tier = COALESCE(${patch.minTier ?? null}::int, min_tier),
+          default_minutes = COALESCE(${patch.defaultMinutes ?? null}::int, default_minutes)
+        WHERE id = ${id}
+        RETURNING ${this.cols(JOB_TYPE_COLS)}`;
+      if (!row) throw new Error(`Job type ${id} not found`);
+      return row;
+    },
+    setCerts: async (jobTypeId: string, certTypes: string[]) => {
+      await this.q`DELETE FROM job_type_cert WHERE job_type_id = ${jobTypeId}`;
+      for (const certType of certTypes) {
+        await this.q`INSERT INTO job_type_cert (job_type_id, cert_type) VALUES (${jobTypeId}, ${certType})`;
+      }
+      return this.jobTypes.getCerts(jobTypeId);
+    },
+  };
+
+  settings = {
+    get: async (): Promise<CompanySettings> => {
+      const row = await this.one<CompanySettings>`
+        SELECT name, day_start as "dayStart", day_end as "dayEnd", default_profile as "defaultProfile" FROM company_setting WHERE id = 'company'`;
+      return { ...DEFAULT_SETTINGS, ...row };
+    },
+    update: async (patch: Partial<CompanySettings>): Promise<CompanySettings> => {
+      const next = { ...(await this.settings.get()), ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) };
+      await this.q`
+        INSERT INTO company_setting (id, name, day_start, day_end, default_profile, updated_at)
+        VALUES ('company', ${next.name}, ${next.dayStart}, ${next.dayEnd}, ${next.defaultProfile}, NOW())
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, day_start = EXCLUDED.day_start,
+          day_end = EXCLUDED.day_end, default_profile = EXCLUDED.default_profile, updated_at = NOW()`;
+      return next;
+    },
   };
 
   jobs = {

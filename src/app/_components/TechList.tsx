@@ -60,6 +60,9 @@ export function TechList({
   // One report form open at a time: away for a technician, or late for a job.
   const [form, setForm] = useState<{ kind: 'away'; id: string } | { kind: 'late'; id: string } | null>(null);
   const view = useMemo(() => buildScheduleView(board, plan), [board, plan]);
+  const hours = (hhmm: string) => Number(hhmm.slice(0, 2)) + Number(hhmm.slice(3)) / 60;
+  const dayStartHour = Math.min(DAY_START, Math.floor(hours(board.workingDay?.start ?? '08:00')) - 1);
+  const dayEndHour = Math.max(DAY_END, Math.ceil(hours(board.workingDay?.end ?? '18:00')));
   const techIds = board.technicians.map((t) => t.technician.id);
   const q = query.trim().toLowerCase();
   const matches = (...xs: Array<string | undefined>) => !q || xs.some((x) => x?.toLowerCase().includes(q));
@@ -231,7 +234,7 @@ export function TechList({
                   <Pin color={color} />
                   <span className="font-mono tabular-nums">{stops.length}</span>
                 </span>
-                <DayBar stops={stops} leaving={leaving} color={color} off={off} shift={shift} startHour={DAY_START} endHour={DAY_END} />
+                <DayBar stops={stops} leaving={leaving} color={color} off={off} shift={shift} startHour={dayStartHour} endHour={dayEndHour} />
               </button>
 
               {open ? (
@@ -578,6 +581,7 @@ const NORMAL_START = 9 * 60;
 const ROW_GRID = 'grid grid-cols-[20px_12px_minmax(0,1fr)_auto] gap-x-2.5';
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/60';
 
+// The day bar spans the company's working day (settings), an hour of slack before it.
 const DAY_START = 7;
 const DAY_END = 18;
 const TICKS = [9, 12, 15];

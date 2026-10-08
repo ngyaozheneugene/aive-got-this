@@ -7,6 +7,7 @@ import type { DeskBoard, DeskJobRow, Shift, TechnicianCert } from '../../shared/
 import type { PlanningSchedule } from '../../dispatch/board-schedule';
 import { stageA } from '../../matching/gates/stage-a';
 
+// Defaults when the schedule carries no working day (settings, ADR 011).
 const DAY_START = 8 * 60;
 const DAY_END = 18 * 60;
 
@@ -24,10 +25,14 @@ function shiftOf(schedule: PlanningSchedule, technicianId: string): Shift | unde
   return schedule.shifts.find((s) => s.technicianId === technicianId && s.shiftDate === schedule.date);
 }
 
+const dayStart = (schedule: PlanningSchedule) => (schedule.workingDay ? toMin(schedule.workingDay.start) : DAY_START);
+const dayEnd = (schedule: PlanningSchedule) => (schedule.workingDay ? toMin(schedule.workingDay.end) : DAY_END);
+
 /** Working hours for the day, or null when they are off. */
-function hours(shift: Shift | undefined): { from: number; to: number } | null {
+function hours(schedule: PlanningSchedule, shift: Shift | undefined): { from: number; to: number } | null {
   if (!shift || shift.status === 'mc' || shift.status === 'no_show') return null;
-  return { from: Math.max(DAY_START, minutes(shift.clockInAt) ?? DAY_START), to: minutes(shift.clockOutAt) ?? DAY_END };
+  const start = dayStart(schedule);
+  return { from: Math.max(start, minutes(shift.clockInAt) ?? start), to: minutes(shift.clockOutAt) ?? dayEnd(schedule) };
 }
 
 function busy(board: DeskBoard, technicianId: string): Array<{ from: number; to: number; row: DeskJobRow }> {
@@ -40,7 +45,7 @@ function busy(board: DeskBoard, technicianId: string): Array<{ from: number; to:
 
 /** Free gaps in a technician's day, ignoring travel. */
 function gaps(board: DeskBoard, schedule: PlanningSchedule, technicianId: string): Array<{ from: number; to: number }> {
-  const h = hours(shiftOf(schedule, technicianId));
+  const h = hours(schedule, shiftOf(schedule, technicianId));
   if (!h) return [];
   const out: Array<{ from: number; to: number }> = [];
   let cursor = h.from;
@@ -88,7 +93,7 @@ export function whoIsFree(
 export function technicianDay(board: DeskBoard, schedule: PlanningSchedule, technicianId: string, certs: TechnicianCert[]) {
   const row = board.technicians.find((t) => t.technician.id === technicianId);
   if (!row) return { error: 'technician_not_on_board' };
-  const h = hours(shiftOf(schedule, technicianId));
+  const h = hours(schedule, shiftOf(schedule, technicianId));
   return {
     name: row.technician.name,
     tier: row.technician.tier,
@@ -103,7 +108,7 @@ export function technicianDay(board: DeskBoard, schedule: PlanningSchedule, tech
       jobId: b.row.job.id,
     })),
     freeGaps: gaps(board, schedule, technicianId).map((g) => `${clock(g.from)}-${clock(g.to)}`),
-    note: 'Free gaps are counted to 18:00 when no finish time is set; drive time is not counted.',
+    note: `Free gaps are counted to ${clock(dayEnd(schedule))} when no finish time is set; drive time is not counted.`,
     certificates: certs.map((c) => `${c.certType}${c.expiresAt ? ` (expires ${c.expiresAt})` : ''}`),
     parts: row.technician.parts ?? [],
   };
@@ -142,11 +147,11 @@ export function whyTechnician(board: DeskBoard, schedule: PlanningSchedule, jobI
 export function boardSummary(board: DeskBoard, schedule: PlanningSchedule) {
   const away = board.technicians
     .map((t) => ({ name: t.technician.name, shift: shiftOf(schedule, t.technician.id) }))
-    .filter((t) => t.shift && (t.shift.status === 'mc' || t.shift.clockOutAt || (minutes(t.shift.clockInAt) ?? 0) > 9 * 60))
+    .filter((t) => t.shift && (t.shift.status === 'mc' || t.shift.clockOutAt || (minutes(t.shift.clockInAt) ?? 0) > dayStart(schedule) + 60))
     .map((t) => ({
       name: t.name,
       status: t.shift!.status === 'mc' ? 'off today' : [
-        (minutes(t.shift!.clockInAt) ?? 0) > 9 * 60 ? `in from ${clock(minutes(t.shift!.clockInAt)!)}` : null,
+        (minutes(t.shift!.clockInAt) ?? 0) > dayStart(schedule) + 60 ? `in from ${clock(minutes(t.shift!.clockInAt)!)}` : null,
         t.shift!.clockOutAt ? `leaves ${clock(minutes(t.shift!.clockOutAt)!)}` : null,
       ].filter(Boolean).join(', '),
     }));
