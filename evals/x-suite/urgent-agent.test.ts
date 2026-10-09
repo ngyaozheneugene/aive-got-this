@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runUrgentJobAgent } from '../../src/agent/runtime/urgent-graph';
+import { AgentError } from '../../src/agent/runtime/errors';
 import { permittedCalls, setupAgent } from '../a-suite/fixtures';
 
 describe('X-01 notes are data; G1 tools cannot assign or commit', () => {
@@ -80,5 +81,50 @@ describe('X-04 strict JSON and state-bound tool dispatch', () => {
     const result = await runUrgentJobAgent({ eventId: h.event.id, tools: h.tools, model: h.model });
     expect(result.errorCode).toBe('CANDIDATE_CONTEXT_MISMATCH');
     expect(result.plans).toEqual([]);
+  });
+});
+
+describe('X-05 a reply with several tool calls runs none of them', () => {
+  it('asks once more after a batched reply, and the run completes with exactly one extra model call', async () => {
+    const h = await setupAgent();
+    const clean = await runUrgentJobAgent({ eventId: h.event.id, tools: h.tools, model: h.model });
+    const calls = clean.modelCalls;
+
+    const b = await setupAgent();
+    // The third turn (after both proposals) batches two validations, as the live model did on 9 Oct.
+    let turn = 0;
+    const honest = b.chooseTool.getMockImplementation()!;
+    b.chooseTool.mockImplementation(async (messages, ...rest) => {
+      turn += 1;
+      if (turn === 4) throw new AgentError('MULTIPLE_NATIVE_TOOL_CALLS');
+      return honest(messages, ...rest);
+    });
+    const result = await runUrgentJobAgent({ eventId: b.event.id, tools: b.tools, model: b.model });
+    expect(result.status).toBe('candidates_ready');
+    expect(result.modelCalls).toBe(calls + 1);
+    // The retry told the model why: nothing ran, call exactly one.
+    const retried = b.chooseTool.mock.calls[4]![0];
+    expect(retried.at(-1)!.content).toMatch(/^Your last reply contained more than one tool call, so none of them ran\./);
+    expect(retried.at(-1)!.content).toContain('TRUSTED_STATE=');
+  });
+
+  it('fails closed when the model keeps batching, with nothing executed', async () => {
+    const h = await setupAgent();
+    const read = vi.spyOn(h.tools, 'readContext');
+    h.chooseTool.mockRejectedValue(new AgentError('MULTIPLE_NATIVE_TOOL_CALLS'));
+    const result = await runUrgentJobAgent({ eventId: h.event.id, tools: h.tools, model: h.model });
+    expect(result.status).toBe('failed');
+    expect(result.errorCode).toBe('MULTIPLE_NATIVE_TOOL_CALLS');
+    expect(h.chooseTool).toHaveBeenCalledTimes(2);
+    expect(read).not.toHaveBeenCalled();
+    expect(await h.db.boardSnapshots.getLatest()).toEqual(h.snapshot);
+  });
+
+  it('still fails closed at once on a wrong-phase tool: only batching is retried', async () => {
+    const h = await setupAgent();
+    h.chooseTool.mockResolvedValue(JSON.stringify({ tool: 'propose', args: { eventId: h.event.id, profile: 'sla_first' } }));
+    const result = await runUrgentJobAgent({ eventId: h.event.id, tools: h.tools, model: h.model });
+    expect(result.errorCode).toBe('TOOL_NOT_ALLOWED_IN_STATE');
+    expect(h.chooseTool).toHaveBeenCalledTimes(1);
   });
 });

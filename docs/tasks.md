@@ -226,6 +226,7 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [ ] Q1 Loading / empty / failure states, keyboard path, phone width
 - [ ] Q2 Playwright end-to-end: each event, NL intake, technician page, commit to new version
 - [ ] Q4 ADRs for contract changes; README and demo script rewritten for the finals flow
+  - 9 Oct, demo script done: [`demo-script.md`](demo-script.md), one presenter on one laptop, sections 3–7 rehearsed end to end three times against the build on the sample day. The rehearsal found the model occasionally batching two tool calls (1 in 16 plans), which failed the run; the agent now asks once more with nothing from the batch executed (X-05), still failing closed on any other deviation. README still open.
 - [ ] Q5 Five timed rehearsals on the hosted box after reset; backup recording of the finals flow
 
 **Stretch (in order of value)**
