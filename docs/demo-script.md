@@ -12,7 +12,7 @@ The previous recording script (six technicians, two presenters) is in the git hi
 
 - [ ] Open the site. Check `/health`: `"ok":true`, `"optimizer":{"ok":true}`, `"gatewayConfigured":true`.
 - [ ] Browser full screen, zoom 100%, notifications off, one tab only.
-- [ ] Sidebar → **Try a sample day**. The sidebar says **Eastwind Aircon**, with a yellow **Simulation** box at the bottom.
+- [ ] Sidebar → **Try a sample day**. The header says **PAilot**; the sidebar says **Eastwind Aircon**, with a yellow **Simulation** box at the bottom.
 - [ ] **Settings → Sample day → Reset the sample day**, then **Yes**. Back on **Dispatch**, the bottom bar reads **Schedule version 1 · 1 job needs a technician** (Raffles Place).
 - [ ] Header **Priority: On-time first**.
 - [ ] Close the demo controls panel (flask icon in the header) so the map is clear. You don't need it for the core demo.
@@ -26,7 +26,7 @@ The previous recording script (six technicians, two presenters) is in the git hi
 
 > A field-service company starts every day fully booked, and then the day breaks: a van breaks down, a job runs over, new work arrives. The coordinator has to fix it by hand, under time pressure, without breaking anyone's skills, certificates or customer windows.
 >
-> Dispatch Coordinator is the desk for that moment. You tell it what happened in plain English. It works out the options, checks every one against the rules, and changes nothing until you approve.
+> PAilot is the desk for that moment. You tell it what happened in plain English. It works out the options, checks every one against the rules, and changes nothing until you approve.
 
 ## 2. A product, not a demo (1.5 minutes)
 

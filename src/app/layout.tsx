@@ -7,8 +7,9 @@ import "./globals.css";
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Dispatch Coordinator",
-  description: "Agent-assisted recovery for a Singapore HVAC field-service day",
+  title: "PAilot",
+  description: "The AI co-pilot for field-service dispatch",
+  applicationName: "PAilot",
 };
 
 export const viewport: Viewport = {

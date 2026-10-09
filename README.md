@@ -1,4 +1,6 @@
-# Dispatch Coordinator
+# PAilot
+
+**The AI co-pilot for field-service dispatch.** Built as Dispatch Coordinator; PAilot is the product name from the finals.
 
 **Team:** AI've Got This
 **Event:** Show Me Your Agents, NUS-ISS
