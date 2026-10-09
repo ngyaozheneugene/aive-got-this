@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronRight, PhoneCall, ShieldAlert, ShieldCheck, Sparkles } from 'lucide-react';
 import type { CandidatePlan, DeskBoard } from '../../shared/types/domain';
-import { METRIC_COPY, PROFILE_COPY, compareToOther, describeChanges, describeLeftForCall, describeLeftWaiting, profileName, violationCopy, workloadNotes } from './copy';
+import { METRIC_COPY, PROFILE_COPY, compareToOther, describeCancelled, describeChanges, describeLeftForCall, describeLeftWaiting, profileName, violationCopy, workloadNotes } from './copy';
 import { cn } from './lib/utils';
 import { Badge } from './ui/badge';
 
@@ -30,6 +30,7 @@ export function PlanCard({
   const copy = PROFILE_COPY[plan.profile];
   const changes = describeChanges(board, plan);
   const calls = describeLeftForCall(board, plan);
+  const cancels = describeCancelled(board, plan);
   const stillWaiting = describeLeftWaiting(board, plan);
   const vs = other ? compareToOther(plan, other) : { better: [], worse: [] };
 
@@ -70,6 +71,16 @@ export function PlanCard({
         </div>
 
         {copy ? <p className="text-sm text-muted-foreground">{copy.promise}</p> : null}
+
+        {cancels.length > 0 ? (
+          <ul className="grid gap-1 text-sm">
+            {cancels.map((c) => (
+              <li key={c} className="font-medium text-destructive">
+                {c}
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
         {changes.length > 0 ? (
           <ul className="grid gap-1 text-sm">

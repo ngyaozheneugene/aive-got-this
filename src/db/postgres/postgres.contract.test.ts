@@ -122,7 +122,7 @@ describe.skipIf(!enabled)('Postgres adapter', () => {
       await migrate(sql);
       expect(await migrate(sql)).toEqual([]);
       const names = (await sql<{ name: string }[]>`SELECT name FROM schema_migration ORDER BY name`).map((r) => r.name);
-      expect(names).toEqual(['0001_baseline.sql', '0002_free_text_actors.sql', '0003_company_settings.sql', '0004_place_waiting.sql']);
+      expect(names).toEqual(['0001_baseline.sql', '0002_free_text_actors.sql', '0003_company_settings.sql', '0004_place_waiting.sql', '0005_job_cancelled.sql']);
     });
 
     it('lets a desk actor that is not a user row action an approval', async () => {

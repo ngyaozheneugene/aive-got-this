@@ -230,7 +230,8 @@ Design notes and reasoning for every item: [`finals-plan.md`](finals-plan.md). B
 - [ ] Q5 Five timed rehearsals on the hosted box after reset; backup recording of the finals flow
 
 **Stretch (in order of value)**
-- [ ] R4 `job_cancelled` event (needs R3)
+- [x] R4 `job_cancelled` event (needs R3)
+  - 9 Oct: [ADR 015](adr/015-job-cancelled.md). Cancel a job not yet started from the board or the Jobs page, with a reason. The plan frees its time and offers it to waiting jobs only; booked work stays. Commit marks it `cancelled`; it leaves the board and shows under the Jobs page's Cancelled filter.
 - [ ] R6 Manual override through the same validate → commit path
 - [x] A2 Ask about a plan ("why not Kumar?", "what if 3pm?") from stored evidence
   - 8 Oct: [ADR 010](adr/010-questions.md). Questions in the same box: read-only tools (`who_is_free`, `technician_day`, `why_technician`, `board_summary`) computed by code, including the Stage A gate; the model words a short `answer` only after a lookup; the desk shows "Based on". "What if 3pm?" re-planning is not included.

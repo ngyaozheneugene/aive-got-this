@@ -55,9 +55,9 @@ export async function planUrgentEvent(
     checkCancelled();
     const event = await db.events.getById(input.eventId);
     if (!event) throw new PlanningError('event_not_found', 404, 'No event with that id.');
-    if (!['urgent_job', 'technician_unavailable', 'job_overrun', 'place_waiting'].includes(event.type)) {
+    if (!['urgent_job', 'technician_unavailable', 'job_overrun', 'place_waiting', 'job_cancelled'].includes(event.type)) {
       throw new PlanningError('unsupported_event_type', 422,
-        'This endpoint supports urgent_job, technician_unavailable, job_overrun and place_waiting only.');
+        'This endpoint supports urgent_job, technician_unavailable, job_overrun, place_waiting and job_cancelled only.');
     }
     if (event.status === 'PLANNING') throw new PlanningError('planning_in_progress', 409, 'This event is already being planned.');
     if (!['RECEIVED', 'VALIDATED'].includes(event.status)) {

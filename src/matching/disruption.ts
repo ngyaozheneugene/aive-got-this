@@ -51,6 +51,18 @@ export function parseUnavailability(event: OperationalEvent): TechnicianUnavaila
  * far it runs on, and the knock-on, stay with the engines).
  */
 export function applyDisruption<S extends BoardSchedule>(schedule: S, event: OperationalEvent): S {
+  // A cancelled job leaves the board with its booking; what remains is planned
+  // as if it was never there (ADR 015).
+  const cancelledJobId = event.type === 'job_cancelled' ? (event.normalizedPayload?.jobId as string | undefined) : undefined;
+  if (cancelledJobId) {
+    const extra = schedule as S & { jobRequirements?: Array<{ jobId: string }> };
+    return {
+      ...schedule,
+      jobs: (schedule.jobs ?? []).filter((j) => j.id !== cancelledJobId),
+      assignments: (schedule.assignments ?? []).filter((a) => a.jobId !== cancelledJobId),
+      ...(extra.jobRequirements ? { jobRequirements: extra.jobRequirements.filter((r) => r.jobId !== cancelledJobId) } : {}),
+    };
+  }
   // A job reported running late has, by definition, started: it is the
   // technician's to finish, and may run past its window. Without this only a
   // job seeded as on site could overrun legally.

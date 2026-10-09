@@ -51,7 +51,7 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
   }
 
   const date = await boardDate(db);
-  const [technicians, jobs, allAssignments, storedShifts, travel, settings] = await Promise.all([
+  const [technicians, dayJobs, allAssignments, storedShifts, travel, settings] = await Promise.all([
     db.technicians.listActive(),
     db.jobs.listByScheduledDate(date),
     db.assignments.listAll(),
@@ -60,6 +60,8 @@ export async function buildBoardSchedule(db: IDatabase): Promise<PlanningSchedul
     db.settings.get(),
   ]);
   const shifts = withDefaultShifts(storedShifts, technicians, date, settings.dayStart);
+  // Cancelled jobs are not the board: nothing plans around them (ADR 015).
+  const jobs = dayJobs.filter((j) => j.status !== 'cancelled');
 
   // Only live rows are the board. Superseded and cancelled rows stay in the
   // table for the audit trail but must not be planned around. Other days'

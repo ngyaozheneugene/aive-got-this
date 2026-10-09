@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Loader2, Plus, Search, Upload } from 'lucide-react';
+import { ArrowRight, Ban, Loader2, Plus, Search, Upload } from 'lucide-react';
 import type { DeskBoard, DeskJobRow } from '../../../shared/types/domain';
 import { addDays } from '../../../shared/config/demo';
 import { CLUSTER_LABEL } from '../../../location/postal';
 import { DeskApiError, deskApi } from '../../_components/desk-api';
+import { CANCEL_REASON_COPY, type CancelReason } from '../../_components/disruptions';
 import { JobImportView } from '../../_components/JobImportView';
+import { cancellable } from '../../_components/TechList';
 import { NewJobForm, type BookableType } from '../../_components/NewJobForm';
 import { FIELD } from '../../_components/TechnicianForm';
 import { PageHeader } from '../../_components/shell/PageHeader';
@@ -16,12 +18,13 @@ import { Button } from '../../_components/ui/button';
 import { Card } from '../../_components/ui/card';
 import { cn } from '../../_components/lib/utils';
 
-type Stage = 'waiting' | 'assigned' | 'underway' | 'done';
+type Stage = 'waiting' | 'assigned' | 'underway' | 'done' | 'cancelled';
 const STAGE: Record<Stage, { label: string; className: string }> = {
   waiting: { label: 'Waiting for a technician', className: 'text-destructive' },
   assigned: { label: 'Assigned', className: 'text-foreground' },
   underway: { label: 'Under way', className: 'text-sky-400' },
   done: { label: 'Done', className: 'text-success' },
+  cancelled: { label: 'Cancelled', className: 'text-muted-foreground line-through' },
 };
 const FILTERS: Array<{ key: Stage | 'all'; label: string }> = [
   { key: 'all', label: 'All' },
@@ -29,11 +32,13 @@ const FILTERS: Array<{ key: Stage | 'all'; label: string }> = [
   { key: 'assigned', label: 'Assigned' },
   { key: 'underway', label: 'Under way' },
   { key: 'done', label: 'Done' },
+  { key: 'cancelled', label: 'Cancelled' },
 ];
 const PRIORITY: Record<string, string> = { urgent: 'Urgent', on_demand: 'On demand', when_available: 'When available' };
 
 /** Where a job is in its day, from its assignment and status. */
 function stageOf(row: DeskJobRow): Stage {
+  if (row.job.status === 'cancelled') return 'cancelled';
   if (row.job.status === 'done') return 'done';
   if (!row.assignment) return 'waiting';
   return row.job.status === 'en_route' || row.job.status === 'on_site' ? 'underway' : 'assigned';
@@ -55,6 +60,8 @@ export default function JobsPage() {
   const [panel, setPanel] = useState<'import' | 'new' | null>(null);
   const [filter, setFilter] = useState<Stage | 'all'>('all');
   const [query, setQuery] = useState('');
+  // The row whose "cancel" reasons are open.
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -83,7 +90,7 @@ export default function JobsPage() {
   const today = board?.today ?? board?.date;
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (board?.jobs ?? [])
+    return [...(board?.jobs ?? []), ...(board?.cancelled ?? [])]
       .filter((r) => filter === 'all' || stageOf(r) === filter)
       .filter((r) =>
         !q ||
@@ -93,8 +100,8 @@ export default function JobsPage() {
       .sort((a, b) => (a.job.windowStart ?? '').localeCompare(b.job.windowStart ?? '') || a.customer.name.localeCompare(b.customer.name));
   }, [board, filter, query, typeName]);
   const counts = useMemo(() => {
-    const c: Record<Stage, number> = { waiting: 0, assigned: 0, underway: 0, done: 0 };
-    for (const r of board?.jobs ?? []) c[stageOf(r)] += 1;
+    const c: Record<Stage, number> = { waiting: 0, assigned: 0, underway: 0, done: 0, cancelled: 0 };
+    for (const r of [...(board?.jobs ?? []), ...(board?.cancelled ?? [])]) c[stageOf(r)] += 1;
     return c;
   }, [board]);
 
@@ -249,6 +256,32 @@ export default function JobsPage() {
                         <Link href={hrefIn('/desk', workspace)} className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-primary hover:underline">
                           Find a technician on the board <ArrowRight className="size-3" />
                         </Link>
+                      ) : null}
+                      {board.date === today && cancellable(r) ? (
+                        cancelling === r.job.id ? (
+                          <span className="mt-1 flex flex-wrap items-center gap-1">
+                            {(Object.keys(CANCEL_REASON_COPY) as CancelReason[]).map((reason) => (
+                              <Link
+                                key={reason}
+                                href={`${hrefIn('/desk', workspace)}${hrefIn('/desk', workspace).includes('?') ? '&' : '?'}cancel=${encodeURIComponent(r.job.id)}&reason=${reason}`}
+                                className="rounded-md border px-1.5 py-0.5 text-[11px] hover:bg-accent"
+                              >
+                                {CANCEL_REASON_COPY[reason]}
+                              </Link>
+                            ))}
+                            <button type="button" onClick={() => setCancelling(null)} className="px-1 text-[11px] text-muted-foreground hover:text-foreground">
+                              Keep
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCancelling(r.job.id)}
+                            className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-destructive"
+                          >
+                            <Ban className="size-3" /> Cancel job
+                          </button>
+                        )
                       ) : null}
                     </span>
                     {r.job.noteRaw ? <span className="truncate text-[12px] text-muted-foreground md:col-span-4 md:col-start-2" title={r.job.noteRaw}>“{r.job.noteRaw}”</span> : null}

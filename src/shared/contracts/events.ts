@@ -5,6 +5,7 @@ export const operationalEventTypeSchema = z.enum([
   'technician_unavailable',
   'job_overrun',
   'place_waiting',
+  'job_cancelled',
 ]);
 
 export const operationalEventStatusSchema = z.enum([
@@ -35,6 +36,15 @@ export const placeWaitingPayloadSchema = z.object({
     .min(1)
     .max(MAX_PLACE_WAITING)
     .refine((ids) => new Set(ids).size === ids.length, 'each job once'),
+});
+
+/** Why a booking is cancelled. ADR 015. */
+export const CANCEL_REASONS = ['customer_cancelled', 'duplicate', 'other'] as const;
+
+/** A booked or waiting job is cancelled; its time is freed, and waiting jobs may fill it. ADR 015. */
+export const jobCancelledPayloadSchema = z.object({
+  jobId: z.string().min(1),
+  reason: z.enum(CANCEL_REASONS),
 });
 
 /** An instant with its offset, e.g. 2026-10-07T14:00:00+08:00. */
@@ -92,6 +102,12 @@ const eventBodySchema = z.discriminatedUnion('type', [
     rawText: z.string().optional().default(''),
     sourceSnapshotId: z.string().optional(),
     payload: placeWaitingPayloadSchema,
+  }),
+  z.object({
+    type: z.literal('job_cancelled'),
+    rawText: z.string().optional().default(''),
+    sourceSnapshotId: z.string().optional(),
+    payload: jobCancelledPayloadSchema,
   }),
 ]);
 

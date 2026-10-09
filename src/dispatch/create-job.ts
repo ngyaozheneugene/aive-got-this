@@ -161,7 +161,7 @@ class BulkRefusal extends Error {
 export async function bookedKeys(db: IDatabase, today: string): Promise<string[]> {
   const keys: string[] = [];
   for (const day of [today, addDays(today, 1)]) {
-    for (const job of await db.jobs.listByScheduledDate(day)) {
+    for (const job of (await db.jobs.listByScheduledDate(day)).filter((j) => j.status !== 'cancelled')) {
       const [customer, site] = await Promise.all([db.customers.getById(job.customerId), db.sites.getById(job.siteId)]);
       if (!customer || !site || !job.windowStart) continue;
       keys.push(bookingKey({ phone: customer.phone, postalCode: site.postalCode, jobTypeId: job.jobTypeId, date: day, windowStart: job.windowStart.slice(11, 16) }));

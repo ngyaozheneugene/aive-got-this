@@ -128,3 +128,26 @@ describe('partial coverage on the desk', () => {
     ]);
   });
 });
+
+describe('cancellation on the desk', () => {
+  it('takes a cancelled job off the day and says whose time it frees', async () => {
+    const { InMemoryDatabase } = await import('../../db/memory');
+    const { getCurrentBoard } = await import('../../dispatch/current-board');
+    const { describeCancelled } = await import('./copy');
+    const board = await getCurrentBoard(new InMemoryDatabase({ scenario: () => buildScenario('2026-10-20') }));
+    const live = board.jobs.filter((r) => r.assignment && r.job.id !== 'job_ben_1').map((r) => ({
+      jobId: r.job.id, technicianId: r.assignment!.technicianId, windowStart: r.assignment!.windowStart, windowEnd: r.assignment!.windowEnd,
+    }));
+    const plan = {
+      profile: 'sla_first',
+      assignments: live,
+      changeSet: [{ action: 'cancel', jobId: 'job_ben_1', fromTechnicianId: 'tech_ben', reason: 'customer_cancelled' }],
+    } as unknown as CandidatePlan;
+
+    const view = buildScheduleView(board, plan);
+    expect(view.slots.some((s) => s.jobId === 'job_ben_1')).toBe(false);
+    expect(view.unassigned.some((r) => r.job.id === 'job_ben_1')).toBe(false);
+    expect(view.cancelled).toEqual([expect.objectContaining({ previous: expect.objectContaining({ technicianId: 'tech_ben' }) })]);
+    expect(describeCancelled(board, plan)).toEqual(['Cancel Tan Household (Simei): frees Ben 09:00–10:30']);
+  });
+});

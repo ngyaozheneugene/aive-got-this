@@ -70,6 +70,10 @@ export function findDisruption(key: string): Disruption {
     const availability: Availability = mode === 'day' ? { mode: 'day' } : { mode: mode as 'until' | 'from', time: time! };
     return disruptionForUnavailable({ id: technicianId!, name: 'A technician' }, date ?? '', availability);
   }
+  const cancel = /^cancel:([^:]+):(customer_cancelled|duplicate|other)$/.exec(key);
+  if (cancel) {
+    return { key, label: 'Cancel a job', source: 'Your request', headline: 'Cancel a job', detail: '', body: { type: 'job_cancelled', payload: { jobId: cancel[1]!, reason: cancel[2] as CancelReason } } };
+  }
   const late = /^late:([^:]+):(\d+)$/.exec(key);
   if (late) {
     const minutes = Number(late[2]);
@@ -176,6 +180,32 @@ export function disruptionForWaiting(rows: DeskJobRow[]): Disruption {
     headline: `Find technicians for ${rows.length} waiting jobs`,
     detail: names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more.` : `${names.join(', ')}.`,
     body: { type: 'place_waiting', payload: { jobIds: rows.map((r) => r.job.id) } },
+  };
+  fromBoard.set(d.key, d);
+  return d;
+}
+
+export type CancelReason = 'customer_cancelled' | 'duplicate' | 'other';
+export const CANCEL_REASON_COPY: Record<CancelReason, string> = {
+  customer_cancelled: 'Customer cancelled',
+  duplicate: 'Duplicate booking',
+  other: 'Other reason',
+};
+
+/**
+ * A coordinator cancelling a job that has not started (ADR 015). The plan
+ * takes it off the day and offers its time to the jobs still waiting.
+ */
+export function disruptionForCancel(row: DeskJobRow, reason: CancelReason): Disruption {
+  const ws = row.job.windowStart?.slice(11, 16);
+  const we = row.job.windowEnd?.slice(11, 16);
+  const d: Disruption = {
+    key: `cancel:${row.job.id}:${reason}`,
+    label: 'Cancel a job',
+    source: 'Your request',
+    headline: `Cancel: ${row.customer.name}`,
+    detail: `${CANCEL_REASON_COPY[reason]}. ${row.site.addressLine1}${ws && we ? `, ${ws}–${we}` : ''}${row.technician ? ` with ${row.technician.name}` : ''}. Its time goes to waiting jobs where one fits.`,
+    body: { type: 'job_cancelled', payload: { jobId: row.job.id, reason } },
   };
   fromBoard.set(d.key, d);
   return d;

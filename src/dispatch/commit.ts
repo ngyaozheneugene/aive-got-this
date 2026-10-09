@@ -106,7 +106,11 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
 
   // Partial coverage: jobs the plan leaves for a call come off the board.
   const unassigned = unassignedOf(plan);
-  const leaving = new Set(unassigned.map((u) => u.jobId));
+  // Cancellations (ADR 015): the job and its booking come off the board.
+  const cancelled = (plan.changeSet ?? [])
+    .filter((c) => c.action === 'cancel' && typeof c.jobId === 'string')
+    .map((c) => ({ jobId: c.jobId as string, reason: typeof c.reason === 'string' ? c.reason : 'other' }));
+  const leaving = new Set([...unassigned.map((u) => u.jobId), ...cancelled.map((c) => c.jobId)]);
   const slots = resultingSlots(liveSlots, plan.assignments).filter((s) => !leaving.has(s.jobId));
 
   // The snapshot is written first because assignment rows reference its id.
@@ -172,6 +176,13 @@ async function commitWithin(db: IDatabase, input: CommitInput): Promise<CommitRe
       if (row.status === 'accepted' || row.status === 'offered') await db.assignments.supersede(row.id, 'cancelled');
     }
     await db.jobs.updateStatus(left.jobId, 'unassigned', input.actorId, 'desk', `partial_coverage:${left.reason}`);
+  }
+
+  for (const gone of cancelled) {
+    for (const row of await db.assignments.getByJobId(gone.jobId)) {
+      if (row.status === 'accepted' || row.status === 'offered') await db.assignments.supersede(row.id, 'cancelled');
+    }
+    await db.jobs.updateStatus(gone.jobId, 'cancelled', input.actorId, 'desk', `cancelled:${gone.reason}`);
   }
 
   // An unavailability changes the technician's shift as well as their jobs, so
