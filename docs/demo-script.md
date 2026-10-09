@@ -2,7 +2,7 @@
 
 **Length:** about 20 minutes of core demo plus up to 8 minutes of optional extras, inside the 30-minute slot. Each planning step takes 15–20 seconds; the script gives you something to say while it works.
 **Where:** the hosted box, in the **sample day** (Simulation). Nothing in the demo touches your own workspace.
-**Rehearsed:** 9 Oct 2026. The whole sequence below (sections 3–7) was run end to end against the same build on the sample day three times, and the plans came back as written here. If the screen shows something different, see **When something looks wrong** at the end.
+**Rehearsed:** 9 Oct 2026, and again on the box on 10 Oct (sections 1–8 plus the injection, roster and look-ahead extras, all as written). The whole sequence below (sections 3–7) was run end to end against the same build on the sample day three times, and the plans came back as written here. If the screen shows something different, see **When something looks wrong** at the end.
 
 The previous recording script (six technicians, two presenters) is in the git history at `b64603e`.
 
@@ -12,10 +12,10 @@ The previous recording script (six technicians, two presenters) is in the git hi
 
 - [ ] Open the site. Check `/health`: `"ok":true`, `"optimizer":{"ok":true}`, `"gatewayConfigured":true`.
 - [ ] Browser full screen, zoom 100%, notifications off, one tab only.
-- [ ] Sidebar → **Try a sample day**. The header says **PAilot**; the sidebar says **Eastwind Aircon**, with a yellow **Simulation** box at the bottom.
+- [ ] Sidebar → **Try a sample day**. The sidebar says **PAilot** and **Eastwind Aircon**, with a yellow **Simulation** box at the bottom.
 - [ ] **Settings → Sample day → Reset the sample day**, then **Yes**. Back on **Dispatch**, the bottom bar reads **Schedule version 1 · 1 job needs a technician** (Raffles Place).
 - [ ] Header **Priority: On-time first**.
-- [ ] Close the demo controls panel (flask icon in the header) so the map is clear. You don't need it for the core demo.
+- [ ] Close the demo controls panel (flask icon in the header) so the map is clear. You don't need it for the core demo. It opens again each time you come back to Dispatch from another page; close it again.
 - [ ] One rule: **do the sections in order, and don't reset mid-demo.** Each step builds on the one before. If you must start over, reset and begin again at section 3.
 
 ---

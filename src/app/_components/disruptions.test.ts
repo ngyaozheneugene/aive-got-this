@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEventBodySchema } from '../../shared/contracts/events';
-import { DISRUPTIONS, disruptionForCancel, disruptionForOverrun, disruptionForUnavailable, findDisruption } from './disruptions';
+import { DISRUPTIONS, rememberBoard, disruptionForCancel, disruptionForOverrun, disruptionForUnavailable, findDisruption } from './disruptions';
 
 describe('DISRUPTIONS', () => {
   it('exposes the three demo disruptions in order', () => {
@@ -64,5 +64,10 @@ describe('disruptions raised from the board', () => {
     expect(findDisruption('cancel:job_ben_1:customer_cancelled').body).toEqual({
       type: 'job_cancelled', payload: { jobId: 'job_ben_1', reason: 'customer_cancelled' },
     });
+  });
+
+  it('names the technician in a request rebuilt after a page change', () => {
+    rememberBoard({ technicians: [{ technician: { id: 'tech_lina', name: 'Lina' } }], jobs: [] });
+    expect(findDisruption('off:tech_lina:until:2026-10-20:14:00').headline).toBe('Lina is out until 14:00');
   });
 });

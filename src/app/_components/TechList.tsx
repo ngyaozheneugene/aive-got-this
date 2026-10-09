@@ -373,7 +373,7 @@ function WaitingJob({
       ) : onFind && !onOpen ? (
         <span className="grid justify-items-end gap-1">
           <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-destructive">
-            {urgent ? 'Urgent' : row.job.priority}
+            {PRIORITY_LABEL[row.job.priority] ?? row.job.priority}
           </span>
           <span className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold whitespace-nowrap text-primary-foreground">
             Find a technician
@@ -381,7 +381,7 @@ function WaitingJob({
         </span>
       ) : (
         <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-destructive">
-          {urgent ? 'Urgent' : row.job.priority}
+          {PRIORITY_LABEL[row.job.priority] ?? row.job.priority}
         </span>
       )}
     </button>
@@ -525,6 +525,8 @@ function CancelForm({ customer, onSend, onClose }: { customer: string; onSend: (
     </span>
   );
 }
+
+const PRIORITY_LABEL: Record<string, string> = { urgent: 'Urgent', on_demand: 'On demand', when_available: 'When available' };
 
 const LATE_CHOICES = [15, 30, 45, 60, 90, 120];
 
