@@ -65,7 +65,7 @@ export function riskCopy(risk: RiskLevel | string): { label: string; detail: str
     return { label: 'High impact', detail: 'This moves customer promises. Check it carefully before approving.', tone: 'danger' };
   }
   if (risk === 'medium') {
-    return { label: 'Needs your approval', detail: 'This gives a technician new work, so a person signs it off.', tone: 'warning' };
+    return { label: 'Needs your approval', detail: 'This changes who does what today, so a person signs it off.', tone: 'warning' };
   }
   return { label: 'Low impact', detail: 'A small change. Still yours to approve.', tone: 'success' };
 }
@@ -104,6 +104,19 @@ export function describeLeftForCall(board: DeskBoard, plan: CandidatePlan): stri
     const who = previous ? names.get(previous.technicianId) ?? 'their technician' : 'their technician';
     return `Call ${row.customer.name}: ${when} has no technician (${CALL_REASON[reason]} ${who})`;
   });
+}
+
+/**
+ * Jobs the plan cancels (ADR 015), one sentence each:
+ * "Cancel Tan Household: frees Ben 09:00–10:30".
+ */
+export function describeCancelled(board: DeskBoard, plan: CandidatePlan): string[] {
+  const names = new Map(board.technicians.map((t) => [t.technician.id, t.technician.name]));
+  return buildScheduleView(board, plan).cancelled.map(({ row, previous }) =>
+    previous
+      ? `Cancel ${row.customer.name}: frees ${names.get(previous.technicianId) ?? 'their technician'} ${clock(previous.start)}–${clock(previous.end)}`
+      : `Cancel ${row.customer.name}: it was still waiting, so no one's day changes`,
+  );
 }
 
 const WAITING_REASON: Record<string, string> = {
@@ -247,6 +260,8 @@ export function refusalCopy(code: string): { title: string; detail: string } {
     case 'event_gone':
     case 'event_not_found':
       return { title: 'This event was cleared', detail: 'The board was reset while options were being worked out, perhaps from another desk. Nothing was changed. Raise it again if it still applies.' };
+    case 'job_already_started':
+      return { title: 'That job has already started', detail: 'Work under way cannot be cancelled. Nothing was changed.' };
     case 'job_already_assigned':
       return { title: 'That job already has a technician', detail: 'Nothing was changed. To give it to someone else, mark its technician unavailable or arrange it manually.' };
     case 'invalid_event_context':

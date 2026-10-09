@@ -4,7 +4,7 @@ import type { PlanningSchedule } from '../../dispatch/board-schedule';
 import { propose, proposeWithSidecar } from '../../matching/propose';
 import { validatePlan } from '../../matching/validate';
 import {
-  jobOverrunPayloadSchema, operationalEventSchema, placeWaitingPayloadSchema, technicianUnavailablePayloadSchema,
+  jobCancelledPayloadSchema, jobOverrunPayloadSchema, operationalEventSchema, placeWaitingPayloadSchema, technicianUnavailablePayloadSchema,
   unavailabilityIssue, urgentJobPayloadSchema,
 } from '../../shared/contracts/events';
 import { applyDisruption, parseUnavailability, unavailabilityOnDay } from '../../matching/disruption';
@@ -30,6 +30,11 @@ export interface UrgentTools extends SchedulerPort {
 }
 
 function primaryId(event: OperationalEvent): { jobId?: string; technicianId?: string; jobIds?: string[] } {
+  if (event.type === 'job_cancelled') {
+    const payload = jobCancelledPayloadSchema.strict().safeParse(event.normalizedPayload);
+    if (!payload.success) throw new AgentError('INVALID_EVENT_PAYLOAD');
+    return { jobId: payload.data.jobId };
+  }
   if (event.type === 'place_waiting') {
     const payload = placeWaitingPayloadSchema.strict().safeParse(event.normalizedPayload);
     if (!payload.success) throw new AgentError('INVALID_EVENT_PAYLOAD');
@@ -92,6 +97,9 @@ export function createUrgentTools(
           !event.affectedIds.includes(ids.technicianId)) {
         throw new AgentError('EVENT_AFFECTED_IDS_MISMATCH');
       }
+      if (event.type === 'job_cancelled' && event.affectedIds.some((id) => id !== ids.jobId)) {
+        throw new AgentError('EVENT_AFFECTED_IDS_MISMATCH');
+      }
       if (event.type === 'job_overrun' && ids.jobId && event.affectedIds.length &&
           !event.affectedIds.includes(ids.jobId)) {
         throw new AgentError('EVENT_AFFECTED_IDS_MISMATCH');
@@ -104,10 +112,19 @@ export function createUrgentTools(
       if (unavailability && (unavailabilityIssue(unavailability) || !unavailabilityOnDay(unavailability, board.date))) {
         throw new AgentError('INVALID_EVENT_PAYLOAD');
       }
+      // Cancelling: the job must be on today's board and not yet started. Work
+      // under way is the technician's to finish, not something to cancel.
+      if (event.type === 'job_cancelled') {
+        const target = board.jobs.find((row) => row.id === ids.jobId);
+        if (!target) throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
+        if (['en_route', 'on_site', 'done'].includes(target.status) || target.lockState === 'in_progress') {
+          throw new AgentError('JOB_ALREADY_STARTED');
+        }
+      }
       // The board once the event has happened: both engines and the validator plan on this.
       const schedule = applyDisruption(board, event);
-      const job = ids.jobId ? schedule.jobs.find((row) => row.id === ids.jobId) : undefined;
-      if (ids.jobId && !job) throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
+      const job = ids.jobId && event.type !== 'job_cancelled' ? schedule.jobs.find((row) => row.id === ids.jobId) : undefined;
+      if (ids.jobId && !job && event.type !== 'job_cancelled') throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
       // "Find a technician" for a job that already has one is not a request to
       // plan: the fallback would quietly hand the job to someone else.
       if (event.type === 'urgent_job' && schedule.assignments.some((a) => a.jobId === ids.jobId)) {

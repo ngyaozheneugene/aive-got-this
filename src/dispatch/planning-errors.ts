@@ -51,6 +51,9 @@ export function planningError(error: unknown): PlanningError {
     return new PlanningError('event_gone', 410,
       'This event no longer exists. The workspace was probably reset while planning ran.', 'INVALID');
   }
+  if (code === 'JOB_ALREADY_STARTED') {
+    return new PlanningError('job_already_started', 409, 'That job has started; it cannot be cancelled. Nothing was changed.', 'INVALID');
+  }
   if (code === 'JOB_ALREADY_ASSIGNED') {
     return new PlanningError('job_already_assigned', 409, 'That job already has a technician. Nothing was changed.', 'INVALID');
   }
@@ -62,7 +65,7 @@ export function planningError(error: unknown): PlanningError {
   }
   if (code === 'UNSUPPORTED_EVENT_TYPE') {
     return new PlanningError('unsupported_event_type', 422,
-      'This endpoint supports urgent_job, technician_unavailable, job_overrun and place_waiting only.', 'INVALID');
+      'This endpoint supports urgent_job, technician_unavailable, job_overrun, place_waiting and job_cancelled only.', 'INVALID');
   }
   if (code === 'EVENT_NOT_PLANNABLE') {
     return new PlanningError('event_not_plannable', 409, 'This event is no longer available for planning.');

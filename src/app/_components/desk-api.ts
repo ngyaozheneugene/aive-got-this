@@ -87,7 +87,8 @@ export type EventBody =
   | { type: 'urgent_job'; payload: { jobId: string } }
   | { type: 'technician_unavailable'; payload: { technicianId: string; from?: string; until?: string } }
   | { type: 'job_overrun'; payload: { jobId: string; overrunMinutes: number } }
-  | { type: 'place_waiting'; payload: { jobIds: string[] } };
+  | { type: 'place_waiting'; payload: { jobIds: string[] } }
+  | { type: 'job_cancelled'; payload: { jobId: string; reason: 'customer_cancelled' | 'duplicate' | 'other' } };
 
 const ACTOR = 'desk_coordinator';
 

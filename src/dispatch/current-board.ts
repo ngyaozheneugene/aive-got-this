@@ -15,13 +15,15 @@ export async function getCurrentBoard(db: IDatabase, date?: string): Promise<Des
 
   const today = await boardDate(db);
   const day = date ?? today;
-  const [technicians, jobs, allAssignments, storedShifts, settings] = await Promise.all([
+  const [technicians, dayJobs, allAssignments, storedShifts, settings] = await Promise.all([
     db.technicians.listActive(),
     db.jobs.listByScheduledDate(day),
     db.assignments.listAll(),
     db.shifts.listByDate(day),
     db.settings.get(),
   ]);
+  // A cancelled job is off the board; it is listed apart, for the Jobs page (ADR 015).
+  const jobs = dayJobs.filter((j) => j.status !== 'cancelled');
   const shifts = withDefaultShifts(storedShifts, technicians, day, settings.dayStart);
   const jobIds = new Set(jobs.map((j) => j.id));
   const assignments = allAssignments.filter((a) => jobIds.has(a.jobId));
@@ -57,12 +59,19 @@ export async function getCurrentBoard(db: IDatabase, date?: string): Promise<Des
     jobRows.push({ job, customer, site, assignment, technician });
   }
 
+  const cancelled: DeskJobRow[] = [];
+  for (const job of dayJobs.filter((j) => j.status === 'cancelled')) {
+    const [customer, site] = await Promise.all([db.customers.getById(job.customerId), db.sites.getById(job.siteId)]);
+    if (customer && site) cancelled.push({ job, customer, site });
+  }
+
   return {
     date: day,
     today,
     snapshot,
     technicians: technicianRows,
     jobs: jobRows,
+    cancelled,
     workingDay: { start: settings.dayStart, end: settings.dayEnd },
   };
 }

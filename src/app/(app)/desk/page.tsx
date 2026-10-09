@@ -14,8 +14,8 @@ import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import {
-  disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, disruptionForWaiting, findDisruption, fromReport,
-  type Disruption,
+  disruptionForBooking, disruptionForCancel, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, disruptionForWaiting, findDisruption, fromReport,
+  type CancelReason, type Disruption,
 } from '../../_components/disruptions';
 import { GENERIC_EXAMPLES, ReportBar, SAMPLE_EXAMPLES } from '../../_components/ReportBar';
 import type { ReportDraft } from '../../_components/desk-api';
@@ -246,6 +246,24 @@ export default function DeskPage() {
     },
     [board, priority, load],
   );
+
+  // The Jobs page sends a cancellation here as ?cancel=<jobId>&reason=…: ask
+  // for options once the board is in, then drop the request from the address.
+  const cancelHandled = useRef(false);
+  useEffect(() => {
+    if (!board || cancelHandled.current) return;
+    const url = new URL(window.location.href);
+    const jobId = url.searchParams.get('cancel');
+    if (!jobId) return;
+    cancelHandled.current = true;
+    const reason = url.searchParams.get('reason');
+    url.searchParams.delete('cancel');
+    url.searchParams.delete('reason');
+    window.history.replaceState(null, '', url);
+    const row = board.jobs.find((r) => r.job.id === jobId);
+    const why: CancelReason = reason === 'duplicate' || reason === 'other' ? reason : 'customer_cancelled';
+    if (row) void simulate(disruptionForCancel(row, why).key);
+  }, [board, simulate]);
 
   // Booking a call for a job that is not on the board: save it as waiting, then
   // ask for options exactly as "Find a technician" would.
@@ -773,6 +791,9 @@ export default function DeskPage() {
             }
             onReportLate={
               busy || pending || lookingAhead ? undefined : (row, minutes) => void simulate(disruptionForOverrun(row, minutes).key)
+            }
+            onCancelJob={
+              busy || pending || lookingAhead ? undefined : (row, reason) => void simulate(disruptionForCancel(row, reason).key)
             }
             onNewJob={busy || pending || lookingAhead ? undefined : () => setBookingOpen(true)}
             onPlanAll={

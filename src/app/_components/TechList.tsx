@@ -1,9 +1,9 @@
 'use client';
 
-import { ChevronRight, Clock, Lock, Plus, Search, Sparkles, UserX } from 'lucide-react';
+import { Ban, ChevronRight, Clock, Lock, Plus, Search, Sparkles, UserX } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CandidatePlan, DeskBoard, DeskJobRow, Shift } from '../../shared/types/domain';
-import type { Availability } from './disruptions';
+import { CANCEL_REASON_COPY, type Availability, type CancelReason } from './disruptions';
 import { clock, minutesOfDay, techColor } from './geo';
 import { cn } from './lib/utils';
 import { buildScheduleView, type ScheduleSlot } from './schedule-view';
@@ -26,6 +26,7 @@ export function TechList({
   onFindTechnician,
   onMarkUnavailable,
   onReportLate,
+  onCancelJob,
   onNewJob,
   onPlanAll,
   newJobForm,
@@ -51,6 +52,8 @@ export function TechList({
   onMarkUnavailable?: (technicianId: string, availability: Availability) => void;
   /** Report a booked job running late; absent when reporting is not possible. */
   onReportLate?: (row: DeskJobRow, minutes: number) => void;
+  /** Cancel a booked job that has not started (ADR 015); absent when reporting is not possible. */
+  onCancelJob?: (row: DeskJobRow, reason: CancelReason) => void;
   /** Open the new-job form; absent when booking is not possible. */
   onNewJob?: () => void;
   /** Find technicians for every waiting job in one plan (ADR 014); absent when planning is not possible. */
@@ -61,7 +64,8 @@ export function TechList({
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   // One report form open at a time: away for a technician, or late for a job.
-  const [form, setForm] = useState<{ kind: 'away'; id: string } | { kind: 'late'; id: string } | null>(null);
+  const [form, setForm] = useState<{ kind: 'away' | 'late' | 'cancel'; id: string } | null>(null);
+  const toggle = (kind: 'late' | 'cancel', id: string) => setForm(form?.kind === kind && form.id === id ? null : { kind, id });
   const view = useMemo(() => buildScheduleView(board, plan), [board, plan]);
   const hours = (hhmm: string) => Number(hhmm.slice(0, 2)) + Number(hhmm.slice(3)) / 60;
   const dayStartHour = Math.min(DAY_START, Math.floor(hours(board.workingDay?.start ?? '08:00')) - 1);
@@ -262,8 +266,11 @@ export function TechList({
                       slot={s}
                       color={color}
                       lateOpen={form?.kind === 'late' && form.id === s.jobId}
-                      onLate={onReportLate && !plan ? () => setForm(form?.kind === 'late' && form.id === s.jobId ? null : { kind: 'late', id: s.jobId }) : undefined}
+                      onLate={onReportLate && !plan ? () => toggle('late', s.jobId) : undefined}
                       onSendLate={onReportLate ? (minutes) => { setForm(null); onReportLate(s.row, minutes); } : undefined}
+                      cancelOpen={form?.kind === 'cancel' && form.id === s.jobId}
+                      onCancel={onCancelJob && !plan && cancellable(s.row) ? () => toggle('cancel', s.jobId) : undefined}
+                      onSendCancel={onCancelJob ? (reason) => { setForm(null); onCancelJob(s.row, reason); } : undefined}
                     />
                   ))}
                   {leaving.map((s) => (
@@ -388,6 +395,9 @@ function Stop({
   lateOpen,
   onLate,
   onSendLate,
+  cancelOpen,
+  onCancel,
+  onSendCancel,
 }: {
   n: number;
   slot: ScheduleSlot;
@@ -396,6 +406,10 @@ function Stop({
   /** Toggle the "running late" form; absent when reporting is off. */
   onLate?: () => void;
   onSendLate?: (minutes: number) => void;
+  cancelOpen?: boolean;
+  /** Toggle the "cancel this job" form; absent when the job cannot be cancelled. */
+  onCancel?: () => void;
+  onSendCancel?: (reason: CancelReason) => void;
 }) {
   const moved = slot.change !== 'unchanged';
   const locked = slot.row.job.lockState && slot.row.job.lockState !== 'none';
@@ -441,13 +455,74 @@ function Stop({
             <Clock className="size-3" />
           </button>
         ) : null}
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-expanded={cancelOpen}
+            title="Cancel this job"
+            aria-label={`Cancel the job at ${slot.row.site.addressLine1}`}
+            className={cn('grid size-5 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive', cancelOpen && 'bg-accent text-destructive', FOCUS)}
+          >
+            <Ban className="size-3" />
+          </button>
+        ) : null}
       </span>
       {lateOpen && onSendLate ? (
         <span className="col-span-2 col-start-3 pt-1.5">
           <LateForm onSend={onSendLate} onCancel={onLate!} />
         </span>
       ) : null}
+      {cancelOpen && onSendCancel ? (
+        <span className="col-span-2 col-start-3 pt-1.5">
+          <CancelForm customer={slot.row.customer.name} onSend={onSendCancel} onClose={onCancel!} />
+        </span>
+      ) : null}
     </li>
+  );
+}
+
+/** A job not yet started can be cancelled; work under way cannot (ADR 015). */
+export function cancellable(row: DeskJobRow): boolean {
+  return !['en_route', 'on_site', 'done', 'cancelled'].includes(row.job.status) && row.job.lockState !== 'in_progress';
+}
+
+/** Why the job is cancelled, then Send. Nothing changes until the plan is approved. */
+function CancelForm({ customer, onSend, onClose }: { customer: string; onSend: (reason: CancelReason) => void; onClose: () => void }) {
+  const [reason, setReason] = useState<CancelReason>('customer_cancelled');
+  return (
+    <span
+      className="grid gap-1.5 rounded-md border bg-background/60 p-2"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
+      <span className="text-[11.5px] font-medium">Cancel {customer}</span>
+      <span role="radiogroup" aria-label="Why" className="flex flex-wrap gap-1">
+        {(Object.keys(CANCEL_REASON_COPY) as CancelReason[]).map((r) => (
+          <button
+            key={r}
+            type="button"
+            role="radio"
+            aria-checked={reason === r}
+            onClick={() => setReason(r)}
+            className={cn('rounded-md border px-1.5 py-0.5 text-[11px] hover:bg-accent', reason === r && 'border-primary bg-primary/10 text-foreground', FOCUS)}
+          >
+            {CANCEL_REASON_COPY[r]}
+          </button>
+        ))}
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="text-[11px] text-muted-foreground">Its time goes to waiting jobs that fit.</span>
+        <button
+          type="button"
+          onClick={() => onSend(reason)}
+          className={cn('ml-auto rounded-md bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground', FOCUS)}
+        >
+          Send
+        </button>
+      </span>
+    </span>
   );
 }
 

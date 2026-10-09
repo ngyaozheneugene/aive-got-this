@@ -26,6 +26,8 @@ export interface ScheduleView {
   unassigned: DeskJobRow[];
   /** Booked jobs the plan takes off the day for a call (partial coverage). */
   leftForCall: Array<{ row: DeskJobRow; reason: UnassignReason; previous?: { technicianId: string; start: number; end: number } }>;
+  /** Jobs the plan cancels (ADR 015): off the day, booked or waiting. */
+  cancelled: Array<{ row: DeskJobRow; previous?: { technicianId: string; start: number; end: number } }>;
   /** Visible hour range, whole hours. */
   startHour: number;
   endHour: number;
@@ -92,8 +94,20 @@ export function buildScheduleView(board: DeskBoard, plan?: CandidatePlan): Sched
     }
   }
 
+  // Cancellations: off the day entirely, not waiting.
+  const cancelled: ScheduleView['cancelled'] = [];
+  const cancelledIds = new Set<string>();
+  for (const c of plan?.changeSet ?? []) {
+    if (c.action !== 'cancel' || typeof c.jobId !== 'string') continue;
+    const row = rowByJob.get(c.jobId);
+    const before = base.get(c.jobId);
+    slots.delete(c.jobId);
+    cancelledIds.add(c.jobId);
+    if (row) cancelled.push({ row, previous: before ? { technicianId: before.technicianId, start: before.start, end: before.end } : undefined });
+  }
+
   const all = [...slots.values()].sort((a, b) => a.start - b.start);
-  const unassigned = board.jobs.filter((r) => !slots.has(r.job.id));
+  const unassigned = board.jobs.filter((r) => !slots.has(r.job.id) && !cancelledIds.has(r.job.id));
 
   let lo = 8 * 60;
   let hi = 18 * 60;
@@ -106,6 +120,7 @@ export function buildScheduleView(board: DeskBoard, plan?: CandidatePlan): Sched
     slots: all,
     unassigned,
     leftForCall,
+    cancelled,
     startHour: Math.floor(lo / 60),
     endHour: Math.ceil(hi / 60),
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEventBodySchema } from '../../shared/contracts/events';
-import { DISRUPTIONS, disruptionForOverrun, disruptionForUnavailable, findDisruption } from './disruptions';
+import { DISRUPTIONS, disruptionForCancel, disruptionForOverrun, disruptionForUnavailable, findDisruption } from './disruptions';
 
 describe('DISRUPTIONS', () => {
   it('exposes the three demo disruptions in order', () => {
@@ -55,5 +55,14 @@ describe('disruptions raised from the board', () => {
     expect(findDisruption('late:job_wei_2:75').body).toEqual({ type: 'job_overrun', payload: { jobId: 'job_wei_2', overrunMinutes: 75 } });
     expect(away.headline).toBe('Kumar is leaving at 15:30');
     expect(late.headline).toBe('Kumar’s job at Jurong Gateway Rd is running 40 min late');
+  });
+
+  it('sends a cancellation the platform accepts, and rebuilds it from the key', () => {
+    const cancel = disruptionForCancel(row, 'duplicate');
+    expect(createEventBodySchema.safeParse(cancel.body).success).toBe(true);
+    expect(cancel.body).toEqual({ type: 'job_cancelled', payload: { jobId: row.job.id, reason: 'duplicate' } });
+    expect(findDisruption('cancel:job_ben_1:customer_cancelled').body).toEqual({
+      type: 'job_cancelled', payload: { jobId: 'job_ben_1', reason: 'customer_cancelled' },
+    });
   });
 });

@@ -33,6 +33,10 @@ const OPTIMIZER_URL = process.env.OPTIMIZER_URL || 'http://localhost:8000';
  * For technician_unavailable / job_overrun: attempts Python OR-Tools sidecar with 10s fallback to insertion.
  */
 export function propose(rawInput: ProposeInput): ProposeOutput {
+  if (rawInput.event.type === 'job_cancelled') {
+    const fill = fillRequest(rawInput);
+    return cancellationPlans(rawInput, fill ? proposeInsertion(fill) : null);
+  }
   const input = withDisruption(rawInput);
   const { event } = input;
 
@@ -93,11 +97,83 @@ function eligibilityFor(schedule: ProposeInput['schedule']): Record<string, stri
  * The board as it is once the event has happened: an unavailable technician's
  * shift is cut. Idempotent, so a caller that already applied it loses nothing.
  */
+/**
+ * A cancellation (ADR 015) frees the job's time. Waiting jobs may fill it,
+ * placed exactly as "Plan all" places them, around booked work that stays put.
+ * Null when nothing is waiting: the plan is then the cancellation alone.
+ */
+function fillRequest(rawInput: ProposeInput): ProposeInput | null {
+  const input = withDisruption(rawInput);
+  const booked = new Set(liveSlots(input.schedule).map((s) => s.jobId));
+  const waiting = (input.schedule.jobs ?? []).filter((j) => !booked.has(j.id)).map((j) => j.id);
+  if (!waiting.length) return null;
+  return {
+    ...input,
+    event: { ...input.event, type: 'place_waiting', normalizedPayload: { jobIds: waiting }, affectedIds: waiting },
+  };
+}
+
+/** The cancellation first, then whatever filling the engine proposed; the cancellation alone when nothing fits. */
+function cancellationPlans(rawInput: ProposeInput, fill: ProposeOutput | null): ProposeOutput {
+  const input = withDisruption(rawInput);
+  const { event, schedule } = input;
+  const jobId = event.normalizedPayload.jobId as string;
+  const was = (rawInput.schedule.assignments ?? []).find(
+    (a) => a.jobId === jobId && (a.status === 'accepted' || a.status === 'offered'),
+  );
+  const cancel = { action: 'cancel', jobId, fromTechnicianId: was?.technicianId ?? null, reason: event.normalizedPayload.reason ?? 'other' };
+  const measureAs = fill?.plans.length ? fillEvent(event, fill) : event;
+
+  const plans: CandidatePlan[] = (fill?.plans ?? []).map((plan) => {
+    const changeSet = [cancel, ...plan.changeSet];
+    const { metrics, workload } = measurePlan(plan.assignments, measureAs, schedule);
+    const out: CandidatePlan = { ...plan, id: `${plan.id}_cancel`, proposalId: event.id, changeSet, metrics, solverTrace: { ...plan.solverTrace, workload } };
+    out.validations = validatePlan(out, schedule);
+    return out;
+  });
+  if (!plans.length) {
+    // Nothing waiting, or nothing that fits: the same plan for both profiles.
+    for (const profile of ['sla_first', 'minimal_disruption'] as const) {
+      const assignments = liveSlots(schedule);
+      const { metrics, workload, travelBefore } = measurePlan(assignments, event, schedule);
+      const plan: CandidatePlan = {
+        id: `plan_${profile}_cancel_${event.id}`,
+        proposalId: event.id,
+        sourceSnapshotId: event.sourceSnapshotId || schedule.snapshotId,
+        profile,
+        assignments: assignments.map((s) => ({ ...s, travelBeforeMinutes: travelBefore.get(s.jobId) ?? s.travelBeforeMinutes })),
+        changeSet: [cancel],
+        metrics,
+        validations: { ok: true, violations: [] },
+        solverTrace: { engine: fill?.engine ?? 'insertion', objective: 'cancel_only', workload },
+        timedOut: false,
+        durationMs: 0,
+        status: 'VALIDATED',
+        createdAt: `${schedule.date || EASTWIND_DATE}T08:00:00+08:00`,
+      };
+      plan.validations = validatePlan(plan, schedule);
+      plans.push(plan);
+    }
+  }
+  (plans.find((p) => p.profile === input.profile) ?? plans[0])!.status = 'RECOMMENDED';
+  return { plans, engine: fill?.engine ?? 'insertion', timedOut: fill?.timedOut ?? false };
+}
+
+function fillEvent(event: ProposeInput['event'], fill: ProposeOutput): ProposeInput['event'] {
+  const ids = fill.plans.flatMap((p) => p.changeSet.filter((c) => c.action === 'assign' || c.action === 'leave_waiting').map((c) => c.jobId as string));
+  const jobIds = [...new Set(ids)];
+  return { ...event, type: 'place_waiting', normalizedPayload: { jobIds }, affectedIds: jobIds };
+}
+
 function withDisruption(input: ProposeInput): ProposeInput {
   return { ...input, schedule: applyDisruption(input.schedule, input.event) };
 }
 
 export async function proposeWithSidecar(rawInput: ProposeInput): Promise<ProposeOutput> {
+  if (rawInput.event.type === 'job_cancelled') {
+    const fill = fillRequest(rawInput);
+    return cancellationPlans(rawInput, fill ? await proposeWithSidecar(fill) : null);
+  }
   const input = withDisruption(rawInput);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SOLVER_TIMEOUT_MS);

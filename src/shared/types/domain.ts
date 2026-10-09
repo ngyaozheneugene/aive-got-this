@@ -58,7 +58,8 @@ export type OperationalEventType =
   | 'urgent_job'
   | 'technician_unavailable'
   | 'job_overrun'
-  | 'place_waiting';
+  | 'place_waiting'
+  | 'job_cancelled';
 
 export type OperationalEventStatus =
   | 'RECEIVED'
@@ -492,6 +493,8 @@ export interface DeskBoard {
   jobs: DeskJobRow[];
   /** The company's working day, HH:MM (ADR 011). */
   workingDay?: { start: string; end: string };
+  /** Jobs cancelled for this day: off the board, listed for the record (ADR 015). */
+  cancelled?: DeskJobRow[];
 }
 
 export interface DeskProposalView {

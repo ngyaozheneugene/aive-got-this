@@ -6,7 +6,7 @@ import type { CandidatePlan, DeskBoard } from '../../shared/types/domain';
 import { DeskApiError, deskApi, type PlanResult } from './desk-api';
 import { CompareView } from './CompareView';
 import { ApproveBar, type DecisionPhase } from './ApproveBar';
-import { approveReasons, describeChanges, profileName, recommendationReason, refusalCopy, riskCopy } from './copy';
+import { approveReasons, describeCancelled, describeChanges, profileName, recommendationReason, refusalCopy, riskCopy } from './copy';
 import { DrawnCheck, LiveDot } from './fx';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -109,7 +109,7 @@ export function ProposalPanel({
       if (code === 'already_committed') {
         // Already on the schedule: show it as done rather than offer the choice again.
         const plan = plans.find((p) => p.id === selectedPlanId);
-        if (plan) setApplied((prev) => prev ?? { changes: describeChanges(sourceBoard, plan), plan });
+        if (plan) setApplied((prev) => prev ?? { changes: [...describeCancelled(sourceBoard, plan), ...describeChanges(sourceBoard, plan)], plan });
         setPhase('committed');
         onAlreadyApplied?.();
         return;
@@ -122,7 +122,7 @@ export function ProposalPanel({
 
   const apply = async (plan: CandidatePlan) => {
     const res = await deskApi.commit(proposal.id, plan.id, proposal.sourceSnapshotId);
-    setApplied({ changes: describeChanges(sourceBoard, plan), version: res.snapshot.version, plan });
+    setApplied({ changes: [...describeCancelled(sourceBoard, plan), ...describeChanges(sourceBoard, plan)], version: res.snapshot.version, plan });
     setPhase('committed');
     onCommitted(res.snapshot.version);
   };
