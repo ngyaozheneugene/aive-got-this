@@ -51,6 +51,9 @@ export function planningError(error: unknown): PlanningError {
     return new PlanningError('event_gone', 410,
       'This event no longer exists. The workspace was probably reset while planning ran.', 'INVALID');
   }
+  if (code === 'JOB_ALREADY_ASSIGNED') {
+    return new PlanningError('job_already_assigned', 409, 'That job already has a technician. Nothing was changed.', 'INVALID');
+  }
   if (code === 'EVENT_JOB_NOT_FOUND_ON_BOARD') {
     return new PlanningError('invalid_event_context', 422, 'The event must reference a job on the current board.', 'INVALID');
   }

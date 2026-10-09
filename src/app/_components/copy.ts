@@ -247,6 +247,8 @@ export function refusalCopy(code: string): { title: string; detail: string } {
     case 'event_gone':
     case 'event_not_found':
       return { title: 'This event was cleared', detail: 'The board was reset while options were being worked out, perhaps from another desk. Nothing was changed. Raise it again if it still applies.' };
+    case 'job_already_assigned':
+      return { title: 'That job already has a technician', detail: 'Nothing was changed. To give it to someone else, mark its technician unavailable or arrange it manually.' };
     case 'invalid_event_context':
       return { title: 'That job isn’t on this board', detail: 'It may have been removed or the board reset from another desk. Nothing was changed. Check the board and try again.' };
     case 'no_candidate_plans':

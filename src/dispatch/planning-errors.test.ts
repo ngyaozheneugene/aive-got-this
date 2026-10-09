@@ -12,4 +12,8 @@ describe('planningError', () => {
   it('keeps a job missing from the board as an invalid event', () => {
     expect(planningError(new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD'))).toMatchObject({ code: 'invalid_event_context', httpStatus: 422 });
   });
+
+  it('says a job that already has a technician is not something to plan', () => {
+    expect(planningError(new AgentError('JOB_ALREADY_ASSIGNED'))).toMatchObject({ code: 'job_already_assigned', httpStatus: 409 });
+  });
 });
