@@ -105,6 +105,17 @@ describe('place_waiting: the agent and commit', () => {
     await expect(tools.readContext(event.id)).rejects.toEqual(new AgentError('PLANNING_CONTEXT_CHANGED'));
   });
 
+  it('refuses "find a technician" for a job that already has one', async () => {
+    const db = await dayWithWaiting();
+    const board = await getCurrentBoard(db);
+    const booked = board.jobs.find((r) => r.assignment)!;
+    const event = await db.events.create({
+      type: 'urgent_job', rawText: '', normalizedPayload: { jobId: booked.job.id }, sourceSnapshotId: board.snapshot.id,
+      affectedIds: [booked.job.id], validationIssues: [], status: 'VALIDATED',
+    });
+    await expect(createUrgentTools(db).readContext(event.id)).rejects.toEqual(new AgentError('JOB_ALREADY_ASSIGNED'));
+  });
+
   it('commits the plan: placed jobs are assigned, the rest still wait', async () => {
     const db = await dayWithWaiting();
     const { event } = await placeWaiting(db);

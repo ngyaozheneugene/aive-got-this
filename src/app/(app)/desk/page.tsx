@@ -15,8 +15,9 @@ import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import {
   disruptionForBooking, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, disruptionForWaiting, findDisruption, fromReport,
+  type Disruption,
 } from '../../_components/disruptions';
-import { ReportBar } from '../../_components/ReportBar';
+import { GENERIC_EXAMPLES, ReportBar, SAMPLE_EXAMPLES } from '../../_components/ReportBar';
 import type { ReportDraft } from '../../_components/desk-api';
 import { NewJobForm } from '../../_components/NewJobForm';
 import type { CreateJobBody } from '../../../shared/contracts/jobs';
@@ -726,6 +727,7 @@ export default function DeskPage() {
                   disabledNote={lookingAhead ? 'Switch back to today to send events.' : undefined}
                   onSimulate={(k) => void simulate(k)}
                   onReset={() => void reset()}
+                  staleReason={(key) => staleReason(findDisruption(key), board)}
                 />
               </motion.div>
             ) : null}
@@ -744,7 +746,13 @@ export default function DeskPage() {
           <TechList
             board={board}
             teamName={`${settings.name} · field team`}
-            reportBar={<ReportBar disabled={busy || pending || lookingAhead || board.technicians.length === 0} onConfirm={confirmReport} />}
+            reportBar={
+              <ReportBar
+                disabled={busy || pending || lookingAhead || board.technicians.length === 0}
+                onConfirm={confirmReport}
+                examples={simulation ? SAMPLE_EXAMPLES : GENERIC_EXAMPLES}
+              />
+            }
             plan={preview}
             unavailableTechId={unavailableTechId}
             focusTechId={focusTechId}
@@ -857,6 +865,29 @@ export default function DeskPage() {
 
     </div>
   );
+}
+
+/**
+ * Why a scripted demo event no longer fits the board, or null. Run out of
+ * order, the Raffles Place call would ask to place a job that already has a
+ * technician, and the planner would move it to someone else.
+ */
+function staleReason(d: Disruption, board: DeskBoard): string | null {
+  const body = d.body;
+  if (body.type === 'urgent_job' || body.type === 'job_overrun') {
+    const row = board.jobs.find((r) => r.job.id === body.payload.jobId);
+    if (!row) return 'That job is not on today’s board. Reset the demo day to send this again.';
+    if (body.type === 'urgent_job' && row.assignment) {
+      return `${row.customer.name} already has a technician (${row.technician?.name ?? 'assigned'}). Reset the demo day to send this again.`;
+    }
+    if (body.type === 'job_overrun' && !row.assignment) return `${row.customer.name} has no technician now, so it cannot run late.`;
+  }
+  if (body.type === 'technician_unavailable') {
+    const tech = board.technicians.find((t) => t.technician.id === body.payload.technicianId);
+    if (!tech) return 'That technician is not on today’s board.';
+    if (tech.shift?.status === 'mc') return `${tech.technician.name} is already off today. Reset the demo day to send this again.`;
+  }
+  return null;
 }
 
 function ToolButton({

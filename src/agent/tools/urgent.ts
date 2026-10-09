@@ -108,6 +108,11 @@ export function createUrgentTools(
       const schedule = applyDisruption(board, event);
       const job = ids.jobId ? schedule.jobs.find((row) => row.id === ids.jobId) : undefined;
       if (ids.jobId && !job) throw new AgentError('EVENT_JOB_NOT_FOUND_ON_BOARD');
+      // "Find a technician" for a job that already has one is not a request to
+      // plan: the fallback would quietly hand the job to someone else.
+      if (event.type === 'urgent_job' && schedule.assignments.some((a) => a.jobId === ids.jobId)) {
+        throw new AgentError('JOB_ALREADY_ASSIGNED');
+      }
       // Placing waiting jobs: every one must be on today's board and still waiting.
       // One that was placed or removed since the request means the request is stale.
       if (ids.jobIds) {

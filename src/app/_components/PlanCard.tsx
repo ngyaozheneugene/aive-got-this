@@ -107,7 +107,7 @@ export function PlanCard({
               ))}
             </ul>
             <span className="text-xs text-muted-foreground">
-              Booked work stays where it is. Find a technician on one of these on its own can move booked jobs to make room.
+              Booked work stays where it is. Find a technician on one of these on its own may be able to move booked jobs to make room.
             </span>
           </div>
         ) : null}

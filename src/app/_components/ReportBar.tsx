@@ -7,11 +7,19 @@ import { cn } from './lib/utils';
 
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/60';
 
-const EXAMPLES = [
+/** The sample day's examples name its own people and jobs. */
+export const SAMPLE_EXAMPLES = [
   'Kumar’s van broke down, he’s out till 2pm',
   'Who’s free at 3pm for a water leak?',
   'The Bedok North job needs another 45 minutes',
   'New customer Tan, 9123 4567, 529536 Tampines St 81, leaking aircon, 2 to 5pm',
+];
+
+/** A company's own workspace: nothing here may name someone who is not on the team. */
+export const GENERIC_EXAMPLES = [
+  'Who’s free at 3pm?',
+  'What’s still waiting for a technician?',
+  'How busy is everyone today?',
 ];
 
 type Actionable = Exclude<ReportDraft, { kind: 'clarify' } | { kind: 'answer' }>;
@@ -32,7 +40,10 @@ const CONFIRM_LABEL: Record<Actionable['kind'], string> = {
 export function ReportBar({
   disabled,
   onConfirm,
+  examples = GENERIC_EXAMPLES,
 }: {
+  /** Shown under the box while it is empty. */
+  examples?: string[];
   /** Off while another event is being decided, or when looking ahead. */
   disabled: boolean;
   /** Act on a confirmed draft. Returns an error to show, or null. */
@@ -44,6 +55,7 @@ export function ReportBar({
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState('');
   const abort = useRef<AbortController | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
 
   const read = async (report: string) => {
     const trimmed = report.trim();
@@ -114,6 +126,7 @@ export function ReportBar({
             if (e.key === 'Escape') clear();
           }}
           disabled={disabled}
+          ref={box}
           rows={text.length > 60 ? 3 : 1}
           placeholder="What happened, or ask a question…"
           aria-label="What happened?"
@@ -132,8 +145,15 @@ export function ReportBar({
 
       {!text && !result && !busy && !disabled ? (
         <span className="flex flex-wrap gap-1">
-          {EXAMPLES.map((e) => (
-            <button key={e} type="button" onClick={() => setText(e)} className={cn('truncate rounded-full border px-2 py-0.5 text-[10.5px] text-muted-foreground hover:bg-accent hover:text-foreground', FOCUS)}>
+          {examples.map((e) => (
+            <button
+              key={e}
+              type="button"
+              // Into the box with the cursor, so Enter sends it.
+              onClick={() => {
+                setText(e);
+                box.current?.focus();
+              }} className={cn('truncate rounded-full border px-2 py-0.5 text-[10.5px] text-muted-foreground hover:bg-accent hover:text-foreground', FOCUS)}>
               {e}
             </button>
           ))}

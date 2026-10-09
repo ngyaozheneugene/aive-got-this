@@ -16,16 +16,20 @@ export function Simulator({
   disabledNote = 'The coordinator has one event to handle first.',
   onSimulate,
   onReset,
+  staleReason,
 }: {
   busy: boolean;
   disabled: boolean;
   /** Why sending is off right now. */
   disabledNote?: string;
+  /** Why a scripted event no longer fits the board (its job was placed, its technician is already off), or null. */
+  staleReason?: (disruptionKey: string) => string | null;
   onSimulate: (disruptionKey: string) => void;
   onReset: () => void;
 }) {
   const [disruptionKey, setDisruptionKey] = useState<string>(DISRUPTIONS[0]!.key);
   const disruption = findDisruption(disruptionKey);
+  const stale = staleReason?.(disruptionKey) ?? null;
   const inactive = busy || disabled;
 
   return (
@@ -62,12 +66,14 @@ export function Simulator({
         </p>
       </div>
 
-      <Button onClick={() => onSimulate(disruptionKey)} disabled={inactive} variant="secondary" className="w-full">
+      <Button onClick={() => onSimulate(disruptionKey)} disabled={inactive || Boolean(stale)} variant="secondary" className="w-full">
         {busy ? <Loader2 className="animate-spin" /> : <Send />}
         {busy ? 'Sending…' : 'Send to the coordinator'}
       </Button>
       {disabled && !busy ? (
         <p className="text-xs text-muted-foreground">{disabledNote}</p>
+      ) : stale ? (
+        <p className="text-xs text-warning">{stale}</p>
       ) : null}
 
       <Button variant="ghost" size="sm" onClick={onReset} disabled={busy} className="w-full text-muted-foreground">
