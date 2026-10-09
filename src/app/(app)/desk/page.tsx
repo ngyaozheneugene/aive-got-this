@@ -6,6 +6,7 @@ import type { CandidatePlan, DeskBoard, DeskJobRow, PlanProfile } from '../../..
 import Link from 'next/link';
 import { DeskApiError, deskApi, type PlanResult } from '../../_components/desk-api';
 import { hrefIn, useWorkspace } from '../../_components/shell/workspace';
+import { PRODUCT_NAME } from '../../_components/shell/Brand';
 import { BoardView } from '../../_components/BoardView';
 import { MapBoundary } from '../../_components/MapBoundary';
 import { Simulator } from '../../_components/Simulator';
@@ -412,7 +413,8 @@ export default function DeskPage() {
       {/* Top bar: the page's tools on the left, the day's status on the right. */}
       <header className="z-20 grid grid-cols-[1fr_auto] items-center gap-3 border-b bg-background px-3">
         <div className="flex min-w-0 items-center gap-1">
-          <h1 className="mr-2 truncate text-sm font-semibold">Dispatch</h1>
+          {/* The name lives in the open sidebar; the header keeps it for screen readers only. */}
+          <h1 className="sr-only">{PRODUCT_NAME}: dispatch board</h1>
           {simulation ? (
             <Badge variant="warning" className="mr-1 hidden gap-1.5 sm:inline-flex" title="A sample company and day. Nothing here touches your workspace.">
               <FlaskConical className="size-3" />

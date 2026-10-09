@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ClipboardList, FlaskConical, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Settings, Snowflake, Users } from 'lucide-react';
+import { ClipboardList, FlaskConical, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Settings, Users } from 'lucide-react';
+import { BrandMark, PRODUCT_TAGLINE, Wordmark } from './Brand';
 import { cn } from '../lib/utils';
 import { hrefIn, useWorkspace, WorkspaceProvider } from './workspace';
 
@@ -64,12 +65,10 @@ function Sidebar() {
       )}
     >
       <div className={cn('flex h-12 items-center gap-2.5 border-b px-3', wide && 'md:px-3.5')}>
-        <div className="grid size-7 flex-none place-items-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-[0_0_18px_-4px] shadow-blue-500/70">
-          <Snowflake className="size-4" />
-        </div>
-        <span className={cn('hidden min-w-0 flex-col leading-tight', wide && 'md:flex')}>
-          <span className="truncate text-[13px] font-semibold">{settings.name}</span>
-          <span className="truncate text-[11px] text-muted-foreground">Dispatch Coordinator</span>
+        <BrandMark />
+        <span className={cn('hidden min-w-0 flex-col leading-tight', wide && 'md:flex')} title={PRODUCT_TAGLINE}>
+          <Wordmark className="text-[16px] leading-none" />
+          <span className="mt-0.5 truncate text-[11px] text-muted-foreground">{settings.name}</span>
         </span>
       </div>
 
