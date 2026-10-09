@@ -15,7 +15,7 @@ import { TraceDrawer } from '../../_components/TraceDrawer';
 import { RefusalNotice } from '../../_components/RefusalNotice';
 import type { Refusal } from '../../_components/refusals';
 import {
-  disruptionForBooking, disruptionForCancel, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, disruptionForWaiting, findDisruption, fromReport,
+  rememberBoard, disruptionForBooking, disruptionForCancel, disruptionForJob, disruptionForOverrun, disruptionForUnavailable, disruptionForWaiting, findDisruption, fromReport,
   type CancelReason, type Disruption,
 } from '../../_components/disruptions';
 import { GENERIC_EXAMPLES, ReportBar, SAMPLE_EXAMPLES } from '../../_components/ReportBar';
@@ -212,6 +212,9 @@ export default function DeskPage() {
     const t = window.setTimeout(() => setSyncedAt(null), 5000);
     return () => window.clearTimeout(t);
   }, [syncedAt]);
+
+  // Before anything below rebuilds a request from its key: names come from this board.
+  if (board) rememberBoard(board);
 
   const simulate = useCallback(
     async (disruptionKey: string, profile: PlanProfile = priority) => {

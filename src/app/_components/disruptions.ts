@@ -52,12 +52,23 @@ export const DISRUPTIONS: readonly Disruption[] = [
 // lifetime of the page.
 const fromBoard = new Map<string, Disruption>();
 
+// Names from the current board, so a request rebuilt from its key after a
+// page change still says "Kumar is out until 14:00", not "A technician".
+const technicianNames = new Map<string, string>();
+const jobRows = new Map<string, DeskJobRow>();
+export function rememberBoard(board: { technicians: Array<{ technician: Pick<Technician, 'id' | 'name'> }>; jobs: DeskJobRow[] }) {
+  for (const t of board.technicians) technicianNames.set(t.technician.id, t.technician.name);
+  for (const r of board.jobs) jobRows.set(r.job.id, r);
+}
+
 export function findDisruption(key: string): Disruption {
   const known = DISRUPTIONS.find((d) => d.key === key) ?? fromBoard.get(key);
   if (known) return known;
   // Raised from the board before a reload: the names are gone with the page,
   // but the key still says what was sent.
   if (key.startsWith('job:')) {
+    const row = jobRows.get(key.slice(4));
+    if (row) return disruptionForJob(row);
     return { key, label: 'Find a technician', source: 'Your request', headline: 'Find a technician', detail: '', body: { type: 'urgent_job', payload: { jobId: key.slice(4) } } };
   }
   if (key.startsWith('waiting:')) {
@@ -68,15 +79,19 @@ export function findDisruption(key: string): Disruption {
   if (off) {
     const [, technicianId, mode, date, time] = off;
     const availability: Availability = mode === 'day' ? { mode: 'day' } : { mode: mode as 'until' | 'from', time: time! };
-    return disruptionForUnavailable({ id: technicianId!, name: 'A technician' }, date ?? '', availability);
+    return disruptionForUnavailable({ id: technicianId!, name: technicianNames.get(technicianId!) ?? 'A technician' }, date ?? '', availability);
   }
   const cancel = /^cancel:([^:]+):(customer_cancelled|duplicate|other)$/.exec(key);
   if (cancel) {
+    const row = jobRows.get(cancel[1]!);
+    if (row) return disruptionForCancel(row, cancel[2] as CancelReason);
     return { key, label: 'Cancel a job', source: 'Your request', headline: 'Cancel a job', detail: '', body: { type: 'job_cancelled', payload: { jobId: cancel[1]!, reason: cancel[2] as CancelReason } } };
   }
   const late = /^late:([^:]+):(\d+)$/.exec(key);
   if (late) {
     const minutes = Number(late[2]);
+    const row = jobRows.get(late[1]!);
+    if (row) return disruptionForOverrun(row, minutes);
     return { key, label: 'A job runs late', source: 'Your report', headline: `A job is running ${minutes} min late`, detail: '', body: { type: 'job_overrun', payload: { jobId: late[1]!, overrunMinutes: minutes } } };
   }
   return DISRUPTIONS[0]!;
