@@ -43,6 +43,10 @@ export interface UrgentAgentInput {
   timeoutMs?: number;
 }
 
+/** Replies with several tool calls the model may correct, per run. */
+const MAX_BATCHED_RETRIES = 2;
+const BATCHED_CALLS_NOTE = 'Your last reply contained more than one tool call, so none of them ran. Call exactly ONE tool from allowedCalls.';
+
 const GATEWAY_STRUCTURED_FALLBACK = new Set([
   'GATEWAY_TIMEOUT', 'GATEWAY_NETWORK_ERROR', 'GATEWAY_FAILED',
   'GATEWAY_HTTP_408', 'GATEWAY_HTTP_429',
@@ -100,6 +104,7 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const signal = input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal;
   let modelCalls = 0;
+  let batchedRetries = 0;
   let last: State = {
     progress: { eventId: input.eventId, proposedProfiles: [], candidates: [], validatedPlanIds: [] },
     status: 'running', trace: [], errorCode: undefined,
@@ -111,13 +116,27 @@ export async function runUrgentJobAgent(input: UrgentAgentInput): Promise<Urgent
     try {
       const allowed = allowedUrgentCalls(state.progress);
       if (!allowed.length) throw new AgentError('EMPTY_TOOL_FRONTIER');
-      const reply = await bounded((turnSignal) => {
+      let messages = buildUrgentMessages(state.progress, input.model!.protocol, state.trace.at(-1));
+      const ask = () => bounded((turnSignal) => {
         modelCalls += 1;
-        return input.model!.chooseTool(
-          buildUrgentMessages(state.progress, input.model!.protocol, state.trace.at(-1)), turnSignal, allowed,
-        );
+        return input.model!.chooseTool(messages, turnSignal, allowed);
       },
         65_000, signal, 'GATEWAY_TIMEOUT');
+      let reply: Awaited<ReturnType<typeof ask>>;
+      try {
+        reply = await ask();
+      } catch (error) {
+        // The model sometimes batches two legal steps (both validations at once).
+        // Nothing from that reply runs; it is asked once more for exactly one call,
+        // which must still pass the allowed-step check below. Only this error is
+        // retried, at most twice a run: a wrong or forbidden tool still fails closed.
+        if (errorCode(error, '') !== 'MULTIPLE_NATIVE_TOOL_CALLS' || batchedRetries >= MAX_BATCHED_RETRIES) throw error;
+        batchedRetries += 1;
+        // Into the last message, so the trusted state (and allowedCalls) stays last.
+        const last = messages.at(-1)!;
+        messages = [...messages.slice(0, -1), { ...last, content: `${BATCHED_CALLS_NOTE}\n${last.content}` }];
+        reply = await ask();
+      }
       request = parseToolCall(reply);
       if (!allowed.some((choice) => sameToolCall(choice, request!))) throw new AgentError('TOOL_NOT_ALLOWED_IN_STATE');
       const applied = await applyRecoveryTool({
