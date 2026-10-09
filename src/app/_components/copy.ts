@@ -146,14 +146,24 @@ export function describeLeftWaiting(board: DeskBoard, plan: CandidatePlan): stri
  */
 export function workloadNotes(board: DeskBoard, plan: CandidatePlan): string[] {
   const rows = new Map(board.technicians.map((t) => [t.technician.id, t]));
+  const view = buildScheduleView(board, plan);
   const receiving = new Set(
-    buildScheduleView(board, plan)
-      .slots.filter((s) => s.change === 'added' || s.change === 'reassigned')
-      .map((s) => s.technicianId),
+    view.slots.filter((s) => s.change === 'added' || s.change === 'reassigned').map((s) => s.technicianId),
   );
+  // Work this plan takes off someone (cancelled, left for a call, moved away)
+  // is not theirs to count: cancelling Siti's 90-min job leaves her 60, not 150.
+  const leaving = new Map<string, number>();
+  const away = (previous?: { technicianId: string; start: number; end: number }) => {
+    if (previous) leaving.set(previous.technicianId, (leaving.get(previous.technicianId) ?? 0) + (previous.end - previous.start));
+  };
+  for (const c of view.cancelled) away(c.previous);
+  for (const l of view.leftForCall) away(l.previous);
+  for (const s of view.slots) if (s.previous && s.previous.technicianId !== s.technicianId) away(s.previous);
   return [...receiving].flatMap((id) => {
     const t = rows.get(id);
-    return t ? [`${t.technician.name} already has ${t.loadMinutes} min of work booked today`] : [];
+    if (!t) return [];
+    const minutes = Math.max(0, t.loadMinutes - (leaving.get(id) ?? 0));
+    return [minutes > 0 ? `${t.technician.name} already has ${minutes} min of work booked today` : `${t.technician.name} has no other work booked today`];
   });
 }
 

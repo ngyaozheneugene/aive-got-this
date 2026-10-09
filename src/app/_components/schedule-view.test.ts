@@ -149,5 +149,12 @@ describe('cancellation on the desk', () => {
     expect(view.unassigned.some((r) => r.job.id === 'job_ben_1')).toBe(false);
     expect(view.cancelled).toEqual([expect.objectContaining({ previous: expect.objectContaining({ technicianId: 'tech_ben' }) })]);
     expect(describeCancelled(board, plan)).toEqual(['Cancel Tan Household (Simei): frees Ben 09:00–10:30']);
+
+    // Siti takes a waiting job: her load leaves out nothing, Ben's would leave out the cancelled 90 min.
+    const { workloadNotes } = await import('./copy');
+    const raffles = board.jobs.find((r) => !r.assignment)!;
+    const ben = board.technicians.find((t) => t.technician.id === 'tech_ben')!;
+    const fill = { ...plan, assignments: [...live, { jobId: raffles.job.id, technicianId: 'tech_ben', windowStart: raffles.job.windowStart, windowEnd: raffles.job.windowEnd }] } as unknown as CandidatePlan;
+    expect(workloadNotes(board, fill)).toEqual([`Ben already has ${ben.loadMinutes - 90} min of work booked today`]);
   });
 });
